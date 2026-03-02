@@ -1,0 +1,74 @@
+.reviews-section {
+  position: relative;
+  overflow: hidden;
+}
+
+.review-card {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.review-card:hover {
+  transform: translateY(-8px);
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+}
+
+.rating-stars {
+  position: relative;
+}
+
+.rating-stars .empty-stars {
+  color: #475569;
+}
+
+.rating-stars .filled-stars {
+  position: absolute;
+  top: 0;
+  left: 0;
+  color: #F59E0B;
+  overflow: hidden;
+}
+
+.review-tag {
+  transition: all 0.2s;
+}
+
+.review-tag:hover {
+  transform: scale(1.05);
+}
+
+.reply-section {
+  animation: slideDown 0.3s ease-out;
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.carousel-enter {
+  opacity: 0;
+  transform: translateX(50px);
+}
+
+.carousel-enter-active {
+  opacity: 1;
+  transform: translateX(0);
+  transition: all 0.5s ease;
+}
+
+.carousel-exit {
+  opacity: 1;
+  transform: translateX(0);
+}
+
+.carousel-exit-active {
+  opacity: 0;
+  transform: translateX(-50px);
+  transition: all 0.5s ease;
+}

@@ -1,0 +1,300 @@
+.tray-manager {
+  position: relative;
+}
+
+.monitoring-banner {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  padding: 12px 20px;
+  transition: all 0.3s ease;
+}
+
+.monitoring-banner.inactive {
+  background: linear-gradient(135deg, #6c757d 0%, #495057 100%);
+}
+
+.banner-content {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.status-indicator {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 600;
+}
+
+.status-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  transition: all 0.3s ease;
+}
+
+.status-dot.monitoring {
+  background: #ff6b6b;
+  box-shadow: 0 0 10px rgba(255, 107, 107, 0.5);
+  animation: pulse 2s infinite;
+}
+
+.status-dot.idle {
+  background: #adb5bd;
+}
+
+.banner-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.start-btn, .stop-btn, .tray-btn {
+  padding: 8px 16px;
+  border: none;
+  border-radius: 6px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  font-size: 14px;
+}
+
+.start-btn {
+  background: #51cf66;
+  color: white;
+}
+
+.start-btn:hover {
+  background: #40c057;
+  transform: translateY(-1px);
+}
+
+.stop-btn {
+  background: #ff6b6b;
+  color: white;
+}
+
+.stop-btn:hover {
+  background: #fa5252;
+  transform: translateY(-1px);
+}
+
+.tray-btn {
+  background: #4dabf7;
+  color: white;
+}
+
+.tray-btn:hover {
+  background: #339af0;
+  transform: translateY(-1px);
+}
+
+.alert-notification {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  background: white;
+  border: 2px solid #ff6b6b;
+  border-radius: 12px;
+  padding: 16px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+  z-index: 1000;
+  max-width: 400px;
+  animation: slideInRight 0.3s ease;
+}
+
+.alert-notification.show {
+  display: block;
+}
+
+.alert-content {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.alert-icon {
+  font-size: 24px;
+  flex-shrink: 0;
+}
+
+.alert-text {
+  flex: 1;
+}
+
+.alert-title {
+  font-weight: bold;
+  color: #e03131;
+  margin-bottom: 4px;
+  font-size: 16px;
+}
+
+.alert-message {
+  color: #495057;
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.alert-close {
+  background: none;
+  border: none;
+  font-size: 20px;
+  cursor: pointer;
+  color: #868e96;
+  padding: 0;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+}
+
+.alert-close:hover {
+  background: #f8f9fa;
+  color: #495057;
+}
+
+.background-controls {
+  margin-top: 30px;
+  padding: 0 20px;
+}
+
+.control-card {
+  background: #f8f9fa;
+  border: 2px solid #e9ecef;
+  border-radius: 12px;
+  padding: 24px;
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+.control-card h3 {
+  margin: 0 0 12px 0;
+  color: #495057;
+  font-size: 20px;
+}
+
+.control-card p {
+  margin: 0 0 20px 0;
+  color: #6c757d;
+  line-height: 1.5;
+}
+
+.control-tips {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 20px;
+}
+
+.tip {
+  color: #495057;
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.tip strong {
+  color: #343a40;
+}
+
+.tray-status {
+  display: flex;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+
+.status-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: white;
+  border-radius: 8px;
+  border: 1px solid #dee2e6;
+}
+
+.status-label {
+  font-weight: 600;
+  color: #495057;
+  font-size: 14px;
+}
+
+.status-value {
+  font-weight: 600;
+  font-size: 14px;
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+
+.status-value.visible {
+  background: #d3f9d8;
+  color: #2b8a3e;
+}
+
+.status-value.hidden {
+  background: #fff3bf;
+  color: #e67700;
+}
+
+.status-value.active {
+  background: #ffec99;
+  color: #e67700;
+}
+
+.status-value.inactive {
+  background: #e9ecef;
+  color: #6c757d;
+}
+
+@keyframes pulse {
+  0% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.1);
+    opacity: 0.8;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes slideInRight {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+/* Адаптивность */
+@media (max-width: 768px) {
+  .banner-content {
+    flex-direction: column;
+    gap: 12px;
+    text-align: center;
+  }
+  
+  .banner-actions {
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  
+  .alert-notification {
+    left: 20px;
+    right: 20px;
+    max-width: none;
+  }
+  
+  .tray-status {
+    flex-direction: column;
+    gap: 10px;
+  }
+}
