@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test TTS</title>
+    <style>
+        body { font-family: monospace; padding: 20px; background: #1a1a1a; color: #fff; }
+        button { padding: 10px 20px; margin: 5px; cursor: pointer; }
+        .status { margin: 20px 0; padding: 10px; background: #333; border-radius: 5px; }
+        audio { width: 100%; margin: 10px 0; }
+    </style>
+</head>
+<body>
+    <h1>Тест голоса (Edge TTS)</h1>
+    
+    <button id="btnTest">🎤 Тест: "Привет, я голосовой ассистент"</button>
+    <button id="btnCalibrate">📏 Тест: "Запускаю калибровку"</button>
+    <button id="btnStart">▶️ Тест: "Запускаю анализ осанки"</button>
+    
+    <div class="status" id="status">Ожидание...</div>
+    <audio id="audioPlayer" controls style="display: none;"></audio>
+    
+    <script>
+        const statusDiv = document.getElementById('status');
+        const audioPlayer = document.getElementById('audioPlayer');
+        
+        async function speak(text) {
+            statusDiv.textContent = `⏳ Генерация: "${text}"...`;
+            statusDiv.style.color = '#ff0';
+            
+            try {
+                const response = await fetch('/api/tts/synthesize', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ text: text })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success && data.audioData) {
+                    const binaryString = atob(data.audioData);
+                    const bytes = new Uint8Array(binaryString.length);
+                    for (let i = 0; i < binaryString.length; i++) {
+                        bytes[i] = binaryString.charCodeAt(i);
+                    }
+                    const blob = new Blob([bytes], { type: 'audio/mp3' });
+                    const url = URL.createObjectURL(blob);
+                    
+                    audioPlayer.src = url;
+                    audioPlayer.style.display = 'block';
+                    audioPlayer.play();
+                    
+                    statusDiv.textContent = `✅ Воспроизведение: "${text}"`;
+                    statusDiv.style.color = '#0f0';
+                    
+                    audioPlayer.onended = () => {
+                        URL.revokeObjectURL(url);
+                    };
+                } else {
+                    statusDiv.textContent = `❌ Ошибка: ${data.error || 'Нет аудио'}`;
+                    statusDiv.style.color = '#f00';
+                }
+            } catch (error) {
+                statusDiv.textContent = `❌ Ошибка: ${error.message}`;
+                statusDiv.style.color = '#f00';
+            }
+        }
+        
+        document.getElementById('btnTest').onclick = () => speak('Привет, я голосовой ассистент');
+        document.getElementById('btnCalibrate').onclick = () => speak('Запускаю калибровку. Встаньте прямо перед камерой.');
+        document.getElementById('btnStart').onclick = () => speak('Запускаю анализ осанки. Я буду следить за вашей позой.');
+    </script>
+</body>
+</html>

@@ -1,0 +1,37 @@
+appId: com.postureanalyzer.app
+productName: Posture Analyzer
+directories:
+  output: release
+  buildResources: build
+files:
+  - electron/**/*
+  - frontend/dist/**/*
+  - package.json
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+  icon: frontend/public/vite.svg
+  artifactName: ${productName}-Setup-${version}.${ext}
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: Posture Analyzer
+mac:
+  target:
+    - target: dmg
+      arch:
+        - x64
+        - arm64
+  icon: frontend/public/vite.svg
+  category: public.app-category.healthcare-fitness
+linux:
+  target:
+    - target: AppImage
+      arch:
+        - x64
+  icon: frontend/public/vite.svg
+  category: Health

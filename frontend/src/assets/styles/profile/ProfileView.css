@@ -1,0 +1,600 @@
+/* Основные стили */
+.profile-view {
+  min-height: 100vh;
+  background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+  padding: 24px;
+  color: #ffffff; /* Белый цвет текста по умолчанию */
+}
+
+.profile-container {
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+/* Заголовок профиля */
+.profile-header {
+  margin-bottom: 32px;
+}
+
+.profile-title {
+  font-size: 32px;
+  font-weight: 700;
+  color: #ffffff; /* Белый цвет */
+  margin: 0 0 8px 0;
+  line-height: 1.2;
+}
+
+.profile-subtitle {
+  font-size: 16px;
+  color: #d1d5db; /* Более светлый серый для подзаголовка */
+  margin: 0;
+}
+
+/* Ошибки */
+.profile-error {
+  margin-bottom: 24px;
+}
+
+/* Основной контент */
+.profile-content {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+/* Карточка профиля */
+.profile-card {
+  background: rgba(30, 41, 59, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 16px;
+  padding: 24px;
+  backdrop-filter: blur(10px);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+  color: #ffffff; /* Белый цвет текста */
+}
+
+.profile-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 24px;
+}
+
+.profile-avatar-section {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.profile-avatar {
+  position: relative;
+  width: 80px;
+  height: 80px;
+}
+
+.avatar-initials {
+  width: 80px;
+  height: 80px;
+  border-radius: 16px;
+  background: linear-gradient(135deg, #3B82F6 0%, #8B5CF6 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffffff; /* Белый цвет */
+  font-size: 28px;
+  font-weight: 700;
+  box-shadow: 0 8px 24px rgba(59, 130, 246, 0.3);
+}
+
+.avatar-status {
+  position: absolute;
+  bottom: 0;
+  right: 0;
+}
+
+.status-indicator {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #10B981;
+  border: 2px solid rgba(30, 41, 59, 0.8);
+}
+
+.status-indicator.active {
+  background: #10B981;
+  box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.3);
+}
+
+.profile-info {
+  flex: 1;
+}
+
+.profile-name-section {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.profile-name {
+  font-size: 24px;
+  font-weight: 700;
+  color: #ffffff; /* Белый цвет */
+  margin: 0;
+}
+
+.profile-badge {
+  padding: 4px 12px;
+  background: rgba(59, 130, 246, 0.2);
+  border: 1px solid rgba(59, 130, 246, 0.3);
+  border-radius: 20px;
+  color: #93c5fd; /* Более светлый синий */
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.profile-email {
+  font-size: 14px;
+  color: #d1d5db; /* Более светлый серый */
+  margin: 0;
+}
+
+.profile-avatar-action {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  background: rgba(59, 130, 246, 0.1);
+  border: 1px solid rgba(59, 130, 246, 0.2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  color: #93c5fd; /* Более светлый синий */
+}
+
+.profile-avatar-action:hover {
+  background: rgba(59, 130, 246, 0.2);
+  border-color: rgba(59, 130, 246, 0.3);
+  transform: translateY(-1px);
+}
+
+/* Статистика профиля */
+.profile-stats {
+  display: flex;
+  gap: 24px;
+  padding-top: 24px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.stat-item {
+  flex: 1;
+}
+
+.stat-label {
+  font-size: 12px;
+  color: #d1d5db; /* Более светлый серый */
+  margin-bottom: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.stat-value {
+  font-size: 14px;
+  font-weight: 600;
+  color: #ffffff; /* Белый цвет */
+}
+
+.stat-value.active {
+  color: #10B981;
+}
+
+/* Секции профиля */
+.profile-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.profile-section {
+  background: rgba(30, 41, 59, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 16px;
+  padding: 24px;
+  backdrop-filter: blur(10px);
+  color: #ffffff; /* Белый цвет текста */
+}
+
+.section-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+.section-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  background: rgba(59, 130, 246, 0.1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.section-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: #ffffff; /* Белый цвет */
+  margin: 0;
+}
+
+/* Сетка информации */
+.info-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 16px;
+}
+
+.info-item {
+  background: rgba(15, 23, 42, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 12px;
+  padding: 16px;
+}
+
+.info-label {
+  font-size: 12px;
+  color: #d1d5db; /* Более светлый серый */
+  margin-bottom: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.info-value {
+  font-size: 15px; /* Увеличен размер шрифта */
+  font-weight: 500;
+  color: #ffffff; /* Белый цвет */
+  line-height: 1.5;
+  min-height: 24px; /* Минимальная высота для текста */
+}
+
+.email-value {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.email-text {
+  color: #ffffff; /* Белый цвет */
+  font-size: 15px;
+  font-weight: 500;
+}
+
+.copy-btn {
+  padding: 6px;
+  background: rgba(59, 130, 246, 0.1);
+  border: 1px solid rgba(59, 130, 246, 0.2);
+  border-radius: 8px;
+  color: #93c5fd; /* Более светлый синий */
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.copy-btn:hover {
+  background: rgba(59, 130, 246, 0.2);
+  border-color: rgba(59, 130, 246, 0.3);
+  transform: translateY(-1px);
+}
+
+.copy-btn svg {
+  width: 14px;
+  height: 14px;
+}
+
+.monospace {
+  font-family: 'SF Mono', Monaco, Consolas, 'Liberation Mono', monospace;
+  font-size: 14px; /* Увеличен размер шрифта */
+  color: #ffffff; /* Белый цвет */
+  font-weight: 500;
+}
+
+/* Бейдж роли */
+.role-badge {
+  padding: 6px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+  display: inline-block;
+  color: #ffffff; /* Белый цвет для текста внутри */
+}
+
+.role-badge.admin {
+  background: rgba(245, 158, 11, 0.2);
+  color: #fcd34d; /* Более светлый желтый */
+  border: 1px solid rgba(245, 158, 11, 0.3);
+}
+
+.role-badge.user {
+  background: rgba(59, 130, 246, 0.2);
+  color: #93c5fd; /* Более светлый синий */
+  border: 1px solid rgba(59, 130, 246, 0.3);
+}
+
+/* Сетка настроек */
+.settings-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.setting-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px;
+  background: rgba(15, 23, 42, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 12px;
+  color: #ffffff; /* Белый цвет текста */
+}
+
+.setting-content {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.setting-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  background: rgba(59, 130, 246, 0.1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.setting-info {
+  flex: 1;
+}
+
+.setting-name {
+  font-weight: 600;
+  color: #ffffff; /* Белый цвет */
+  margin-bottom: 4px;
+  font-size: 15px; /* Увеличен размер шрифта */
+}
+
+.setting-description {
+  font-size: 13px;
+  color: #d1d5db; /* Более светлый серый */
+  line-height: 1.4;
+}
+
+.setting-status {
+  margin-left: 16px;
+}
+
+.status-badge {
+  padding: 6px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+  display: inline-block;
+}
+
+.status-badge.enabled {
+  background: rgba(16, 185, 129, 0.2);
+  color: #6ee7b7; /* Более светлый зеленый */
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.status-badge.disabled {
+  background: rgba(245, 158, 11, 0.2);
+  color: #fcd34d; /* Более светлый желтый */
+  border: 1px solid rgba(245, 158, 11, 0.3);
+}
+
+/* Кнопки действий */
+.action-buttons {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.action-btn {
+  padding: 12px 24px;
+  border-radius: 12px;
+  font-weight: 600;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  border: none;
+  min-width: 200px;
+  color: #ffffff; /* Белый цвет текста в кнопках */
+}
+
+.action-btn svg {
+  width: 18px;
+  height: 18px;
+}
+
+.action-btn--primary {
+  background: linear-gradient(135deg, #3B82F6 0%, #8B5CF6 100%);
+  color: #ffffff; /* Белый цвет */
+}
+
+.action-btn--primary:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(59, 130, 246, 0.4);
+}
+
+.action-btn--secondary {
+  background: rgba(255, 255, 255, 0.05);
+  color: #ffffff; /* Белый цвет */
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.action-btn--secondary:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.2);
+  transform: translateY(-1px);
+}
+
+.action-btn--outline {
+  background: transparent;
+  color: #93c5fd; /* Более светлый синий */
+  border: 1px solid rgba(59, 130, 246, 0.3);
+}
+
+.action-btn--outline:hover {
+  background: rgba(59, 130, 246, 0.1);
+  border-color: rgba(59, 130, 246, 0.4);
+  transform: translateY(-1px);
+}
+
+/* Состояние загрузки */
+.profile-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 80px 20px;
+  text-align: center;
+  min-height: 300px;
+  color: #ffffff; /* Белый цвет */
+}
+
+.profile-loading p {
+  margin-top: 16px;
+  color: #d1d5db; /* Более светлый серый */
+  font-size: 14px;
+}
+
+/* Улучшение контраста для всех текстовых элементов */
+.profile-view * {
+  color: inherit; /* Наследование цвета от родительских элементов */
+}
+
+/* Специфичные стили для значений полей */
+.info-value:not(.email-text) {
+  font-weight: 500;
+  font-size: 15px;
+  color: #f8fafc; /* Очень светлый белый для максимального контраста */
+}
+
+/* Явное указание цвета для всех текстовых элементов в секциях */
+.profile-section .info-value,
+.profile-section .setting-name,
+.profile-section .setting-description,
+.profile-section .stat-value,
+.profile-section .profile-name,
+.profile-section .profile-email {
+  color: #f8fafc !important; /* Принудительный светлый цвет */
+}
+
+/* Улучшение видимости для ID пользователя */
+.info-item .monospace {
+  color: #f8fafc !important;
+  font-weight: 500;
+  font-size: 15px;
+}
+
+/* Адаптивность */
+@media (max-width: 768px) {
+  .profile-view {
+    padding: 16px;
+  }
+  
+  .profile-title {
+    font-size: 24px;
+  }
+  
+  .profile-card-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 16px;
+  }
+  
+  .profile-avatar-section {
+    width: 100%;
+  }
+  
+  .profile-avatar-action {
+    align-self: flex-end;
+  }
+  
+  .profile-stats {
+    flex-direction: column;
+    gap: 16px;
+  }
+  
+  .info-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .setting-item {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 16px;
+  }
+  
+  .setting-status {
+    margin-left: 0;
+    align-self: flex-end;
+  }
+  
+  .action-buttons {
+    flex-direction: column;
+  }
+  
+  .action-btn {
+    min-width: 100%;
+    justify-content: center;
+  }
+}
+
+@media (max-width: 480px) {
+  .profile-avatar-section {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  
+  .profile-name-section {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+  
+  .section-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+  
+  .setting-content {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+  
+  /* Увеличение размера текста на мобильных */
+  .info-value,
+  .setting-name,
+  .email-text,
+  .monospace {
+    font-size: 16px !important;
+  }
+}
