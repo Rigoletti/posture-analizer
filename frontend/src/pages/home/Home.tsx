@@ -1,4 +1,4 @@
-import React, { useState, lazy, Suspense, useCallback, useMemo } from 'react';
+import React, { useState, lazy, Suspense, useCallback, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Box,
@@ -16,7 +16,6 @@ import {
   Timeline as TimelineIcon,
   NotificationsActive as NotificationsActiveIcon,
   Verified as VerifiedIcon,
-  EmojiEvents as TrophyIcon,
 } from '@mui/icons-material';
 import { motion, AnimatePresence } from 'framer-motion';
 import ReviewCarousel from '../../components/reviews/ReviewCarousel';
@@ -24,7 +23,6 @@ import { useAuthStore } from '../../store/auth';
 
 const WebcamFeed = lazy(() => import('../../components/home/WebcamFeed'));
 
-// Живая, современная цветовая схема
 const COLORS = {
   primary: '#0066FF',
   primaryLight: '#3385FF',
@@ -74,40 +72,47 @@ const Home: React.FC = () => {
   const stats = useMemo(() => [
     { value: '99.9%', label: 'Точность', icon: <VerifiedIcon />, color: COLORS.primary },
     { value: '<0.2с', label: 'Задержка', icon: <SpeedIcon />, color: COLORS.secondary },
-    { value: '50K+', label: 'Пользователей', icon: <TrophyIcon />, color: COLORS.accent },
   ], []);
+
+  // Полностью удаляем все скроллы кроме body
+  useEffect(() => {
+    // Сохраняем оригинальные стили
+    const originalHtmlOverflow = document.documentElement.style.overflow;
+    const originalBodyOverflow = document.body.style.overflow;
+    
+    // Устанавливаем правильные стили
+    document.documentElement.style.overflow = 'visible';
+    document.documentElement.style.height = 'auto';
+    document.body.style.overflow = 'auto';
+    document.body.style.height = 'auto';
+    document.body.style.minHeight = '100vh';
+    
+    const root = document.getElementById('root');
+    if (root) {
+      root.style.overflow = 'visible';
+      root.style.minHeight = '100vh';
+    }
+    
+    return () => {
+      // Восстанавливаем стили
+      document.documentElement.style.overflow = originalHtmlOverflow;
+      document.documentElement.style.height = '';
+      document.body.style.overflow = originalBodyOverflow;
+      document.body.style.height = '';
+      document.body.style.minHeight = '';
+      if (root) {
+        root.style.overflow = '';
+        root.style.minHeight = '';
+      }
+    };
+  }, []);
 
   return (
     <Box sx={{ 
       minHeight: '100vh',
       background: COLORS.bgGradient,
       position: 'relative',
-      overflowX: 'hidden',
     }}>
-      {/* Декоративные элементы */}
-      <Box sx={{
-        position: 'absolute',
-        top: -100,
-        right: -100,
-        width: 400,
-        height: 400,
-        borderRadius: '50%',
-        background: `radial-gradient(circle, ${COLORS.primary}10, transparent)`,
-        filter: 'blur(60px)',
-        pointerEvents: 'none',
-      }} />
-      <Box sx={{
-        position: 'absolute',
-        bottom: -100,
-        left: -100,
-        width: 400,
-        height: 400,
-        borderRadius: '50%',
-        background: `radial-gradient(circle, ${COLORS.secondary}10, transparent)`,
-        filter: 'blur(60px)',
-        pointerEvents: 'none',
-      }} />
-
       <Container maxWidth="lg" sx={{ py: { xs: 3, md: 5 }, position: 'relative', zIndex: 2 }}>
         <AnimatePresence mode="wait">
           {!analysisStarted ? (
@@ -118,8 +123,6 @@ const Home: React.FC = () => {
               exit={{ opacity: 0 }}
               transition={{ duration: 0.3 }}
             >
-            
-
               <Box sx={{ maxWidth: 900, mx: 'auto', textAlign: 'center', mb: 8 }}>
                 <motion.div
                   initial={{ y: 30, opacity: 0 }}
@@ -193,7 +196,6 @@ const Home: React.FC = () => {
                 </motion.div>
               </Box>
 
-              {/* Статистика */}
               <motion.div
                 initial={{ y: 30, opacity: 0 }}
                 animate={{ y: 0, opacity: 1 }}
@@ -234,7 +236,6 @@ const Home: React.FC = () => {
                 </Stack>
               </motion.div>
 
-              {/* Преимущества */}
               <motion.div
                 initial={{ y: 30, opacity: 0 }}
                 animate={{ y: 0, opacity: 1 }}
@@ -278,7 +279,6 @@ const Home: React.FC = () => {
                 </Grid>
               </motion.div>
 
-              {/* Отзывы */}
               <Box sx={{ mt: 12 }}>
                 <motion.div
                   initial={{ y: 30, opacity: 0 }}
@@ -299,7 +299,7 @@ const Home: React.FC = () => {
                     onReviewClick={() => navigate('/reviews')}
                   />
 
-                  <Stack direction="row" justifyContent="center" spacing={2} sx={{ mt: 5 }}>
+                  <Stack direction="row" justifyContent="center" spacing={2} sx={{ mt: 5, mb: 4 }}>
                     <Button
                       variant="outlined"
                       onClick={() => navigate('/reviews')}

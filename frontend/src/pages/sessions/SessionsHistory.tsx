@@ -136,7 +136,6 @@ interface ExpandedState {
   [sessionId: string]: boolean;
 }
 
-// Компонент анимации для диалога
 const Transition = React.forwardRef(function Transition(props: any, ref) {
   return <Fade ref={ref} {...props} />;
 });
@@ -148,6 +147,7 @@ const SessionsHistory: React.FC = () => {
   const { user } = useAuthStore();
   
   const [sessions, setSessions] = useState<any[]>([]);
+  const [allSessionsForProgress, setAllSessionsForProgress] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState(0);
@@ -168,7 +168,6 @@ const SessionsHistory: React.FC = () => {
   const [selectedSessions, setSelectedSessions] = useState<string[]>([]);
   const [isRefreshing, setIsRefreshing] = useState(false);
   
-  // Фильтры
   const [filters, setFilters] = useState({
     dateFrom: '',
     dateTo: '',
@@ -180,7 +179,62 @@ const SessionsHistory: React.FC = () => {
     showOnlyWithProblems: false
   });
 
-  // Загрузка сеансов
+  // Загрузка ВСЕХ сессий для прогресса
+  const loadAllSessionsForProgress = useCallback(async () => {
+    try {
+      let allSessions: any[] = [];
+      let currentPage = 1;
+      let hasMore = true;
+      
+      while (hasMore) {
+        const response = await sessionsApi.getSessionsHistory(
+          currentPage,
+          100,
+          { sortBy: 'startTime', sortOrder: 'desc' }
+        );
+        
+        if (response.success && response.data.sessions) {
+          const sessionsPage = response.data.sessions;
+          allSessions = [...allSessions, ...sessionsPage];
+          hasMore = sessionsPage.length === 100;
+          currentPage++;
+        } else {
+          hasMore = false;
+        }
+      }
+      
+      // Обогащаем данные
+      const enrichedSessions = allSessions.map((session: any) => {
+        const metrics = session.postureMetrics || {};
+        const totalFrames = metrics.totalFrames || 1;
+        const duration = session.duration || 1;
+        
+        const goodPercentage = metrics.goodPercentage || 
+          Math.round((metrics.goodPostureFrames / totalFrames) * 100);
+        const warningPercentage = metrics.warningPercentage || 
+          Math.round((metrics.warningFrames / totalFrames) * 100);
+        const errorPercentage = metrics.errorPercentage || 
+          Math.round((metrics.errorFrames / totalFrames) * 100);
+        
+        return {
+          ...session,
+          postureMetrics: {
+            ...metrics,
+            goodPercentage,
+            warningPercentage,
+            errorPercentage
+          }
+        };
+      });
+      
+      setAllSessionsForProgress(enrichedSessions);
+      console.log('Loaded all sessions for progress:', enrichedSessions.length);
+    } catch (err) {
+      console.error('Failed to load all sessions:', err);
+    }
+  }, []);
+
+  // Загрузка сеансов для текущей страницы
   const loadSessions = useCallback(async (pageNum = 0, limit = rowsPerPage, filterParams = filters) => {
     try {
       setLoading(true);
@@ -207,14 +261,12 @@ const SessionsHistory: React.FC = () => {
       if (response.success) {
         let filteredSessions = response.data.sessions || [];
         
-        // Фильтр по проблемам
         if (filterParams.showOnlyWithProblems) {
           filteredSessions = filteredSessions.filter((session: any) => 
             session.problems && session.problems.length > 0
           );
         }
         
-        // Обогащаем данные процентами
         filteredSessions = filteredSessions.map((session: any) => {
           const metrics = session.postureMetrics || {};
           const totalFrames = metrics.totalFrames || 1;
@@ -291,6 +343,11 @@ const SessionsHistory: React.FC = () => {
       setIsRefreshing(false);
     }
   }, [rowsPerPage, filters]);
+
+  // Загружаем все сессии для прогресса при первом монтировании
+  useEffect(() => {
+    loadAllSessionsForProgress();
+  }, [loadAllSessionsForProgress]);
 
   useEffect(() => {
     loadSessions();
@@ -371,6 +428,8 @@ const SessionsHistory: React.FC = () => {
       });
       
       loadSessions(page, rowsPerPage);
+      loadAllSessionsForProgress();
+      
     } catch (err: any) {
       console.error('Failed to delete session:', err);
       setError(err.message || 'Ошибка при удалении сеанса');
@@ -425,6 +484,7 @@ const SessionsHistory: React.FC = () => {
   const handleRefresh = () => {
     setIsRefreshing(true);
     loadSessions(page, rowsPerPage);
+    loadAllSessionsForProgress();
   };
 
   const getScoreColor = useCallback((score: number) => {
@@ -996,7 +1056,6 @@ const SessionsHistory: React.FC = () => {
     const scoreIcon = getScoreIcon(session.postureMetrics?.postureScore || 0);
     const isSelected = selectedSessions.includes(session.sessionId);
     
-    // Проверяем, есть ли проблемы (оценка меньше 100 или есть проблемы в массиве problems)
     const hasProblems = session.postureMetrics?.postureScore < 100 || 
                         (session.problems && session.problems.length > 0);
     
@@ -1033,7 +1092,6 @@ const SessionsHistory: React.FC = () => {
             }}
             onClick={() => toggleSessionSelection(session.sessionId)}
           >
-            {/* Верхний градиентный акцент */}
             <Box
               sx={{
                 height: 4,
@@ -1043,7 +1101,6 @@ const SessionsHistory: React.FC = () => {
             
             <CardContent sx={{ p: 2.5, flexGrow: 1 }}>
               <Stack spacing={2}>
-                {/* Заголовок с оценкой */}
                 <Stack direction="row" justifyContent="space-between" alignItems="flex-start">
                   <Box>
                     <Typography variant="subtitle2" sx={{ 
@@ -1085,7 +1142,6 @@ const SessionsHistory: React.FC = () => {
                   </Tooltip>
                 </Stack>
                 
-                {/* Время и длительность */}
                 <Stack direction="row" spacing={2}>
                   <Tooltip title="Время сеанса">
                     <Stack direction="row" alignItems="center" spacing={0.5}>
@@ -1116,10 +1172,8 @@ const SessionsHistory: React.FC = () => {
                   </Tooltip>
                 </Stack>
                 
-                {/* Прогресс-бары */}
                 <Box>
                   <Stack spacing={1}>
-                    {/* Хорошая осанка */}
                     <Box>
                       <Stack direction="row" justifyContent="space-between" sx={{ mb: 0.5 }}>
                         <Typography variant="caption" sx={{ color: theme.palette.text.secondary }}>
@@ -1147,7 +1201,6 @@ const SessionsHistory: React.FC = () => {
                       />
                     </Box>
                     
-                    {/* Предупреждения */}
                     <Box>
                       <Stack direction="row" justifyContent="space-between" sx={{ mb: 0.5 }}>
                         <Typography variant="caption" sx={{ color: theme.palette.text.secondary }}>
@@ -1177,7 +1230,6 @@ const SessionsHistory: React.FC = () => {
                   </Stack>
                 </Box>
                 
-                {/* Проблемные зоны */}
                 <Box>
                   <Typography variant="caption" sx={{ 
                     color: theme.palette.text.secondary,
@@ -1265,7 +1317,6 @@ const SessionsHistory: React.FC = () => {
                   )}
                 </Box>
                 
-                {/* Collapse для дополнительной информации */}
                 <Collapse in={isExpanded} timeout="auto" unmountOnExit>
                   <Box sx={{ 
                     mt: 1,
@@ -1323,7 +1374,6 @@ const SessionsHistory: React.FC = () => {
                   </Box>
                 </Collapse>
                 
-                {/* Действия */}
                 <Stack 
                   direction="row" 
                   spacing={1} 
@@ -1770,7 +1820,6 @@ const SessionsHistory: React.FC = () => {
       pb: 8,
       position: 'relative'
     }}>
-      {/* Стили для анимаций */}
       <style>
         {`
           @keyframes shake {
@@ -1797,7 +1846,6 @@ const SessionsHistory: React.FC = () => {
         `}
       </style>
 
-      {/* Анимированный фон */}
       <Box sx={{
         position: 'fixed',
         top: 0,
@@ -1814,7 +1862,6 @@ const SessionsHistory: React.FC = () => {
       }} />
 
       <Container maxWidth="xl" sx={{ position: 'relative', zIndex: 1 }}>
-        {/* Заголовок */}
         <motion.div
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -1930,13 +1977,9 @@ const SessionsHistory: React.FC = () => {
           </Box>
         </motion.div>
 
-        {/* Статистика */}
         {statsCard}
-
-        {/* Фильтры */}
         {filtersPanel}
 
-        {/* Вкладки */}
         <Paper
           elevation={theme.palette.mode === 'light' ? 1 : 0}
           sx={{
@@ -1990,13 +2033,11 @@ const SessionsHistory: React.FC = () => {
           </Tabs>
         </Paper>
 
-        {/* Содержимое вкладок */}
         <TabPanel value={activeTab} index={0}>
           {sessions.length === 0 ? (
             emptyState
           ) : (
             <>
-              {/* Панель управления видом */}
               <Stack 
                 direction="row" 
                 justifyContent="space-between" 
@@ -2039,7 +2080,6 @@ const SessionsHistory: React.FC = () => {
                 </ToggleButtonGroup>
               </Stack>
 
-              {/* Сеансы */}
               <AnimatePresence mode="wait">
                 {viewMode === 'cards' ? (
                   <Grid container spacing={2} key="cards">
@@ -2054,7 +2094,6 @@ const SessionsHistory: React.FC = () => {
                 )}
               </AnimatePresence>
 
-              {/* Пагинация */}
               {sessions.length > 0 && (
                 <Box sx={{ mt: 4 }}>
                   <TablePagination
@@ -2092,12 +2131,11 @@ const SessionsHistory: React.FC = () => {
 
         <TabPanel value={activeTab} index={1}>
           <SessionProgress 
-            sessions={sessions} 
-            loading={loading} 
+            sessions={allSessionsForProgress.length > 0 ? allSessionsForProgress : sessions} 
+            loading={loading && allSessionsForProgress.length === 0} 
           />
         </TabPanel>
 
-        {/* Диалог удаления */}
         <Dialog
           open={deleteDialog.open}
           onClose={closeDeleteDialog}
@@ -2129,7 +2167,6 @@ const SessionsHistory: React.FC = () => {
             }
           }}
         >
-          {/* Анимированный фон */}
           <Box sx={{
             position: 'absolute',
             top: 0,
@@ -2200,7 +2237,6 @@ const SessionsHistory: React.FC = () => {
           <DialogContent sx={{ position: 'relative', py: 3 }}>
             <Fade in={true} timeout={500}>
               <Box>
-                {/* Предупреждение */}
                 <Paper sx={{ 
                   p: 2.5,
                   mb: 3,
@@ -2232,7 +2268,6 @@ const SessionsHistory: React.FC = () => {
                   </Stack>
                 </Paper>
 
-                {/* Информация о сеансе */}
                 <Box sx={{ 
                   p: 3,
                   bgcolor: alpha(theme.palette.background.paper, 0.6),
@@ -2287,7 +2322,6 @@ const SessionsHistory: React.FC = () => {
                   </Typography>
                 </Box>
 
-                {/* Анимация предупреждения */}
                 <Box sx={{
                   mt: 3,
                   display: 'flex',

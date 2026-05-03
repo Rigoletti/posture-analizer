@@ -4,17 +4,16 @@
   padding: 0;
 }
 
-/* Отключаем скролл у html */
 html {
-  overflow: hidden;
-  height: 100%;
+  overflow: visible;
+  height: auto;
 }
 
-/* Включаем скролл только у body */
 body {
   overflow-y: auto;
   overflow-x: hidden;
-  height: 100%;
+  height: auto;
+  min-height: 100vh;
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 
                'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 
                'Helvetica Neue', sans-serif;
@@ -30,13 +29,11 @@ code {
     monospace;
 }
 
-/* Сброс стилей для кнопок */
 button {
   font-family: inherit;
   font-size: inherit;
 }
 
-/* Улучшение скроллбара */
 ::-webkit-scrollbar {
   width: 8px;
 }
@@ -58,14 +55,15 @@ button {
   min-height: 100vh;
   display: flex;
   flex-direction: column;
+  overflow: visible;
 }
 
 main {
   flex: 1;
   position: relative;
+  overflow: visible;
 }
 
-/* Глобальный индикатор загрузки */
 .global-loading-overlay {
   position: fixed;
   top: 0;
@@ -79,7 +77,6 @@ main {
   z-index: 9999;
 }
 
-/* Индикатор загрузки страницы */
 .page-loading {
   display: flex;
   flex-direction: column;
@@ -117,7 +114,6 @@ main {
   color: #666;
 }
 
-/* Анимации */
 @keyframes spin {
   0% { transform: rotate(0deg); }
   100% { transform: rotate(360deg); }
@@ -134,7 +130,6 @@ main {
   }
 }
 
-/* Адаптивность */
 @media (max-width: 768px) {
   .page-loading .loading-spinner {
     width: 50px;
