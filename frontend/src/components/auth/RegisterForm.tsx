@@ -18,7 +18,9 @@ import {
   Dialog,
   DialogTitle,
   DialogContent,
-  DialogActions
+  DialogActions,
+  useTheme,
+  alpha,
 } from '@mui/material';
 import {
   Visibility,
@@ -29,6 +31,9 @@ import {
 } from '@mui/icons-material';
 
 const RegisterForm: React.FC = () => {
+  const theme = useTheme();
+  const isDark = theme.palette.mode === 'dark';
+  
   const [formData, setFormData] = useState({
     lastName: '',
     firstName: '',
@@ -189,32 +194,29 @@ const RegisterForm: React.FC = () => {
   const textFieldStyles = {
     width: '100%',
     '& .MuiOutlinedInput-root': {
-      backgroundColor: 'rgba(255, 255, 255, 0.05)',
+      backgroundColor: isDark ? alpha(theme.palette.common.white, 0.05) : alpha(theme.palette.common.black, 0.02),
       '& fieldset': {
-        borderColor: 'rgba(255, 255, 255, 0.1)',
+        borderColor: isDark ? alpha(theme.palette.common.white, 0.1) : alpha(theme.palette.common.black, 0.1),
       },
       '&:hover fieldset': {
-        borderColor: 'rgba(255, 255, 255, 0.2)',
+        borderColor: isDark ? alpha(theme.palette.common.white, 0.2) : alpha(theme.palette.common.black, 0.2),
       },
       '&.Mui-focused fieldset': {
-        borderColor: 'rgba(59, 130, 246, 0.8)',
+        borderColor: theme.palette.primary.main,
       },
     },
     '& .MuiInputLabel-root': {
-      color: 'rgba(255, 255, 255, 0.6) !important',
+      color: `${isDark ? alpha(theme.palette.common.white, 0.6) : alpha(theme.palette.common.black, 0.6)} !important`,
     },
     '& .MuiInputLabel-root.Mui-focused': {
-      color: '#3b82f6 !important',
+      color: `${theme.palette.primary.main} !important`,
     },
     '& .MuiOutlinedInput-input': {
-      color: 'white !important',
+      color: `${theme.palette.text.primary} !important`,
     },
     '& .MuiFormHelperText-root': {
-      color: '#f87171 !important',
+      color: `${theme.palette.error.main} !important`,
     },
-    '& .MuiInputBase-input::placeholder': {
-      color: 'rgba(255, 255, 255, 0.4) !important',
-    }
   };
 
   return (
@@ -234,9 +236,9 @@ const RegisterForm: React.FC = () => {
             severity="error" 
             sx={{ 
               mb: 3,
-              backgroundColor: 'rgba(239, 68, 68, 0.1)',
-              color: '#fca5a5',
-              border: '1px solid rgba(239, 68, 68, 0.2)',
+              backgroundColor: alpha(theme.palette.error.main, 0.1),
+              color: theme.palette.error.light,
+              border: `1px solid ${alpha(theme.palette.error.main, 0.2)}`,
               borderRadius: '12px',
               width: '100%'
             }}
@@ -245,7 +247,7 @@ const RegisterForm: React.FC = () => {
                 aria-label="close"
                 size="small"
                 onClick={clearError}
-                sx={{ color: '#fca5a5' }}
+                sx={{ color: theme.palette.error.light }}
               >
                 <CloseIcon fontSize="inherit" />
               </IconButton>
@@ -355,7 +357,7 @@ const RegisterForm: React.FC = () => {
                     onClick={() => setShowPassword(!showPassword)}
                     edge="end"
                     disabled={isLoading}
-                    sx={{ color: 'rgba(255, 255, 255, 0.6)' }}
+                    sx={{ color: isDark ? alpha(theme.palette.common.white, 0.6) : alpha(theme.palette.common.black, 0.6) }}
                   >
                     {showPassword ? <VisibilityOff /> : <Visibility />}
                   </IconButton>
@@ -374,15 +376,15 @@ const RegisterForm: React.FC = () => {
                 sx={{ 
                   height: 6, 
                   borderRadius: 3,
-                  backgroundColor: 'rgba(255, 255, 255, 0.1)',
+                  backgroundColor: isDark ? alpha(theme.palette.common.white, 0.1) : alpha(theme.palette.common.black, 0.1),
                   width: '100%'
                 }}
               />
               <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 0.5, width: '100%' }}>
-                <Typography variant="caption" sx={{ color: 'rgba(255, 255, 255, 0.6)' }}>
+                <Typography variant="caption" sx={{ color: theme.palette.text.secondary }}>
                   {getPasswordStrengthText()}
                 </Typography>
-                <Typography variant="caption" sx={{ color: 'rgba(255, 255, 255, 0.6)' }}>
+                <Typography variant="caption" sx={{ color: theme.palette.text.secondary }}>
                   {passwordStrength()}%
                 </Typography>
               </Box>
@@ -414,7 +416,7 @@ const RegisterForm: React.FC = () => {
                     onClick={() => setShowConfirmPassword(!showConfirmPassword)}
                     edge="end"
                     disabled={isLoading}
-                    sx={{ color: 'rgba(255, 255, 255, 0.6)' }}
+                    sx={{ color: isDark ? alpha(theme.palette.common.white, 0.6) : alpha(theme.palette.common.black, 0.6) }}
                   >
                     {showConfirmPassword ? <VisibilityOff /> : <Visibility />}
                   </IconButton>
@@ -433,9 +435,9 @@ const RegisterForm: React.FC = () => {
                 checked={formData.agreeToTerms}
                 onChange={handleChange}
                 sx={{
-                  color: 'rgba(255, 255, 255, 0.6)',
+                  color: isDark ? alpha(theme.palette.common.white, 0.6) : alpha(theme.palette.common.black, 0.6),
                   '&.Mui-checked': {
-                    color: '#3b82f6',
+                    color: theme.palette.primary.main,
                   },
                 }}
                 disabled={isLoading}
@@ -443,13 +445,13 @@ const RegisterForm: React.FC = () => {
               />
             }
             label={
-              <Box component="span" sx={{ color: 'rgba(255, 255, 255, 0.8)', fontSize: '0.9375rem' }}>
+              <Box component="span" sx={{ color: theme.palette.text.primary, fontSize: '0.9375rem' }}>
                 Я согласен(на) на{' '}
                 <Link 
                   href="#"
                   onClick={handleOpenPrivacyModal}
                   sx={{
-                    color: '#60a5fa',
+                    color: theme.palette.primary.light,
                     textDecoration: 'none',
                     fontWeight: 600,
                     cursor: 'pointer',
@@ -470,7 +472,7 @@ const RegisterForm: React.FC = () => {
           />
           {shouldShowError('agreeToTerms') && (
             <Typography sx={{ 
-              color: '#f87171', 
+              color: theme.palette.error.main, 
               fontSize: '0.75rem',
               ml: 4, 
               display: 'block', 
@@ -487,19 +489,16 @@ const RegisterForm: React.FC = () => {
           sx={{ 
             mb: 3, 
             borderRadius: 2,
-            backgroundColor: 'rgba(59, 130, 246, 0.1)',
-            border: '1px solid rgba(59, 130, 246, 0.2)',
+            backgroundColor: alpha(theme.palette.info.main, 0.1),
+            border: `1px solid ${alpha(theme.palette.info.main, 0.2)}`,
             width: '100%',
             '& .MuiAlert-icon': {
-              color: '#60a5fa',
+              color: theme.palette.info.light,
             },
-            '& .MuiAlert-message': {
-              color: 'rgba(255, 255, 255, 0.8)',
-            }
           }}
         >
           <Typography sx={{ 
-            color: 'rgba(255, 255, 255, 0.8)', 
+            color: theme.palette.text.primary, 
             fontSize: '0.875rem',
             lineHeight: 1.5
           }}>
@@ -519,17 +518,17 @@ const RegisterForm: React.FC = () => {
             fontSize: '1rem',
             fontWeight: 600,
             textTransform: 'none',
-            background: 'linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%)',
-            boxShadow: '0 6px 20px rgba(59, 130, 246, 0.3)',
+            background: `linear-gradient(135deg, ${theme.palette.primary.main} 0%, ${theme.palette.secondary.main} 100%)`,
+            boxShadow: `0 6px 20px ${alpha(theme.palette.primary.main, 0.3)}`,
             color: 'white',
             '&:hover': {
-              background: 'linear-gradient(135deg, #2563eb 0%, #7c3aed 100%)',
-              boxShadow: '0 12px 30px rgba(59, 130, 246, 0.4)',
+              background: `linear-gradient(135deg, ${theme.palette.primary.dark} 0%, ${theme.palette.secondary.dark} 100%)`,
+              boxShadow: `0 12px 30px ${alpha(theme.palette.primary.main, 0.4)}`,
               transform: 'translateY(-1px)',
             },
             '&:disabled': {
-              background: 'rgba(59, 130, 246, 0.5)',
-              color: 'rgba(255, 255, 255, 0.7)',
+              background: alpha(theme.palette.primary.main, 0.5),
+              color: alpha(theme.palette.common.white, 0.7),
             }
           }}
         >
@@ -542,17 +541,22 @@ const RegisterForm: React.FC = () => {
         onClose={handleClosePrivacyModal}
         maxWidth="md"
         fullWidth
+        PaperProps={{
+          sx: {
+            bgcolor: theme.palette.background.paper,
+          }
+        }}
       >
-        <DialogTitle>Политика обработки персональных данных</DialogTitle>
+        <DialogTitle sx={{ color: theme.palette.text.primary }}>Политика обработки персональных данных</DialogTitle>
         <DialogContent dividers>
-          <Typography variant="body1" paragraph>
+          <Typography variant="body1" paragraph sx={{ color: theme.palette.text.primary }}>
             Настоящая Политика конфиденциальности персональных данных (далее – Политика конфиденциальности) действует в отношении всей информации, которую сайт "Posture Analyzer" может получить о Пользователе во время использования сайта.
           </Typography>
           
-          <Typography variant="h6" gutterBottom>
+          <Typography variant="h6" gutterBottom sx={{ color: theme.palette.text.primary }}>
             1. Обрабатываемые данные
           </Typography>
-          <Typography variant="body2" paragraph>
+          <Typography variant="body2" paragraph sx={{ color: theme.palette.text.secondary }}>
             Мы обрабатываем следующие персональные данные:
             • Фамилия, имя, отчество
             • Адрес электронной почты
@@ -560,10 +564,10 @@ const RegisterForm: React.FC = () => {
             • Статистика использования приложения
           </Typography>
 
-          <Typography variant="h6" gutterBottom>
+          <Typography variant="h6" gutterBottom sx={{ color: theme.palette.text.primary }}>
             2. Цели обработки данных
           </Typography>
-          <Typography variant="body2" paragraph>
+          <Typography variant="body2" paragraph sx={{ color: theme.palette.text.secondary }}>
             Персональные данные обрабатываются в целях:
             • Предоставления услуг мониторинга осанки
             • Связи с пользователем
@@ -571,15 +575,15 @@ const RegisterForm: React.FC = () => {
             • Обеспечения безопасности системы
           </Typography>
 
-          <Typography variant="h6" gutterBottom>
+          <Typography variant="h6" gutterBottom sx={{ color: theme.palette.text.primary }}>
             3. Хранение и защита данных
           </Typography>
-          <Typography variant="body2" paragraph>
+          <Typography variant="body2" paragraph sx={{ color: theme.palette.text.secondary }}>
             Все данные хранятся на защищенных серверах и передаются по шифрованным каналам связи. Мы применяем современные методы защиты от несанкционированного доступа.
           </Typography>
         </DialogContent>
         <DialogActions>
-          <Button onClick={handleClosePrivacyModal} color="primary">
+          <Button onClick={handleClosePrivacyModal} sx={{ color: theme.palette.primary.main }}>
             Закрыть
           </Button>
         </DialogActions>

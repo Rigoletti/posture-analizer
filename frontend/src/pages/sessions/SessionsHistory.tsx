@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, lazy, Suspense, memo } from 'react';
 import {
   Box,
   Card,
@@ -10,7 +10,6 @@ import {
   Alert,
   alpha,
   Button,
-  Grid,
   Chip,
   IconButton,
   TextField,
@@ -33,7 +32,6 @@ import {
   TableRow,
   TablePagination,
   Avatar,
-  Divider,
   Switch,
   FormControlLabel,
   InputAdornment,
@@ -42,26 +40,24 @@ import {
   ToggleButtonGroup,
   Tab,
   Tabs,
-  Collapse,
   Fade,
-  Zoom,
+  useMediaQuery,
+  Skeleton,
+  debounce,
   Badge,
-  useMediaQuery
+  Divider
 } from '@mui/material';
 import {
   History,
   Refresh,
   FilterList,
-  TrendingUp,
   Timer,
-  Score,
   Warning,
   CheckCircle,
   Error,
   CalendarToday,
   Delete,
   Visibility,
-  BarChart,
   Sort,
   Search,
   Clear,
@@ -72,24 +68,23 @@ import {
   Timeline,
   CompareArrows,
   AccessTime,
-  FitnessCenter,
-  Speed,
   Star,
-  StarBorder,
   Analytics,
   Timeline as TimelineIcon,
-  Compare as CompareIcon,
   PlayCircleOutline,
-  PauseCircleOutline,
   CheckCircleOutline,
   WarningAmber,
   ErrorOutline,
-  KeyboardArrowDown,
-  KeyboardArrowUp,
-  MoreVert,
   CheckCircle as CheckCircleIcon,
   Close,
-  Dangerous
+  Dangerous,
+  DateRange,
+  TrendingUp,
+  TrendingDown,
+  Whatshot,
+  EmojiEvents,
+  Speed,
+  FitnessCenter
 } from '@mui/icons-material';
 import { sessionsApi } from '../../api/sessions';
 import { useAuthStore } from '../../store/auth';
@@ -97,7 +92,13 @@ import { format, parseISO, formatDistanceToNow, intervalToDuration } from 'date-
 import { ru } from 'date-fns/locale';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import SessionProgress from '../../components/sessions/SessionProgress';
+
+const MotionPaper = motion(Paper);
+const MotionBox = motion(Box);
+const MotionCard = motion(Card);
+
+// Ленивая загрузка тяжелого компонента
+const SessionProgressLazy = lazy(() => import('../../components/sessions/SessionProgress'));
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -124,27 +125,448 @@ interface Statistics {
   totalGoodFrames: number;
   totalWarningFrames: number;
   totalErrorFrames: number;
-  totalShoulderErrors: number;
-  totalHeadErrors: number;
-  totalHipErrors: number;
   goodPosturePercentage?: number;
   warningPercentage?: number;
   errorPercentage?: number;
 }
 
-interface ExpandedState {
-  [sessionId: string]: boolean;
-}
-
-const Transition = React.forwardRef(function Transition(props: any, ref) {
-  return <Fade ref={ref} {...props} />;
+// Красивая карточка статистики
+const StatsCard = memo(({ stats, theme }: any) => {
+  if (!stats) {
+    return (
+      <Paper sx={{ p: 3, mb: 4, borderRadius: 4 }}>
+        <Stack spacing={2}>
+          <Skeleton variant="circular" width={56} height={56} />
+          <Skeleton variant="text" width="60%" />
+          <Skeleton variant="rectangular" height={100} sx={{ borderRadius: 3 }} />
+        </Stack>
+      </Paper>
+    );
+  }
+  
+  const statItems = [
+    { label: 'Всего сеансов', value: stats.totalSessions || 0, icon: <History />, color: theme.palette.primary.main, bg: alpha(theme.palette.primary.main, 0.1) },
+    { label: 'Средняя оценка', value: `${stats.avgScore || 0}%`, icon: <Star />, color: theme.palette.success.main, bg: alpha(theme.palette.success.main, 0.1) },
+    { label: 'Средняя длительность', value: `${Math.round((stats.avgDuration || 0) / 60)} мин`, icon: <Timer />, color: theme.palette.warning.main, bg: alpha(theme.palette.warning.main, 0.1) },
+    { label: 'Хорошая осанка', value: `${Math.round(stats.goodPosturePercentage || 0)}%`, icon: <CheckCircle />, color: theme.palette.info.main, bg: alpha(theme.palette.info.main, 0.1) }
+  ];
+  
+  return (
+    <MotionPaper
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.5 }}
+      sx={{
+        p: 3,
+        mb: 4,
+        background: `linear-gradient(135deg, ${alpha(theme.palette.background.paper, 0.8)} 0%, ${alpha(theme.palette.primary.main, 0.03)} 100%)`,
+        backdropFilter: 'blur(10px)',
+        borderRadius: 4,
+        border: `1px solid ${alpha(theme.palette.primary.main, 0.1)}`,
+      }}
+    >
+      <Stack direction="row" alignItems="center" spacing={2} sx={{ mb: 3 }}>
+        <Avatar sx={{ width: 56, height: 56, background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', boxShadow: '0 8px 20px rgba(102, 126, 234, 0.3)' }}>
+          <Analytics sx={{ fontSize: 28 }} />
+        </Avatar>
+        <Box>
+          <Typography variant="h6" sx={{ fontWeight: 800 }}>Общая статистика</Typography>
+          <Typography variant="body2" sx={{ color: theme.palette.text.secondary }}>Анализ всех сеансов осанки</Typography>
+        </Box>
+      </Stack>
+      
+      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'repeat(2, 1fr)', sm: 'repeat(4, 1fr)' }, gap: 2 }}>
+        {statItems.map((item, idx) => (
+          <MotionPaper
+            key={idx}
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: idx * 0.1 }}
+            sx={{
+              p: 2.5,
+              textAlign: 'center',
+              background: item.bg,
+              borderRadius: 3,
+              border: `1px solid ${alpha(item.color, 0.2)}`,
+              transition: 'transform 0.2s, box-shadow 0.2s',
+              '&:hover': { transform: 'translateY(-4px)', boxShadow: `0 8px 25px ${alpha(item.color, 0.2)}` }
+            }}
+          >
+            <Avatar sx={{ width: 48, height: 48, mx: 'auto', mb: 1.5, bgcolor: alpha(item.color, 0.2), color: item.color }}>
+              {item.icon}
+            </Avatar>
+            <Typography variant="h4" sx={{ fontWeight: 800, color: item.color, lineHeight: 1.2 }}>
+              {item.value}
+            </Typography>
+            <Typography variant="caption" sx={{ color: theme.palette.text.secondary, mt: 0.5, display: 'block' }}>
+              {item.label}
+            </Typography>
+          </MotionPaper>
+        ))}
+      </Box>
+    </MotionPaper>
+  );
 });
+
+StatsCard.displayName = 'StatsCard';
+
+// Красивая карточка сеанса
+const SessionCard = memo(({ 
+  session, 
+  isExpanded, 
+  isSelected, 
+  onToggleExpand, 
+  onSelect, 
+  onView, 
+  onDelete,
+  getScoreColor,
+  getScoreGradient,
+  getScoreLabel,
+  formatSessionDate,
+  getTimeSince,
+  formatSessionDuration,
+  formatPercentage,
+  theme 
+}: any) => {
+  const score = session.postureMetrics?.postureScore || 0;
+  const scoreColor = getScoreColor(score);
+  const scoreGradient = getScoreGradient(score);
+  const scoreLabel = getScoreLabel(score);
+  const hasProblems = session.postureMetrics?.postureScore < 100 || (session.problems && session.problems.length > 0);
+  const goodPercent = session.postureMetrics?.goodPercentage || 0;
+  const warningPercent = session.postureMetrics?.warningPercentage || 0;
+  const errorPercent = session.postureMetrics?.errorPercentage || 0;
+  
+  return (
+    <MotionCard
+      initial={{ opacity: 0, scale: 0.95 }}
+      animate={{ opacity: 1, scale: 1 }}
+      transition={{ duration: 0.2 }}
+      whileHover={{ y: -4 }}
+      sx={{
+        height: '100%',
+        position: 'relative',
+        background: alpha(theme.palette.background.paper, 0.9),
+        backdropFilter: 'blur(10px)',
+        borderRadius: 4,
+        border: isSelected 
+          ? `2px solid ${theme.palette.primary.main}`
+          : `1px solid ${alpha(theme.palette.divider, 0.5)}`,
+        overflow: 'hidden',
+        cursor: 'pointer',
+        transition: 'all 0.2s ease',
+        '&:hover': {
+          borderColor: theme.palette.primary.main,
+          boxShadow: `0 8px 30px ${alpha(theme.palette.primary.main, 0.15)}`
+        }
+      }}
+      onClick={() => onSelect(session.sessionId)}
+    >
+      <Box sx={{ height: 4, background: scoreGradient }} />
+      
+      {isSelected && (
+        <Box
+          sx={{
+            position: 'absolute',
+            top: 12,
+            right: 12,
+            width: 24,
+            height: 24,
+            borderRadius: '50%',
+            background: theme.palette.primary.main,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1,
+            boxShadow: '0 2px 8px rgba(0,0,0,0.2)'
+          }}
+        >
+          <CheckCircleIcon sx={{ fontSize: 14, color: 'white' }} />
+        </Box>
+      )}
+      
+      <CardContent sx={{ p: 2.5 }}>
+        <Stack spacing={2}>
+          <Stack direction="row" justifyContent="space-between" alignItems="flex-start">
+            <Box>
+              <Typography variant="subtitle2" sx={{ fontWeight: 700, color: theme.palette.text.primary }}>
+                Сеанс анализа
+              </Typography>
+              <Typography variant="caption" sx={{ color: theme.palette.text.secondary, display: 'flex', alignItems: 'center', gap: 0.5, mt: 0.5 }}>
+                <CalendarToday sx={{ fontSize: 12 }} />
+                {formatSessionDate(session.startTime)}
+              </Typography>
+            </Box>
+            
+            <Tooltip title={scoreLabel} placement="top">
+              <Box
+                sx={{
+                  width: 56,
+                  height: 56,
+                  borderRadius: 3,
+                  background: scoreGradient,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  boxShadow: `0 4px 15px ${alpha(scoreColor, 0.4)}`,
+                }}
+              >
+                <Typography variant="h5" sx={{ color: 'white', fontWeight: 800, lineHeight: 1 }}>
+                  {score}
+                </Typography>
+                <Typography variant="caption" sx={{ color: alpha('#fff', 0.8), fontSize: '0.6rem' }}>
+                  баллов
+                </Typography>
+              </Box>
+            </Tooltip>
+          </Stack>
+          
+          <Stack direction="row" spacing={2}>
+            <Tooltip title="Когда был">
+              <Stack direction="row" alignItems="center" spacing={0.5}>
+                <AccessTime sx={{ fontSize: 14, color: theme.palette.text.secondary }} />
+                <Typography variant="caption" sx={{ color: theme.palette.text.secondary }}>
+                  {getTimeSince(session.startTime)}
+                </Typography>
+              </Stack>
+            </Tooltip>
+            
+            <Tooltip title="Длительность">
+              <Stack direction="row" alignItems="center" spacing={0.5}>
+                <Timer sx={{ fontSize: 14, color: theme.palette.text.secondary }} />
+                <Typography variant="caption" sx={{ color: theme.palette.text.secondary }}>
+                  {formatSessionDuration(session.duration || 0)}
+                </Typography>
+              </Stack>
+            </Tooltip>
+          </Stack>
+          
+          <Divider sx={{ my: 0.5 }} />
+          
+          <Box>
+            <Stack spacing={1.5}>
+              <Box>
+                <Stack direction="row" justifyContent="space-between" sx={{ mb: 0.5 }}>
+                  <Typography variant="caption" sx={{ fontWeight: 500, display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                    <span>🟢</span> Хорошая осанка
+                  </Typography>
+                  <Typography variant="caption" sx={{ fontWeight: 700, color: theme.palette.success.main }}>
+                    {formatPercentage(goodPercent)}
+                  </Typography>
+                </Stack>
+                <LinearProgress 
+                  variant="determinate" 
+                  value={goodPercent}
+                  sx={{ 
+                    height: 6,
+                    borderRadius: 3,
+                    bgcolor: alpha(theme.palette.success.main, 0.1),
+                    '& .MuiLinearProgress-bar': {
+                      background: `linear-gradient(90deg, ${theme.palette.success.main}, ${theme.palette.success.light})`,
+                      borderRadius: 3
+                    }
+                  }}
+                />
+              </Box>
+              
+              <Box>
+                <Stack direction="row" justifyContent="space-between" sx={{ mb: 0.5 }}>
+                  <Typography variant="caption" sx={{ fontWeight: 500, display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                    <span>🟡</span> Предупреждения
+                  </Typography>
+                  <Typography variant="caption" sx={{ fontWeight: 700, color: theme.palette.warning.main }}>
+                    {formatPercentage(warningPercent)}
+                  </Typography>
+                </Stack>
+                <LinearProgress 
+                  variant="determinate" 
+                  value={warningPercent}
+                  sx={{ 
+                    height: 6,
+                    borderRadius: 3,
+                    bgcolor: alpha(theme.palette.warning.main, 0.1),
+                    '& .MuiLinearProgress-bar': {
+                      background: `linear-gradient(90deg, ${theme.palette.warning.main}, ${theme.palette.warning.light})`,
+                      borderRadius: 3
+                    }
+                  }}
+                />
+              </Box>
+              
+              <Box>
+                <Stack direction="row" justifyContent="space-between" sx={{ mb: 0.5 }}>
+                  <Typography variant="caption" sx={{ fontWeight: 500, display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                    <span>🔴</span> Ошибки
+                  </Typography>
+                  <Typography variant="caption" sx={{ fontWeight: 700, color: theme.palette.error.main }}>
+                    {formatPercentage(errorPercent)}
+                  </Typography>
+                </Stack>
+                <LinearProgress 
+                  variant="determinate" 
+                  value={errorPercent}
+                  sx={{ 
+                    height: 6,
+                    borderRadius: 3,
+                    bgcolor: alpha(theme.palette.error.main, 0.1),
+                    '& .MuiLinearProgress-bar': {
+                      background: `linear-gradient(90deg, ${theme.palette.error.main}, ${theme.palette.error.light})`,
+                      borderRadius: 3
+                    }
+                  }}
+                />
+              </Box>
+            </Stack>
+          </Box>
+          
+          <Divider sx={{ my: 0.5 }} />
+          
+          <Box>
+            <Typography variant="caption" sx={{ color: theme.palette.text.secondary, display: 'block', mb: 1, fontWeight: 500 }}>
+              ⚠️ Проблемные зоны
+            </Typography>
+            
+            {hasProblems ? (
+              <Stack direction="row" spacing={0.5} flexWrap="wrap" gap={0.5}>
+                {session.problems && session.problems.length > 0 ? (
+                  <>
+                    {session.problems.slice(0, 2).map((problem: string, idx: number) => (
+                      <Chip
+                        key={idx}
+                        label={problem}
+                        size="small"
+                        sx={{
+                          background: alpha(theme.palette.error.main, 0.1),
+                          color: theme.palette.error.main,
+                          fontWeight: 500,
+                          fontSize: '0.7rem',
+                          height: 24
+                        }}
+                      />
+                    ))}
+                    {session.problems.length > 2 && (
+                      <Chip
+                        label={`+${session.problems.length - 2}`}
+                        size="small"
+                        sx={{
+                          background: alpha(theme.palette.text.primary, 0.1),
+                          color: theme.palette.text.secondary,
+                          fontSize: '0.7rem',
+                          height: 24
+                        }}
+                      />
+                    )}
+                  </>
+                ) : (
+                  <Chip
+                    icon={<WarningAmber sx={{ fontSize: '0.8rem' }} />}
+                    label="Есть ошибки в анализе"
+                    size="small"
+                    sx={{
+                      background: alpha(theme.palette.warning.main, 0.1),
+                      color: theme.palette.warning.main,
+                      fontSize: '0.7rem',
+                      height: 24
+                    }}
+                  />
+                )}
+              </Stack>
+            ) : (
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, p: 0.5, borderRadius: 2, background: alpha(theme.palette.success.main, 0.05) }}>
+                <CheckCircleIcon sx={{ fontSize: 16, color: theme.palette.success.main }} />
+                <Typography variant="caption" sx={{ color: theme.palette.success.main, fontWeight: 500 }}>
+                  Нет проблемных зон
+                </Typography>
+              </Box>
+            )}
+          </Box>
+          
+          {isExpanded && (
+            <Box sx={{ mt: 1, pt: 1, borderTop: `1px solid ${alpha(theme.palette.divider, 0.5)}` }}>
+              <Stack spacing={1}>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <Typography variant="caption" sx={{ color: theme.palette.text.secondary }}>📊 Кадров обработано</Typography>
+                  <Typography variant="body2" sx={{ fontWeight: 600 }}>{session.postureMetrics?.totalFrames?.toLocaleString() || 0}</Typography>
+                </Box>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <Typography variant="caption" sx={{ color: theme.palette.text.secondary }}>❌ Ошибок</Typography>
+                  <Typography variant="body2" sx={{ color: theme.palette.error.main, fontWeight: 600 }}>{session.postureMetrics?.errorFrames?.toLocaleString() || 0}</Typography>
+                </Box>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <Typography variant="caption" sx={{ color: theme.palette.text.secondary }}>🆔 ID сеанса</Typography>
+                  <Typography variant="caption" sx={{ fontFamily: 'monospace', fontSize: '0.65rem' }}>{session.sessionId?.slice(0, 12)}...</Typography>
+                </Box>
+              </Stack>
+            </Box>
+          )}
+          
+          <Stack direction="row" spacing={1} justifyContent="space-between" alignItems="center" sx={{ mt: 1 }}>
+            <Button
+              size="small"
+              startIcon={isExpanded ? <ExpandLess /> : <ExpandMore />}
+              onClick={(e) => {
+                e.stopPropagation();
+                onToggleExpand(session.sessionId);
+              }}
+              sx={{
+                color: theme.palette.text.secondary,
+                borderRadius: 2,
+                '&:hover': { color: theme.palette.primary.main, background: alpha(theme.palette.primary.main, 0.1) }
+              }}
+            >
+              {isExpanded ? 'Скрыть детали' : 'Показать детали'}
+            </Button>
+            
+            <Stack direction="row" spacing={0.5}>
+              <Tooltip title="Просмотр">
+                <IconButton
+                  size="small"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onView(session.sessionId);
+                  }}
+                  sx={{
+                    color: theme.palette.primary.main,
+                    background: alpha(theme.palette.primary.main, 0.1),
+                    '&:hover': { background: alpha(theme.palette.primary.main, 0.2) }
+                  }}
+                >
+                  <Visibility fontSize="small" />
+                </IconButton>
+              </Tooltip>
+              
+              <Tooltip title="Удалить">
+                <IconButton
+                  size="small"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onDelete(session.sessionId, session.startTime, score, session.duration || 0);
+                  }}
+                  sx={{
+                    color: theme.palette.error.main,
+                    background: alpha(theme.palette.error.main, 0.1),
+                    '&:hover': { background: alpha(theme.palette.error.main, 0.2) }
+                  }}
+                >
+                  <Delete fontSize="small" />
+                </IconButton>
+              </Tooltip>
+            </Stack>
+          </Stack>
+        </Stack>
+      </CardContent>
+    </MotionCard>
+  );
+});
+
+SessionCard.displayName = 'SessionCard';
 
 const SessionsHistory: React.FC = () => {
   const navigate = useNavigate();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
-  const { user } = useAuthStore();
+  const isTablet = useMediaQuery(theme.breakpoints.down('sm'));
   
   const [sessions, setSessions] = useState<any[]>([]);
   const [allSessionsForProgress, setAllSessionsForProgress] = useState<any[]>([]);
@@ -162,7 +584,7 @@ const SessionsHistory: React.FC = () => {
     sessionDuration: 0,
     deleting: false
   });
-  const [expandedSessions, setExpandedSessions] = useState<ExpandedState>({});
+  const [expandedSessions, setExpandedSessions] = useState<Record<string, boolean>>({});
   const [viewMode, setViewMode] = useState<'cards' | 'table'>('cards');
   const [activeTab, setActiveTab] = useState(0);
   const [selectedSessions, setSelectedSessions] = useState<string[]>([]);
@@ -175,367 +597,17 @@ const SessionsHistory: React.FC = () => {
     maxScore: '',
     sortBy: 'startTime',
     sortOrder: 'desc',
-    search: '',
     showOnlyWithProblems: false
   });
 
-  // Загрузка ВСЕХ сессий для прогресса
-  const loadAllSessionsForProgress = useCallback(async () => {
-    try {
-      let allSessions: any[] = [];
-      let currentPage = 1;
-      let hasMore = true;
-      
-      while (hasMore) {
-        const response = await sessionsApi.getSessionsHistory(
-          currentPage,
-          100,
-          { sortBy: 'startTime', sortOrder: 'desc' }
-        );
-        
-        if (response.success && response.data.sessions) {
-          const sessionsPage = response.data.sessions;
-          allSessions = [...allSessions, ...sessionsPage];
-          hasMore = sessionsPage.length === 100;
-          currentPage++;
-        } else {
-          hasMore = false;
-        }
-      }
-      
-      // Обогащаем данные
-      const enrichedSessions = allSessions.map((session: any) => {
-        const metrics = session.postureMetrics || {};
-        const totalFrames = metrics.totalFrames || 1;
-        const duration = session.duration || 1;
-        
-        const goodPercentage = metrics.goodPercentage || 
-          Math.round((metrics.goodPostureFrames / totalFrames) * 100);
-        const warningPercentage = metrics.warningPercentage || 
-          Math.round((metrics.warningFrames / totalFrames) * 100);
-        const errorPercentage = metrics.errorPercentage || 
-          Math.round((metrics.errorFrames / totalFrames) * 100);
-        
-        return {
-          ...session,
-          postureMetrics: {
-            ...metrics,
-            goodPercentage,
-            warningPercentage,
-            errorPercentage
-          }
-        };
-      });
-      
-      setAllSessionsForProgress(enrichedSessions);
-      console.log('Loaded all sessions for progress:', enrichedSessions.length);
-    } catch (err) {
-      console.error('Failed to load all sessions:', err);
-    }
-  }, []);
-
-  // Загрузка сеансов для текущей страницы
-  const loadSessions = useCallback(async (pageNum = 0, limit = rowsPerPage, filterParams = filters) => {
-    try {
-      setLoading(true);
-      setError(null);
-      
-      const params: any = {
-        page: pageNum + 1,
-        limit,
-        sortBy: filterParams.sortBy,
-        sortOrder: filterParams.sortOrder
-      };
-      
-      if (filterParams.dateFrom) params.dateFrom = filterParams.dateFrom;
-      if (filterParams.dateTo) params.dateTo = filterParams.dateTo;
-      if (filterParams.minScore) params.minScore = filterParams.minScore;
-      if (filterParams.maxScore) params.maxScore = filterParams.maxScore;
-      
-      const response = await sessionsApi.getSessionsHistory(
-        params.page,
-        params.limit,
-        params
-      );
-      
-      if (response.success) {
-        let filteredSessions = response.data.sessions || [];
-        
-        if (filterParams.showOnlyWithProblems) {
-          filteredSessions = filteredSessions.filter((session: any) => 
-            session.problems && session.problems.length > 0
-          );
-        }
-        
-        filteredSessions = filteredSessions.map((session: any) => {
-          const metrics = session.postureMetrics || {};
-          const totalFrames = metrics.totalFrames || 1;
-          const duration = session.duration || 1;
-          
-          const goodPercentage = metrics.goodPercentage || 
-            Math.round((metrics.goodPostureFrames / totalFrames) * 100);
-          const warningPercentage = metrics.warningPercentage || 
-            Math.round((metrics.warningFrames / totalFrames) * 100);
-          const errorPercentage = metrics.errorPercentage || 
-            Math.round((metrics.errorFrames / totalFrames) * 100);
-          
-          const errorsByZone = metrics.errorsByZone || {};
-          if (errorsByZone.shoulders && errorsByZone.shoulders.duration) {
-            errorsByZone.shoulders.percentage = 
-              Math.round((errorsByZone.shoulders.duration / duration) * 1000) / 10;
-          }
-          if (errorsByZone.head && errorsByZone.head.duration) {
-            errorsByZone.head.percentage = 
-              Math.round((errorsByZone.head.duration / duration) * 1000) / 10;
-          }
-          if (errorsByZone.hips && errorsByZone.hips.duration) {
-            errorsByZone.hips.percentage = 
-              Math.round((errorsByZone.hips.duration / duration) * 1000) / 10;
-          }
-          
-          return {
-            ...session,
-            postureMetrics: {
-              ...metrics,
-              goodPercentage,
-              warningPercentage,
-              errorPercentage,
-              errorsByZone
-            }
-          };
-        });
-        
-        setSessions(filteredSessions);
-        setTotalSessions(response.data.pagination?.total || filteredSessions.length);
-        
-        const statistics = response.data.statistics || {};
-        const totalFrames = statistics.totalFrames || 1;
-        const calculatedStats: Statistics = {
-          totalSessions: statistics.totalSessions || 0,
-          totalDuration: statistics.totalDuration || 0,
-          avgScore: Math.round(statistics.avgScore || 0),
-          bestScore: statistics.bestScore || 0,
-          worstScore: statistics.worstScore || 100,
-          avgDuration: Math.round(statistics.avgDuration || 0),
-          totalFrames: totalFrames,
-          totalGoodFrames: statistics.totalGoodFrames || 0,
-          totalWarningFrames: statistics.totalWarningFrames || 0,
-          totalErrorFrames: statistics.totalErrorFrames || 0,
-          totalShoulderErrors: statistics.totalShoulderErrors || 0,
-          totalHeadErrors: statistics.totalHeadErrors || 0,
-          totalHipErrors: statistics.totalHipErrors || 0,
-          goodPosturePercentage: Math.round((statistics.totalGoodFrames / totalFrames) * 100),
-          warningPercentage: Math.round((statistics.totalWarningFrames / totalFrames) * 100),
-          errorPercentage: Math.round((statistics.totalErrorFrames / totalFrames) * 100)
-        };
-        
-        setStats(calculatedStats);
-        setExpandedSessions({});
-      } else {
-        setError(response.error || 'Ошибка при загрузке данных');
-      }
-      
-    } catch (err: any) {
-      console.error('Failed to load sessions:', err);
-      setError(err.response?.data?.error || err.message || 'Ошибка при загрузке сеансов');
-    } finally {
-      setLoading(false);
-      setIsRefreshing(false);
-    }
-  }, [rowsPerPage, filters]);
-
-  // Загружаем все сессии для прогресса при первом монтировании
-  useEffect(() => {
-    loadAllSessionsForProgress();
-  }, [loadAllSessionsForProgress]);
-
-  useEffect(() => {
-    loadSessions();
-  }, [loadSessions]);
-
-  const handleChangePage = (event: unknown, newPage: number) => {
-    setPage(newPage);
-    loadSessions(newPage, rowsPerPage);
-  };
-
-  const handleChangeRowsPerPage = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const newRowsPerPage = parseInt(event.target.value, 10);
-    setRowsPerPage(newRowsPerPage);
-    setPage(0);
-    loadSessions(0, newRowsPerPage);
-  };
-
-  const handleFilterChange = (field: string, value: any) => {
-    setFilters(prev => ({
-      ...prev,
-      [field]: value
-    }));
-  };
-
-  const applyFilters = () => {
-    setPage(0);
-    loadSessions(0, rowsPerPage, filters);
-  };
-
-  const resetFilters = () => {
-    const defaultFilters = {
-      dateFrom: '',
-      dateTo: '',
-      minScore: '',
-      maxScore: '',
-      sortBy: 'startTime',
-      sortOrder: 'desc',
-      search: '',
-      showOnlyWithProblems: false
-    };
-    setFilters(defaultFilters);
-    setPage(0);
-    loadSessions(0, rowsPerPage, defaultFilters);
-  };
-
-  const handleViewSession = (sessionId: string) => {
-    navigate(`/sessions/${sessionId}`);
-  };
-
-  const openDeleteDialog = (sessionId: string, sessionDate: string, sessionScore: number, sessionDuration: number) => {
-    setDeleteDialog({
-      open: true,
-      sessionId,
-      sessionDate: formatSessionDate(sessionDate),
-      sessionScore,
-      sessionDuration,
-      deleting: false
-    });
-  };
-
-  const closeDeleteDialog = () => {
-    setDeleteDialog(prev => ({ ...prev, open: false, sessionId: null }));
-  };
-
-  const handleDeleteConfirm = async () => {
-    if (!deleteDialog.sessionId) return;
-    
-    try {
-      setDeleteDialog(prev => ({ ...prev, deleting: true }));
-      
-      await sessionsApi.deleteSession(deleteDialog.sessionId);
-      closeDeleteDialog();
-      
-      setExpandedSessions(prev => {
-        const newState = { ...prev };
-        delete newState[deleteDialog.sessionId!];
-        return newState;
-      });
-      
-      loadSessions(page, rowsPerPage);
-      loadAllSessionsForProgress();
-      
-    } catch (err: any) {
-      console.error('Failed to delete session:', err);
-      setError(err.message || 'Ошибка при удалении сеанса');
-    } finally {
-      setDeleteDialog(prev => ({ ...prev, deleting: false }));
-    }
-  };
-
-  const toggleSessionExpand = useCallback((sessionId: string, event?: React.MouseEvent) => {
-    if (event) {
-      event.stopPropagation();
-    }
-    
-    setExpandedSessions(prev => ({
-      ...prev,
-      [sessionId]: !prev[sessionId]
-    }));
-  }, []);
-
-  const handleViewModeChange = (
-    event: React.MouseEvent<HTMLElement>,
-    newViewMode: 'cards' | 'table',
-  ) => {
-    if (newViewMode !== null) {
-      setViewMode(newViewMode);
-      setExpandedSessions({});
-    }
-  };
-
-  const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
-    setActiveTab(newValue);
-    setExpandedSessions({});
-  };
-
-  const toggleSessionSelection = (sessionId: string) => {
-    setSelectedSessions(prev => {
-      if (prev.includes(sessionId)) {
-        return prev.filter(id => id !== sessionId);
-      } else {
-        if (prev.length < 2) {
-          return [...prev, sessionId];
-        }
-        return prev;
-      }
-    });
-  };
-
-  const clearSelection = () => {
-    setSelectedSessions([]);
-  };
-
-  const handleRefresh = () => {
-    setIsRefreshing(true);
-    loadSessions(page, rowsPerPage);
-    loadAllSessionsForProgress();
-  };
-
-  const getScoreColor = useCallback((score: number) => {
-    if (score >= 90) return theme.palette.success.main;
-    if (score >= 75) return theme.palette.success.light;
-    if (score >= 60) return theme.palette.warning.main;
-    if (score >= 40) return theme.palette.warning.dark;
-    return theme.palette.error.main;
-  }, [theme]);
-
-  const getScoreGradient = useCallback((score: number) => {
-    if (theme.palette.mode === 'light') {
-      if (score >= 90) return 'linear-gradient(135deg, #2e7d32 0%, #4caf50 100%)';
-      if (score >= 75) return 'linear-gradient(135deg, #4caf50 0%, #8bc34a 100%)';
-      if (score >= 60) return 'linear-gradient(135deg, #ff9800 0%, #ffc107 100%)';
-      if (score >= 40) return 'linear-gradient(135deg, #f57c00 0%, #f44336 100%)';
-      return 'linear-gradient(135deg, #d32f2f 0%, #b71c1c 100%)';
-    } else {
-      if (score >= 90) return 'linear-gradient(135deg, #4caf50 0%, #8bc34a 100%)';
-      if (score >= 75) return 'linear-gradient(135deg, #8bc34a 0%, #cddc39 100%)';
-      if (score >= 60) return 'linear-gradient(135deg, #ffc107 0%, #ff9800 100%)';
-      if (score >= 40) return 'linear-gradient(135deg, #ff9800 0%, #f44336 100%)';
-      return 'linear-gradient(135deg, #f44336 0%, #d32f2f 100%)';
-    }
-  }, [theme]);
-
-  const getScoreLabel = useCallback((score: number) => {
-    if (score >= 90) return 'Отлично';
-    if (score >= 75) return 'Хорошо';
-    if (score >= 60) return 'Удовлетворительно';
-    if (score >= 40) return 'Требует внимания';
-    return 'Критично';
-  }, []);
-
-  const getScoreIcon = useCallback((score: number) => {
-    if (score >= 75) return <CheckCircleOutline sx={{ fontSize: 20 }} />;
-    if (score >= 40) return <WarningAmber sx={{ fontSize: 20 }} />;
-    return <ErrorOutline sx={{ fontSize: 20 }} />;
-  }, []);
-
+  // Форматирование
   const formatSessionDuration = useCallback((seconds: number) => {
     if (!seconds) return '0 сек';
-    
-    const duration = intervalToDuration({ start: 0, end: seconds * 1000 });
-    
-    const parts = [];
-    if (duration.hours && duration.hours > 0) parts.push(`${duration.hours}ч`);
-    if (duration.minutes && duration.minutes > 0) parts.push(`${duration.minutes}м`);
-    if (duration.seconds && duration.seconds > 0) parts.push(`${duration.seconds}с`);
-    
-    return parts.length > 0 ? parts.join(' ') : `${seconds}с`;
+    const mins = Math.floor(seconds / 60);
+    if (mins < 60) return `${mins} мин`;
+    const hours = Math.floor(mins / 60);
+    const minutes = mins % 60;
+    return `${hours}ч ${minutes}м`;
   }, []);
 
   const formatSessionDate = useCallback((dateString: string) => {
@@ -550,1262 +622,361 @@ const SessionsHistory: React.FC = () => {
   const getTimeSince = useCallback((dateString: string) => {
     try {
       const date = parseISO(dateString);
-      return formatDistanceToNow(date, { 
-        addSuffix: true, 
-        locale: ru 
-      });
+      return formatDistanceToNow(date, { addSuffix: true, locale: ru });
     } catch {
       return '';
     }
   }, []);
 
-  const getDayOfWeek = useCallback((dateString: string) => {
+  const formatPercentage = useCallback((value: number): string => {
+    return `${Math.round(value)}%`;
+  }, []);
+
+  const getScoreColor = useCallback((score: number) => {
+    if (score >= 80) return theme.palette.success.main;
+    if (score >= 60) return theme.palette.warning.main;
+    return theme.palette.error.main;
+  }, [theme]);
+
+  const getScoreGradient = useCallback((score: number) => {
+    if (score >= 80) return 'linear-gradient(135deg, #2e7d32, #4caf50)';
+    if (score >= 60) return 'linear-gradient(135deg, #ff9800, #ffc107)';
+    return 'linear-gradient(135deg, #d32f2f, #f44336)';
+  }, []);
+
+  const getScoreLabel = useCallback((score: number) => {
+    if (score >= 80) return 'Отлично';
+    if (score >= 60) return 'Хорошо';
+    if (score >= 40) return 'Средне';
+    return 'Критично';
+  }, []);
+
+  // Загрузка всех сессий для прогресса
+  const loadAllSessionsForProgress = useCallback(async () => {
     try {
-      const date = parseISO(dateString);
-      return format(date, 'EEEE', { locale: ru });
-    } catch {
-      return '';
+      let allSessions: any[] = [];
+      let currentPage = 1;
+      let hasMore = true;
+      
+      while (hasMore) {
+        const response = await sessionsApi.getSessionsHistory(currentPage, 100, { sortBy: 'startTime', sortOrder: 'desc' });
+        if (response.success && response.data.sessions) {
+          allSessions = [...allSessions, ...response.data.sessions];
+          hasMore = response.data.sessions.length === 100;
+          currentPage++;
+        } else {
+          hasMore = false;
+        }
+      }
+      setAllSessionsForProgress(allSessions);
+    } catch (err) {
+      console.error('Failed to load all sessions:', err);
     }
   }, []);
 
-  const formatNumber = useCallback((num: number, decimals: number = 1): string => {
-    if (typeof num !== 'number' || isNaN(num)) return '0';
-    
-    const factor = Math.pow(10, decimals);
-    const rounded = Math.round(num * factor) / factor;
-    
-    return rounded.toFixed(decimals).replace(/\.?0+$/, '');
+  // Загрузка сеансов с фильтрацией
+  const loadSessions = useCallback(async (pageNum = 0, limit = rowsPerPage, filterParams = filters) => {
+    try {
+      setLoading(true);
+      setError(null);
+      
+      // Формируем параметры для API
+      const apiParams: any = {
+        page: pageNum + 1,
+        limit: limit,
+        sortBy: filterParams.sortBy,
+        sortOrder: filterParams.sortOrder
+      };
+      
+      // Добавляем фильтры в API запрос
+      if (filterParams.dateFrom) apiParams.dateFrom = filterParams.dateFrom;
+      if (filterParams.dateTo) apiParams.dateTo = filterParams.dateTo;
+      if (filterParams.minScore) apiParams.minScore = parseInt(filterParams.minScore);
+      if (filterParams.maxScore) apiParams.maxScore = parseInt(filterParams.maxScore);
+      
+      const response = await sessionsApi.getSessionsHistory(
+        apiParams.page,
+        apiParams.limit,
+        { 
+          sortBy: apiParams.sortBy, 
+          sortOrder: apiParams.sortOrder,
+          dateFrom: apiParams.dateFrom,
+          dateTo: apiParams.dateTo,
+          minScore: apiParams.minScore,
+          maxScore: apiParams.maxScore
+        }
+      );
+      
+      if (response.success) {
+        let filteredSessions = response.data.sessions || [];
+        
+        // Дополнительная фильтрация по проблемам (если API не поддерживает)
+        if (filterParams.showOnlyWithProblems) {
+          filteredSessions = filteredSessions.filter((session: any) => 
+            (session.problems && session.problems.length > 0) || 
+            (session.postureMetrics?.postureScore < 100)
+          );
+        }
+        
+        // Обогащаем данные
+        const enrichedSessions = filteredSessions.map((session: any) => {
+          const metrics = session.postureMetrics || {};
+          const totalFrames = metrics.totalFrames || 1;
+          
+          const goodPercentage = metrics.goodPercentage || 
+            Math.round((metrics.goodPostureFrames / totalFrames) * 100);
+          const warningPercentage = metrics.warningPercentage || 
+            Math.round((metrics.warningFrames / totalFrames) * 100);
+          const errorPercentage = metrics.errorPercentage || 
+            Math.round((metrics.errorFrames / totalFrames) * 100);
+          
+          return {
+            ...session,
+            postureMetrics: {
+              ...metrics,
+              goodPercentage,
+              warningPercentage,
+              errorPercentage
+            }
+          };
+        });
+        
+        setSessions(enrichedSessions);
+        setTotalSessions(response.data.pagination?.total || enrichedSessions.length);
+        
+        // Обновляем статистику из API
+        const statistics = response.data.statistics || {};
+        const totalFrames = statistics.totalFrames || 1;
+        setStats({
+          totalSessions: statistics.totalSessions || 0,
+          totalDuration: statistics.totalDuration || 0,
+          avgScore: Math.round(statistics.avgScore || 0),
+          bestScore: statistics.bestScore || 0,
+          worstScore: statistics.worstScore || 100,
+          avgDuration: Math.round(statistics.avgDuration || 0),
+          totalFrames: totalFrames,
+          totalGoodFrames: statistics.totalGoodFrames || 0,
+          totalWarningFrames: statistics.totalWarningFrames || 0,
+          totalErrorFrames: statistics.totalErrorFrames || 0,
+          goodPosturePercentage: Math.round((statistics.totalGoodFrames / totalFrames) * 100),
+          warningPercentage: Math.round((statistics.totalWarningFrames / totalFrames) * 100),
+          errorPercentage: Math.round((statistics.totalErrorFrames / totalFrames) * 100)
+        });
+      } else {
+        setError(response.error || 'Ошибка при загрузке данных');
+      }
+    } catch (err: any) {
+      console.error('Failed to load sessions:', err);
+      setError(err.message || 'Ошибка при загрузке сеансов');
+    } finally {
+      setLoading(false);
+      setIsRefreshing(false);
+    }
+  }, [rowsPerPage, filters]);
+
+  // Функция для применения фильтров
+  const applyFilters = useCallback(() => {
+    setPage(0);
+    loadSessions(0, rowsPerPage, filters);
+  }, [loadSessions, rowsPerPage, filters]);
+
+  // Сброс фильтров
+  const resetFilters = useCallback(() => {
+    const defaultFilters = {
+      dateFrom: '',
+      dateTo: '',
+      minScore: '',
+      maxScore: '',
+      sortBy: 'startTime',
+      sortOrder: 'desc',
+      showOnlyWithProblems: false
+    };
+    setFilters(defaultFilters);
+    setPage(0);
+    loadSessions(0, rowsPerPage, defaultFilters);
+  }, [rowsPerPage, loadSessions]);
+
+  // Обработчик изменения фильтров
+  const handleFilterChange = useCallback((field: string, value: any) => {
+    setFilters(prev => ({ ...prev, [field]: value }));
   }, []);
 
-  const formatPercentage = useCallback((value: number, decimals: number = 1): string => {
-    return `${formatNumber(value, decimals)}%`;
-  }, [formatNumber]);
-
-  const statsCard = useMemo(() => (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.5 }}
-    >
-      <Paper
-        elevation={theme.palette.mode === 'light' ? 2 : 0}
-        sx={{
-          p: 3,
-          mb: 4,
-          background: theme.palette.mode === 'light'
-            ? 'linear-gradient(135deg, #f5f7fa 0%, #e9ecf3 100%)'
-            : 'linear-gradient(135deg, #1a1a2e 0%, #16213e 100%)',
-          borderRadius: 4,
-          border: `1px solid ${theme.palette.divider}`,
-          boxShadow: theme.palette.mode === 'light'
-            ? '0 8px 32px rgba(0, 0, 0, 0.08)'
-            : '0 8px 32px rgba(0, 0, 0, 0.4)'
-        }}
-      >
-        <Stack direction="row" alignItems="center" spacing={2} sx={{ mb: 3 }}>
-          <Box
-            sx={{
-              width: 48,
-              height: 48,
-              borderRadius: 3,
-              background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              boxShadow: '0 4px 15px rgba(102, 126, 234, 0.4)'
-            }}
-          >
-            <Analytics sx={{ color: 'white', fontSize: 28 }} />
-          </Box>
-          <Box>
-            <Typography variant="h6" sx={{ 
-              color: theme.palette.text.primary,
-              fontWeight: 700,
-              letterSpacing: '0.5px'
-            }}>
-              Общая статистика
-            </Typography>
-            <Typography variant="body2" sx={{ 
-              color: theme.palette.text.secondary,
-              fontWeight: 500
-            }}>
-              Анализ всех сеансов осанки
-            </Typography>
-          </Box>
-        </Stack>
-        
-        {stats ? (
-          <Grid container spacing={2}>
-            <Grid item xs={6} sm={3}>
-              <Paper
-                sx={{
-                  p: 2,
-                  background: theme.palette.mode === 'light'
-                    ? alpha(theme.palette.background.paper, 0.8)
-                    : alpha(theme.palette.background.paper, 0.2),
-                  backdropFilter: 'blur(10px)',
-                  border: `1px solid ${theme.palette.divider}`,
-                  borderRadius: 3,
-                  transition: 'transform 0.2s',
-                  '&:hover': {
-                    transform: 'translateY(-4px)',
-                    background: theme.palette.mode === 'light'
-                      ? alpha(theme.palette.background.paper, 0.9)
-                      : alpha(theme.palette.background.paper, 0.3),
-                    borderColor: alpha(theme.palette.primary.main, 0.5)
-                  }
-                }}
-              >
-                <Stack spacing={1}>
-                  <Typography variant="h4" sx={{ 
-                    color: theme.palette.primary.main,
-                    fontWeight: 800
-                  }}>
-                    {stats.totalSessions || 0}
-                  </Typography>
-                  <Typography variant="body2" sx={{ color: theme.palette.text.secondary }}>
-                    Всего сеансов
-                  </Typography>
-                </Stack>
-              </Paper>
-            </Grid>
-            
-            <Grid item xs={6} sm={3}>
-              <Paper
-                sx={{
-                  p: 2,
-                  background: theme.palette.mode === 'light'
-                    ? alpha(theme.palette.background.paper, 0.8)
-                    : alpha(theme.palette.background.paper, 0.2),
-                  backdropFilter: 'blur(10px)',
-                  border: `1px solid ${theme.palette.divider}`,
-                  borderRadius: 3,
-                  transition: 'transform 0.2s',
-                  '&:hover': {
-                    transform: 'translateY(-4px)',
-                    background: theme.palette.mode === 'light'
-                      ? alpha(theme.palette.background.paper, 0.9)
-                      : alpha(theme.palette.background.paper, 0.3),
-                    borderColor: alpha(theme.palette.success.main, 0.5)
-                  }
-                }}
-              >
-                <Stack spacing={1}>
-                  <Typography variant="h4" sx={{ 
-                    color: theme.palette.success.main,
-                    fontWeight: 800
-                  }}>
-                    {stats.avgScore || 0}%
-                  </Typography>
-                  <Typography variant="body2" sx={{ color: theme.palette.text.secondary }}>
-                    Средняя оценка
-                  </Typography>
-                </Stack>
-              </Paper>
-            </Grid>
-            
-            <Grid item xs={6} sm={3}>
-              <Paper
-                sx={{
-                  p: 2,
-                  background: theme.palette.mode === 'light'
-                    ? alpha(theme.palette.background.paper, 0.8)
-                    : alpha(theme.palette.background.paper, 0.2),
-                  backdropFilter: 'blur(10px)',
-                  border: `1px solid ${theme.palette.divider}`,
-                  borderRadius: 3,
-                  transition: 'transform 0.2s',
-                  '&:hover': {
-                    transform: 'translateY(-4px)',
-                    background: theme.palette.mode === 'light'
-                      ? alpha(theme.palette.background.paper, 0.9)
-                      : alpha(theme.palette.background.paper, 0.3),
-                    borderColor: alpha(theme.palette.warning.main, 0.5)
-                  }
-                }}
-              >
-                <Stack spacing={1}>
-                  <Typography variant="h4" sx={{ 
-                    color: theme.palette.warning.main,
-                    fontWeight: 800
-                  }}>
-                    {Math.round((stats.avgDuration || 0) / 60)}
-                  </Typography>
-                  <Typography variant="body2" sx={{ color: theme.palette.text.secondary }}>
-                    Средняя длительность (мин)
-                  </Typography>
-                </Stack>
-              </Paper>
-            </Grid>
-            
-            <Grid item xs={6} sm={3}>
-              <Paper
-                sx={{
-                  p: 2,
-                  background: theme.palette.mode === 'light'
-                    ? alpha(theme.palette.background.paper, 0.8)
-                    : alpha(theme.palette.background.paper, 0.2),
-                  backdropFilter: 'blur(10px)',
-                  border: `1px solid ${theme.palette.divider}`,
-                  borderRadius: 3,
-                  transition: 'transform 0.2s',
-                  '&:hover': {
-                    transform: 'translateY(-4px)',
-                    background: theme.palette.mode === 'light'
-                      ? alpha(theme.palette.background.paper, 0.9)
-                      : alpha(theme.palette.background.paper, 0.3),
-                    borderColor: alpha(theme.palette.info.main, 0.5)
-                  }
-                }}
-              >
-                <Stack spacing={1}>
-                  <Typography variant="h4" sx={{ 
-                    color: theme.palette.info.main,
-                    fontWeight: 800
-                  }}>
-                    {formatPercentage(stats.goodPosturePercentage || 0)}
-                  </Typography>
-                  <Typography variant="body2" sx={{ color: theme.palette.text.secondary }}>
-                    Хорошая осанка
-                  </Typography>
-                </Stack>
-              </Paper>
-            </Grid>
-          </Grid>
-        ) : (
-          <Box sx={{ textAlign: 'center', py: 4 }}>
-            <CircularProgress />
-          </Box>
-        )}
-      </Paper>
-    </motion.div>
-  ), [stats, formatPercentage, theme]);
-
-  const filtersPanel = useMemo(() => (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.5, delay: 0.1 }}
-    >
-      <Paper
-        elevation={theme.palette.mode === 'light' ? 1 : 0}
-        sx={{
-          p: 3,
-          mb: 3,
-          background: theme.palette.mode === 'light'
-            ? alpha(theme.palette.background.paper, 0.7)
-            : alpha(theme.palette.background.paper, 0.4),
-          backdropFilter: 'blur(10px)',
-          border: `1px solid ${theme.palette.divider}`,
-          borderRadius: 4
-        }}
-      >
-        <Stack direction={{ xs: 'column', sm: 'row' }} alignItems="center" spacing={2} sx={{ mb: 3 }}>
-          <Stack direction="row" alignItems="center" spacing={1} sx={{ flexGrow: 1 }}>
-            <FilterList sx={{ color: theme.palette.text.secondary }} />
-            <Typography variant="h6" sx={{ 
-              color: theme.palette.text.primary,
-              fontWeight: 600
-            }}>
-              Фильтры и поиск
-            </Typography>
-          </Stack>
-          
-          <Stack direction="row" spacing={1} sx={{ width: { xs: '100%', sm: 'auto' } }}>
-            <Button
-              startIcon={<Clear />}
-              onClick={resetFilters}
-              variant="outlined"
-              size="small"
-              sx={{
-                color: theme.palette.text.secondary,
-                borderColor: theme.palette.divider,
-                '&:hover': {
-                  borderColor: theme.palette.text.primary,
-                  background: alpha(theme.palette.primary.main, 0.05)
-                }
-              }}
-            >
-              Сбросить
-            </Button>
-            
-            <Button
-              startIcon={<Search />}
-              onClick={applyFilters}
-              variant="contained"
-              size="small"
-              sx={{
-                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                boxShadow: '0 4px 15px rgba(102, 126, 234, 0.4)',
-                '&:hover': {
-                  background: 'linear-gradient(135deg, #764ba2 0%, #667eea 100%)'
-                }
-              }}
-            >
-              Применить
-            </Button>
-          </Stack>
-        </Stack>
-        
-        <Grid container spacing={2}>
-          <Grid item xs={12} sm={6} md={3}>
-            <TextField
-              fullWidth
-              label="Дата от"
-              type="date"
-              value={filters.dateFrom}
-              onChange={(e) => handleFilterChange('dateFrom', e.target.value)}
-              size="small"
-              InputLabelProps={{ shrink: true }}
-              sx={{
-                '& .MuiOutlinedInput-root': {
-                  color: theme.palette.text.primary,
-                  '& fieldset': {
-                    borderColor: theme.palette.divider,
-                  },
-                  '&:hover fieldset': {
-                    borderColor: theme.palette.text.secondary,
-                  },
-                  '&.Mui-focused fieldset': {
-                    borderColor: theme.palette.primary.main,
-                  },
-                },
-                '& .MuiInputLabel-root': {
-                  color: theme.palette.text.secondary,
-                },
-              }}
-            />
-          </Grid>
-          
-          <Grid item xs={12} sm={6} md={3}>
-            <TextField
-              fullWidth
-              label="Дата до"
-              type="date"
-              value={filters.dateTo}
-              onChange={(e) => handleFilterChange('dateTo', e.target.value)}
-              size="small"
-              InputLabelProps={{ shrink: true }}
-              sx={{
-                '& .MuiOutlinedInput-root': {
-                  color: theme.palette.text.primary,
-                  '& fieldset': {
-                    borderColor: theme.palette.divider,
-                  },
-                  '&:hover fieldset': {
-                    borderColor: theme.palette.text.secondary,
-                  },
-                  '&.Mui-focused fieldset': {
-                    borderColor: theme.palette.primary.main,
-                  },
-                },
-                '& .MuiInputLabel-root': {
-                  color: theme.palette.text.secondary,
-                },
-              }}
-            />
-          </Grid>
-          
-          <Grid item xs={12} sm={6} md={2}>
-            <TextField
-              fullWidth
-              label="Мин. оценка"
-              type="number"
-              value={filters.minScore}
-              onChange={(e) => handleFilterChange('minScore', e.target.value)}
-              size="small"
-              InputProps={{ inputProps: { min: 0, max: 100 } }}
-              sx={{
-                '& .MuiOutlinedInput-root': {
-                  color: theme.palette.text.primary,
-                  '& fieldset': {
-                    borderColor: theme.palette.divider,
-                  },
-                  '&:hover fieldset': {
-                    borderColor: theme.palette.text.secondary,
-                  },
-                  '&.Mui-focused fieldset': {
-                    borderColor: theme.palette.primary.main,
-                  },
-                },
-                '& .MuiInputLabel-root': {
-                  color: theme.palette.text.secondary,
-                },
-              }}
-            />
-          </Grid>
-          
-          <Grid item xs={12} sm={6} md={2}>
-            <TextField
-              fullWidth
-              label="Макс. оценка"
-              type="number"
-              value={filters.maxScore}
-              onChange={(e) => handleFilterChange('maxScore', e.target.value)}
-              size="small"
-              InputProps={{ inputProps: { min: 0, max: 100 } }}
-              sx={{
-                '& .MuiOutlinedInput-root': {
-                  color: theme.palette.text.primary,
-                  '& fieldset': {
-                    borderColor: theme.palette.divider,
-                  },
-                  '&:hover fieldset': {
-                    borderColor: theme.palette.text.secondary,
-                  },
-                  '&.Mui-focused fieldset': {
-                    borderColor: theme.palette.primary.main,
-                  },
-                },
-                '& .MuiInputLabel-root': {
-                  color: theme.palette.text.secondary,
-                },
-              }}
-            />
-          </Grid>
-          
-          <Grid item xs={12} sm={6} md={2}>
-            <FormControl fullWidth size="small">
-              <InputLabel sx={{ color: theme.palette.text.secondary }}>Сортировка</InputLabel>
-              <Select
-                value={filters.sortBy}
-                onChange={(e) => handleFilterChange('sortBy', e.target.value)}
-                label="Сортировка"
-                sx={{
-                  color: theme.palette.text.primary,
-                  '& .MuiOutlinedInput-notchedOutline': {
-                    borderColor: theme.palette.divider,
-                  },
-                  '&:hover .MuiOutlinedInput-notchedOutline': {
-                    borderColor: theme.palette.text.secondary,
-                  },
-                  '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
-                    borderColor: theme.palette.primary.main,
-                  },
-                  '& .MuiSvgIcon-root': {
-                    color: theme.palette.text.secondary,
-                  },
-                }}
-              >
-                <MenuItem value="startTime">По дате</MenuItem>
-                <MenuItem value="postureMetrics.postureScore">По оценке</MenuItem>
-                <MenuItem value="duration">По длительности</MenuItem>
-              </Select>
-            </FormControl>
-          </Grid>
-        </Grid>
-        
-        <Stack direction="row" spacing={2} alignItems="center" sx={{ mt: 2 }}>
-          <FormControlLabel
-            control={
-              <Switch
-                checked={filters.showOnlyWithProblems}
-                onChange={(e) => handleFilterChange('showOnlyWithProblems', e.target.checked)}
-                sx={{
-                  '& .MuiSwitch-switchBase.Mui-checked': {
-                    color: theme.palette.primary.main,
-                  },
-                  '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': {
-                    backgroundColor: theme.palette.primary.main,
-                  },
-                }}
-              />
-            }
-            label={
-              <Typography variant="body2" sx={{ color: theme.palette.text.secondary }}>
-                Только с проблемами
-              </Typography>
-            }
-          />
-          
-          <TextField
-            placeholder="Поиск по ID или дате..."
-            value={filters.search}
-            onChange={(e) => handleFilterChange('search', e.target.value)}
-            size="small"
-            sx={{
-              flexGrow: 1,
-              '& .MuiOutlinedInput-root': {
-                color: theme.palette.text.primary,
-                '& fieldset': {
-                  borderColor: theme.palette.divider,
-                },
-                '&:hover fieldset': {
-                  borderColor: theme.palette.text.secondary,
-                },
-                '&.Mui-focused fieldset': {
-                  borderColor: theme.palette.primary.main,
-                },
-              },
-              '& .MuiInputBase-input::placeholder': {
-                color: theme.palette.text.disabled,
-                opacity: 1,
-              },
-            }}
-          />
-        </Stack>
-      </Paper>
-    </motion.div>
-  ), [filters, applyFilters, resetFilters, handleFilterChange, theme]);
-
-  const renderSessionCard = useCallback((session: any, index: number) => {
-    const isExpanded = expandedSessions[session.sessionId] || false;
-    const scoreColor = getScoreColor(session.postureMetrics?.postureScore || 0);
-    const scoreGradient = getScoreGradient(session.postureMetrics?.postureScore || 0);
-    const scoreLabel = getScoreLabel(session.postureMetrics?.postureScore || 0);
-    const scoreIcon = getScoreIcon(session.postureMetrics?.postureScore || 0);
-    const isSelected = selectedSessions.includes(session.sessionId);
+  // Валидация оценки (только положительные числа, не больше 100)
+  const handleScoreChange = useCallback((field: 'minScore' | 'maxScore', value: string) => {
+    // Убираем минус и ограничиваем значение
+    let numValue = value.replace(/[^-0-9]/g, '');
+    if (numValue === '') {
+      handleFilterChange(field, '');
+      return;
+    }
     
-    const hasProblems = session.postureMetrics?.postureScore < 100 || 
-                        (session.problems && session.problems.length > 0);
+    let intValue = parseInt(numValue, 10);
+    if (isNaN(intValue)) {
+      handleFilterChange(field, '');
+      return;
+    }
     
-    return (
-      <Grid item xs={12} sm={6} md={4} lg={3} key={session.sessionId}>
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.3, delay: index * 0.03 }}
-          whileHover={{ y: -4 }}
-        >
-          <Paper
-            elevation={theme.palette.mode === 'light' ? 2 : 0}
-            sx={{
-              height: '100%',
-              display: 'flex',
-              flexDirection: 'column',
-              background: theme.palette.mode === 'light'
-                ? alpha(theme.palette.background.paper, 0.7)
-                : alpha(theme.palette.background.paper, 0.4),
-              backdropFilter: 'blur(10px)',
-              border: isSelected 
-                ? `2px solid ${theme.palette.primary.main}`
-                : `1px solid ${theme.palette.divider}`,
-              borderRadius: 4,
-              overflow: 'hidden',
-              transition: 'all 0.3s ease',
-              position: 'relative',
-              cursor: 'pointer',
-              '&:hover': {
-                borderColor: isSelected ? theme.palette.primary.main : alpha(theme.palette.primary.main, 0.5),
-                boxShadow: theme.shadows[4],
-              }
-            }}
-            onClick={() => toggleSessionSelection(session.sessionId)}
-          >
-            <Box
-              sx={{
-                height: 4,
-                background: scoreGradient,
-              }}
-            />
-            
-            <CardContent sx={{ p: 2.5, flexGrow: 1 }}>
-              <Stack spacing={2}>
-                <Stack direction="row" justifyContent="space-between" alignItems="flex-start">
-                  <Box>
-                    <Typography variant="subtitle2" sx={{ 
-                      color: theme.palette.text.primary,
-                      fontWeight: 600,
-                      mb: 0.5
-                    }}>
-                      Сеанс анализа
-                    </Typography>
-                    <Typography variant="caption" sx={{ 
-                      color: theme.palette.text.secondary,
-                      display: 'block'
-                    }}>
-                      {formatSessionDate(session.startTime)}
-                    </Typography>
-                  </Box>
-                  
-                  <Tooltip title={scoreLabel}>
-                    <Box
-                      sx={{
-                        width: 48,
-                        height: 48,
-                        borderRadius: 3,
-                        background: scoreGradient,
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        boxShadow: `0 4px 15px ${alpha(scoreColor, 0.4)}`,
-                      }}
-                    >
-                      <Typography variant="h6" sx={{ 
-                        color: 'white',
-                        fontWeight: 800,
-                        textShadow: '0 2px 4px rgba(0,0,0,0.3)'
-                      }}>
-                        {session.postureMetrics?.postureScore || 0}
-                      </Typography>
-                    </Box>
-                  </Tooltip>
-                </Stack>
-                
-                <Stack direction="row" spacing={2}>
-                  <Tooltip title="Время сеанса">
-                    <Stack direction="row" alignItems="center" spacing={0.5}>
-                      <AccessTime sx={{ 
-                        fontSize: 16, 
-                        color: theme.palette.text.secondary
-                      }} />
-                      <Typography variant="caption" sx={{ 
-                        color: theme.palette.text.secondary
-                      }}>
-                        {getTimeSince(session.startTime)}
-                      </Typography>
-                    </Stack>
-                  </Tooltip>
-                  
-                  <Tooltip title="Длительность">
-                    <Stack direction="row" alignItems="center" spacing={0.5}>
-                      <Timer sx={{ 
-                        fontSize: 16, 
-                        color: theme.palette.text.secondary
-                      }} />
-                      <Typography variant="caption" sx={{ 
-                        color: theme.palette.text.secondary
-                      }}>
-                        {formatSessionDuration(session.duration || 0)}
-                      </Typography>
-                    </Stack>
-                  </Tooltip>
-                </Stack>
-                
-                <Box>
-                  <Stack spacing={1}>
-                    <Box>
-                      <Stack direction="row" justifyContent="space-between" sx={{ mb: 0.5 }}>
-                        <Typography variant="caption" sx={{ color: theme.palette.text.secondary }}>
-                          Хорошая осанка
-                        </Typography>
-                        <Typography variant="caption" sx={{ 
-                          color: theme.palette.success.main,
-                          fontWeight: 600
-                        }}>
-                          {formatPercentage(session.postureMetrics?.goodPercentage || 0)}
-                        </Typography>
-                      </Stack>
-                      <LinearProgress 
-                        variant="determinate" 
-                        value={session.postureMetrics?.goodPercentage || 0}
-                        sx={{ 
-                          height: 4,
-                          borderRadius: 2,
-                          bgcolor: alpha(theme.palette.success.main, 0.1),
-                          '& .MuiLinearProgress-bar': {
-                            background: `linear-gradient(90deg, ${theme.palette.success.main}, ${theme.palette.success.light})`,
-                            borderRadius: 2
-                          }
-                        }}
-                      />
-                    </Box>
-                    
-                    <Box>
-                      <Stack direction="row" justifyContent="space-between" sx={{ mb: 0.5 }}>
-                        <Typography variant="caption" sx={{ color: theme.palette.text.secondary }}>
-                          Предупреждения
-                        </Typography>
-                        <Typography variant="caption" sx={{ 
-                          color: theme.palette.warning.main,
-                          fontWeight: 600
-                        }}>
-                          {formatPercentage(session.postureMetrics?.warningPercentage || 0)}
-                        </Typography>
-                      </Stack>
-                      <LinearProgress 
-                        variant="determinate" 
-                        value={session.postureMetrics?.warningPercentage || 0}
-                        sx={{ 
-                          height: 4,
-                          borderRadius: 2,
-                          bgcolor: alpha(theme.palette.warning.main, 0.1),
-                          '& .MuiLinearProgress-bar': {
-                            background: `linear-gradient(90deg, ${theme.palette.warning.main}, ${theme.palette.warning.light})`,
-                            borderRadius: 2
-                          }
-                        }}
-                      />
-                    </Box>
-                  </Stack>
-                </Box>
-                
-                <Box>
-                  <Typography variant="caption" sx={{ 
-                    color: theme.palette.text.secondary,
-                    display: 'block',
-                    mb: 1
-                  }}>
-                    Проблемные зоны
-                  </Typography>
-                  
-                  {hasProblems ? (
-                    <Stack direction="row" spacing={0.5} flexWrap="wrap" gap={0.5}>
-                      {session.problems && session.problems.length > 0 ? (
-                        <>
-                          {session.problems.slice(0, 2).map((problem: string, idx: number) => (
-                            <Chip
-                              key={idx}
-                              label={problem}
-                              size="small"
-                              sx={{
-                                background: alpha(theme.palette.error.main, 0.1),
-                                color: theme.palette.error.main,
-                                border: `1px solid ${alpha(theme.palette.error.main, 0.2)}`,
-                                fontSize: '0.7rem',
-                                height: 20,
-                                '& .MuiChip-label': { px: 1 }
-                              }}
-                            />
-                          ))}
-                          {session.problems.length > 2 && (
-                            <Chip
-                              label={`+${session.problems.length - 2}`}
-                              size="small"
-                              sx={{
-                                background: alpha(theme.palette.text.primary, 0.1),
-                                color: theme.palette.text.secondary,
-                                fontSize: '0.7rem',
-                                height: 20,
-                                '& .MuiChip-label': { px: 1 }
-                              }}
-                            />
-                          )}
-                        </>
-                      ) : (
-                        session.postureMetrics?.postureScore < 100 ? (
-                          <Chip
-                            icon={<WarningAmber sx={{ fontSize: '0.8rem !important' }} />}
-                            label="Есть ошибки в анализе"
-                            size="small"
-                            sx={{
-                              background: alpha(theme.palette.warning.main, 0.1),
-                              color: theme.palette.warning.main,
-                              border: `1px solid ${alpha(theme.palette.warning.main, 0.2)}`,
-                              fontSize: '0.7rem',
-                              height: 24,
-                              '& .MuiChip-icon': { color: theme.palette.warning.main }
-                            }}
-                          />
-                        ) : null
-                      )}
-                    </Stack>
-                  ) : (
-                    <Box
-                      sx={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 0.5,
-                        p: 0.5,
-                        borderRadius: 1,
-                        background: alpha(theme.palette.success.main, 0.05),
-                      }}
-                    >
-                      <CheckCircleIcon sx={{ 
-                        fontSize: 16, 
-                        color: theme.palette.success.main,
-                        opacity: 0.7
-                      }} />
-                      <Typography variant="caption" sx={{ 
-                        color: theme.palette.success.main,
-                        fontWeight: 500,
-                        fontSize: '0.75rem'
-                      }}>
-                        Нет проблемных зон
-                      </Typography>
-                    </Box>
-                  )}
-                </Box>
-                
-                <Collapse in={isExpanded} timeout="auto" unmountOnExit>
-                  <Box sx={{ 
-                    mt: 1,
-                    pt: 2,
-                    borderTop: `1px solid ${theme.palette.divider}`
-                  }}>
-                    <Grid container spacing={1}>
-                      <Grid item xs={6}>
-                        <Typography variant="caption" sx={{ 
-                          color: theme.palette.text.secondary,
-                          display: 'block'
-                        }}>
-                          Кадров обработано
-                        </Typography>
-                        <Typography variant="body2" sx={{ 
-                          color: theme.palette.text.primary,
-                          fontWeight: 600
-                        }}>
-                          {session.postureMetrics?.totalFrames?.toLocaleString() || 0}
-                        </Typography>
-                      </Grid>
-                      
-                      <Grid item xs={6}>
-                        <Typography variant="caption" sx={{ 
-                          color: theme.palette.text.secondary,
-                          display: 'block'
-                        }}>
-                          Ошибки
-                        </Typography>
-                        <Typography variant="body2" sx={{ 
-                          color: theme.palette.error.main,
-                          fontWeight: 600
-                        }}>
-                          {session.postureMetrics?.errorFrames?.toLocaleString() || 0}
-                        </Typography>
-                      </Grid>
-                      
-                      <Grid item xs={12}>
-                        <Typography variant="caption" sx={{ 
-                          color: theme.palette.text.secondary,
-                          display: 'block',
-                          mt: 1
-                        }}>
-                          ID сеанса
-                        </Typography>
-                        <Typography variant="caption" sx={{ 
-                          color: theme.palette.text.disabled,
-                          fontFamily: 'monospace',
-                          fontSize: '0.7rem'
-                        }}>
-                          {session.sessionId}
-                        </Typography>
-                      </Grid>
-                    </Grid>
-                  </Box>
-                </Collapse>
-                
-                <Stack 
-                  direction="row" 
-                  spacing={1} 
-                  justifyContent="space-between" 
-                  alignItems="center"
-                  sx={{ mt: 'auto' }}
-                >
-                  <Button
-                    size="small"
-                    startIcon={isExpanded ? <ExpandLess /> : <ExpandMore />}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      toggleSessionExpand(session.sessionId, e);
-                    }}
-                    sx={{
-                      color: theme.palette.text.secondary,
-                      '&:hover': {
-                        color: theme.palette.primary.main,
-                        background: alpha(theme.palette.primary.main, 0.1)
-                      }
-                    }}
-                  >
-                    {isExpanded ? 'Скрыть' : 'Детали'}
-                  </Button>
-                  
-                  <Stack direction="row" spacing={0.5}>
-                    <Tooltip title="Просмотр">
-                      <IconButton
-                        size="small"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleViewSession(session.sessionId);
-                        }}
-                        sx={{
-                          color: theme.palette.primary.main,
-                          background: alpha(theme.palette.primary.main, 0.1),
-                          '&:hover': {
-                            background: alpha(theme.palette.primary.main, 0.2)
-                          }
-                        }}
-                      >
-                        <Visibility fontSize="small" />
-                      </IconButton>
-                    </Tooltip>
-                    
-                    <Tooltip title="Удалить">
-                      <IconButton
-                        size="small"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          openDeleteDialog(
-                            session.sessionId, 
-                            session.startTime, 
-                            session.postureMetrics?.postureScore || 0,
-                            session.duration || 0
-                          );
-                        }}
-                        sx={{
-                          color: theme.palette.error.main,
-                          background: alpha(theme.palette.error.main, 0.1),
-                          '&:hover': {
-                            background: alpha(theme.palette.error.main, 0.2)
-                          }
-                        }}
-                      >
-                        <Delete fontSize="small" />
-                      </IconButton>
-                    </Tooltip>
-                  </Stack>
-                </Stack>
-              </Stack>
-            </CardContent>
-          </Paper>
-        </motion.div>
-      </Grid>
-    );
-  }, [expandedSessions, selectedSessions, getScoreColor, getScoreGradient, getScoreLabel, getScoreIcon, formatSessionDate, getTimeSince, formatSessionDuration, formatPercentage, toggleSessionExpand, handleViewSession, toggleSessionSelection, theme]);
+    // Ограничиваем от 0 до 100
+    intValue = Math.min(100, Math.max(0, intValue));
+    handleFilterChange(field, intValue.toString());
+  }, [handleFilterChange]);
 
-  const tableComponent = useMemo(() => (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.5 }}
-    >
-      <Paper
-        elevation={theme.palette.mode === 'light' ? 1 : 0}
-        sx={{
-          background: theme.palette.mode === 'light'
-            ? alpha(theme.palette.background.paper, 0.7)
-            : alpha(theme.palette.background.paper, 0.4),
-          backdropFilter: 'blur(10px)',
-          border: `1px solid ${theme.palette.divider}`,
-          borderRadius: 4,
-          overflow: 'hidden'
-        }}
-      >
-        <TableContainer>
-          <Table>
-            <TableHead>
-              <TableRow sx={{ 
-                background: theme.palette.mode === 'light'
-                  ? alpha(theme.palette.primary.main, 0.05)
-                  : alpha(theme.palette.background.paper, 0.2),
-                '& th': {
-                  color: theme.palette.text.primary,
-                  fontWeight: 600,
-                  fontSize: '0.875rem'
-                }
-              }}>
-                <TableCell>Дата и время</TableCell>
-                <TableCell>Оценка</TableCell>
-                <TableCell>Длительность</TableCell>
-                <TableCell>Хорошая осанка</TableCell>
-                <TableCell>Проблемы</TableCell>
-                <TableCell>Действия</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {sessions.map((session) => {
-                const scoreColor = getScoreColor(session.postureMetrics?.postureScore || 0);
-                const hasProblems = session.postureMetrics?.postureScore < 100 || 
-                                  (session.problems && session.problems.length > 0);
-                
-                return (
-                  <TableRow
-                    key={session.sessionId}
-                    sx={{
-                      '& td': {
-                        color: theme.palette.text.primary,
-                        borderBottom: `1px solid ${theme.palette.divider}`
-                      },
-                      '&:hover': {
-                        background: alpha(theme.palette.primary.main, 0.02)
-                      }
-                    }}
-                  >
-                    <TableCell>
-                      <Box>
-                        <Typography variant="body2" sx={{ color: theme.palette.text.primary }}>
-                          {formatSessionDate(session.startTime)}
-                        </Typography>
-                        <Typography variant="caption" sx={{ color: theme.palette.text.secondary }}>
-                          {getTimeSince(session.startTime)}
-                        </Typography>
-                      </Box>
-                    </TableCell>
-                    <TableCell>
-                      <Stack direction="row" alignItems="center" spacing={1}>
-                        <Box
-                          sx={{
-                            width: 32,
-                            height: 32,
-                            borderRadius: 2,
-                            background: getScoreGradient(session.postureMetrics?.postureScore || 0),
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center'
-                          }}
-                        >
-                          <Typography variant="body2" sx={{ 
-                            color: 'white',
-                            fontWeight: 700
-                          }}>
-                            {session.postureMetrics?.postureScore || 0}
-                          </Typography>
-                        </Box>
-                        <Typography variant="body2" sx={{ color: scoreColor }}>
-                          {getScoreLabel(session.postureMetrics?.postureScore || 0)}
-                        </Typography>
-                      </Stack>
-                    </TableCell>
-                    <TableCell>
-                      <Typography variant="body2">
-                        {formatSessionDuration(session.duration || 0)}
-                      </Typography>
-                    </TableCell>
-                    <TableCell>
-                      <Box sx={{ width: 100 }}>
-                        <LinearProgress 
-                          variant="determinate" 
-                          value={session.postureMetrics?.goodPercentage || 0}
-                          sx={{ 
-                            height: 6,
-                            borderRadius: 3,
-                            bgcolor: alpha(theme.palette.success.main, 0.1),
-                            '& .MuiLinearProgress-bar': {
-                              background: `linear-gradient(90deg, ${theme.palette.success.main}, ${theme.palette.success.light})`,
-                              borderRadius: 3
-                            }
-                          }}
-                        />
-                        <Typography variant="caption" sx={{ 
-                          color: theme.palette.text.secondary,
-                          display: 'block',
-                          textAlign: 'center',
-                          mt: 0.5
-                        }}>
-                          {formatPercentage(session.postureMetrics?.goodPercentage || 0)}
-                        </Typography>
-                      </Box>
-                    </TableCell>
-                    <TableCell>
-                      {hasProblems ? (
-                        session.problems && session.problems.length > 0 ? (
-                          <Stack direction="row" spacing={0.5}>
-                            {session.problems.slice(0, 2).map((problem: string, idx: number) => (
-                              <Chip
-                                key={idx}
-                                label={problem}
-                                size="small"
-                                sx={{
-                                  background: alpha(theme.palette.error.main, 0.1),
-                                  color: theme.palette.error.main,
-                                  fontSize: '0.7rem',
-                                  height: 20
-                                }}
-                              />
-                            ))}
-                            {session.problems.length > 2 && (
-                              <Chip
-                                label={`+${session.problems.length - 2}`}
-                                size="small"
-                                sx={{
-                                  background: alpha(theme.palette.text.primary, 0.1),
-                                  color: theme.palette.text.secondary,
-                                  fontSize: '0.7rem',
-                                  height: 20
-                                }}
-                              />
-                            )}
-                          </Stack>
-                        ) : (
-                          <Chip
-                            icon={<WarningAmber sx={{ fontSize: '0.8rem !important' }} />}
-                            label="Есть ошибки"
-                            size="small"
-                            sx={{
-                              background: alpha(theme.palette.warning.main, 0.1),
-                              color: theme.palette.warning.main,
-                              fontSize: '0.7rem',
-                              height: 24,
-                              '& .MuiChip-icon': { color: theme.palette.warning.main }
-                            }}
-                          />
-                        )
-                      ) : (
-                        <Stack direction="row" alignItems="center" spacing={0.5}>
-                          <CheckCircleIcon sx={{ fontSize: 16, color: theme.palette.success.main }} />
-                          <Typography variant="caption" sx={{ color: theme.palette.success.main }}>
-                            Нет проблем
-                          </Typography>
-                        </Stack>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      <Stack direction="row" spacing={0.5}>
-                        <Tooltip title="Просмотр">
-                          <IconButton
-                            size="small"
-                            onClick={() => handleViewSession(session.sessionId)}
-                            sx={{ 
-                              color: theme.palette.text.secondary,
-                              '&:hover': { 
-                                color: theme.palette.primary.main,
-                                background: alpha(theme.palette.primary.main, 0.1)
-                              }
-                            }}
-                          >
-                            <Visibility fontSize="small" />
-                          </IconButton>
-                        </Tooltip>
-                        
-                        <Tooltip title="Удалить">
-                          <IconButton
-                            size="small"
-                            onClick={() => openDeleteDialog(
-                              session.sessionId, 
-                              session.startTime, 
-                              session.postureMetrics?.postureScore || 0,
-                              session.duration || 0
-                            )}
-                            sx={{ 
-                              color: theme.palette.text.secondary,
-                              '&:hover': { 
-                                color: theme.palette.error.main,
-                                background: alpha(theme.palette.error.main, 0.1)
-                              }
-                            }}
-                          >
-                            <Delete fontSize="small" />
-                          </IconButton>
-                        </Tooltip>
-                      </Stack>
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
-        </TableContainer>
-      </Paper>
-    </motion.div>
-  ), [sessions, getScoreColor, getScoreGradient, getScoreLabel, formatSessionDate, getTimeSince, formatSessionDuration, formatPercentage, handleViewSession, theme]);
+  useEffect(() => {
+    loadAllSessionsForProgress();
+  }, [loadAllSessionsForProgress]);
 
-  const emptyState = useMemo(() => (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.5 }}
-    >
-      <Paper
-        elevation={theme.palette.mode === 'light' ? 1 : 0}
-        sx={{
-          textAlign: 'center',
-          py: 8,
-          px: 4,
-          background: theme.palette.mode === 'light'
-            ? alpha(theme.palette.background.paper, 0.7)
-            : alpha(theme.palette.background.paper, 0.4),
-          backdropFilter: 'blur(10px)',
-          border: `1px solid ${theme.palette.divider}`,
-          borderRadius: 4
-        }}
-      >
-        <Box
-          sx={{
-            width: 120,
-            height: 120,
-            borderRadius: '50%',
-            background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            margin: '0 auto 24px',
-            boxShadow: '0 8px 32px rgba(102, 126, 234, 0.4)'
-          }}
-        >
-          <History sx={{ fontSize: 60, color: 'white' }} />
-        </Box>
-        
-        <Typography variant="h5" sx={{ 
-          color: theme.palette.text.primary,
-          mb: 2,
-          fontWeight: 700
-        }}>
-          Нет данных о сеансах
-        </Typography>
-        
-        <Typography variant="body1" sx={{ 
-          color: theme.palette.text.secondary,
-          mb: 4,
-          maxWidth: 400,
-          mx: 'auto'
-        }}>
-          Выполните анализ осанки, чтобы увидеть историю здесь
-        </Typography>
-        
-        <Button
-          variant="contained"
-          onClick={() => navigate('/')}
-          startIcon={<PlayCircleOutline />}
-          sx={{
-            background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-            boxShadow: '0 4px 15px rgba(102, 126, 234, 0.4)',
-            px: 4,
-            py: 1.5,
-            '&:hover': {
-              background: 'linear-gradient(135deg, #764ba2 0%, #667eea 100%)'
-            }
-          }}
-        >
-          Начать анализ осанки
-        </Button>
-      </Paper>
-    </motion.div>
-  ), [navigate, theme]);
+  useEffect(() => {
+    loadSessions();
+  }, []);
+
+  const handleViewSession = useCallback((sessionId: string) => {
+    navigate(`/sessions/${sessionId}`);
+  }, [navigate]);
+
+  const openDeleteDialog = useCallback((sessionId: string, sessionDate: string, sessionScore: number, sessionDuration: number) => {
+    setDeleteDialog({
+      open: true,
+      sessionId,
+      sessionDate: formatSessionDate(sessionDate),
+      sessionScore,
+      sessionDuration,
+      deleting: false
+    });
+  }, [formatSessionDate]);
+
+  const closeDeleteDialog = useCallback(() => {
+    setDeleteDialog(prev => ({ ...prev, open: false, sessionId: null }));
+  }, []);
+
+  const handleDeleteConfirm = useCallback(async () => {
+    if (!deleteDialog.sessionId) return;
+    
+    try {
+      setDeleteDialog(prev => ({ ...prev, deleting: true }));
+      await sessionsApi.deleteSession(deleteDialog.sessionId);
+      closeDeleteDialog();
+      loadSessions(page, rowsPerPage, filters);
+      loadAllSessionsForProgress();
+    } catch (err: any) {
+      setError(err.message || 'Ошибка при удалении сеанса');
+    } finally {
+      setDeleteDialog(prev => ({ ...prev, deleting: false }));
+    }
+  }, [deleteDialog.sessionId, closeDeleteDialog, loadSessions, page, rowsPerPage, filters, loadAllSessionsForProgress]);
+
+  const toggleSessionExpand = useCallback((sessionId: string) => {
+    setExpandedSessions(prev => ({ ...prev, [sessionId]: !prev[sessionId] }));
+  }, []);
+
+  const toggleSessionSelection = useCallback((sessionId: string) => {
+    setSelectedSessions(prev => {
+      if (prev.includes(sessionId)) return prev.filter(id => id !== sessionId);
+      if (prev.length < 2) return [...prev, sessionId];
+      return prev;
+    });
+  }, []);
+
+  const clearSelection = useCallback(() => {
+    setSelectedSessions([]);
+  }, []);
+
+  const handleRefresh = useCallback(() => {
+    setIsRefreshing(true);
+    loadSessions(page, rowsPerPage, filters);
+    loadAllSessionsForProgress();
+  }, [loadSessions, page, rowsPerPage, filters, loadAllSessionsForProgress]);
+
+  const handleChangePage = useCallback((event: unknown, newPage: number) => {
+    setPage(newPage);
+    loadSessions(newPage, rowsPerPage, filters);
+  }, [loadSessions, rowsPerPage, filters]);
+
+  const handleChangeRowsPerPage = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+    const newRowsPerPage = parseInt(event.target.value, 10);
+    setRowsPerPage(newRowsPerPage);
+    setPage(0);
+    loadSessions(0, newRowsPerPage, filters);
+  }, [loadSessions, filters]);
+
+  const handleViewModeChange = useCallback((event: React.MouseEvent<HTMLElement>, newViewMode: 'cards' | 'table') => {
+    if (newViewMode) setViewMode(newViewMode);
+  }, []);
+
+  const handleTabChange = useCallback((event: React.SyntheticEvent, newValue: number) => {
+    setActiveTab(newValue);
+  }, []);
+
+  // Мемоизация карточек
+  const sessionCards = useMemo(() => {
+    return sessions.map((session) => (
+      <SessionCard
+        key={session.sessionId}
+        session={session}
+        isExpanded={expandedSessions[session.sessionId] || false}
+        isSelected={selectedSessions.includes(session.sessionId)}
+        onToggleExpand={toggleSessionExpand}
+        onSelect={toggleSessionSelection}
+        onView={handleViewSession}
+        onDelete={openDeleteDialog}
+        getScoreColor={getScoreColor}
+        getScoreGradient={getScoreGradient}
+        getScoreLabel={getScoreLabel}
+        formatSessionDate={formatSessionDate}
+        getTimeSince={getTimeSince}
+        formatSessionDuration={formatSessionDuration}
+        formatPercentage={formatPercentage}
+        theme={theme}
+      />
+    ));
+  }, [sessions, expandedSessions, selectedSessions, toggleSessionExpand, toggleSessionSelection, handleViewSession, openDeleteDialog, getScoreColor, getScoreGradient, getScoreLabel, formatSessionDate, getTimeSince, formatSessionDuration, formatPercentage, theme]);
+
+  // Таблица
+  const tableRows = useMemo(() => {
+    return sessions.map((session) => {
+      const score = session.postureMetrics?.postureScore || 0;
+      const hasProblems = session.postureMetrics?.postureScore < 100 || (session.problems && session.problems.length > 0);
+      
+      return (
+        <TableRow key={session.sessionId} sx={{ '&:hover': { bgcolor: alpha(theme.palette.primary.main, 0.02) } }}>
+          <TableCell>
+            <Typography variant="body2" sx={{ fontWeight: 500 }}>{formatSessionDate(session.startTime)}</Typography>
+            <Typography variant="caption" sx={{ color: theme.palette.text.secondary }}>{getTimeSince(session.startTime)}</Typography>
+          </TableCell>
+          <TableCell>
+            <Stack direction="row" alignItems="center" spacing={1}>
+              <Box sx={{ width: 36, height: 36, borderRadius: 2, background: getScoreGradient(score), display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Typography variant="body2" sx={{ color: 'white', fontWeight: 700 }}>{score}</Typography>
+              </Box>
+              <Typography variant="body2" sx={{ color: getScoreColor(score) }}>{getScoreLabel(score)}</Typography>
+            </Stack>
+          </TableCell>
+          <TableCell>{formatSessionDuration(session.duration || 0)}</TableCell>
+          <TableCell>
+            <LinearProgress variant="determinate" value={session.postureMetrics?.goodPercentage || 0} sx={{ height: 4, borderRadius: 2, width: 80 }} />
+            <Typography variant="caption">{formatPercentage(session.postureMetrics?.goodPercentage || 0)}</Typography>
+          </TableCell>
+          <TableCell>
+            {hasProblems ? (
+              <Chip label={session.problems?.length > 0 ? `${session.problems.length} проблем` : "Есть ошибки"} size="small" color="warning" variant="outlined" />
+            ) : (
+              <Chip label="Нет проблем" size="small" color="success" variant="outlined" />
+            )}
+          </TableCell>
+          <TableCell align="center">
+            <Stack direction="row" spacing={0.5} justifyContent="center">
+              <IconButton size="small" onClick={() => handleViewSession(session.sessionId)}><Visibility fontSize="small" /></IconButton>
+              <IconButton size="small" onClick={() => openDeleteDialog(session.sessionId, session.startTime, score, session.duration || 0)} sx={{ color: theme.palette.error.main }}><Delete fontSize="small" /></IconButton>
+            </Stack>
+          </TableCell>
+        </TableRow>
+      );
+    });
+  }, [sessions, formatSessionDate, getTimeSince, getScoreGradient, getScoreColor, getScoreLabel, formatSessionDuration, formatPercentage, handleViewSession, openDeleteDialog, theme]);
 
   if (loading && sessions.length === 0) {
     return (
-      <Box sx={{ 
-        minHeight: '100vh',
-        background: theme.palette.mode === 'light'
-          ? 'linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)'
-          : 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center'
-      }}>
-        <Container maxWidth="xl">
-          <Box
-            sx={{
-              display: 'flex',
-              flexDirection: 'column',
-              justifyContent: 'center',
-              alignItems: 'center',
-              minHeight: '60vh'
-            }}
-          >
-            <Box
-              sx={{
-                width: 80,
-                height: 80,
-                borderRadius: '50%',
-                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                mb: 3,
-                animation: 'pulse 2s infinite',
-                '@keyframes pulse': {
-                  '0%': {
-                    boxShadow: '0 0 0 0 rgba(102, 126, 234, 0.7)',
-                  },
-                  '70%': {
-                    boxShadow: '0 0 0 20px rgba(102, 126, 234, 0)',
-                  },
-                  '100%': {
-                    boxShadow: '0 0 0 0 rgba(102, 126, 234, 0)',
-                  },
-                }
-              }}
-            >
-              <CircularProgress size={40} thickness={4} sx={{ color: 'white' }} />
-            </Box>
-            <Typography variant="h6" sx={{ color: theme.palette.text.primary, mb: 1, fontWeight: 600 }}>
-              Загрузка истории сеансов...
-            </Typography>
-            <Typography variant="body2" sx={{ color: theme.palette.text.secondary }}>
-              Пожалуйста, подождите
-            </Typography>
-          </Box>
-        </Container>
+      <Box sx={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: `linear-gradient(135deg, ${alpha(theme.palette.primary.main, 0.05)} 0%, ${alpha(theme.palette.secondary.main, 0.05)} 100%)` }}>
+        <CircularProgress size={60} thickness={4} />
       </Box>
     );
   }
@@ -1813,609 +984,275 @@ const SessionsHistory: React.FC = () => {
   return (
     <Box sx={{ 
       minHeight: '100vh',
-      background: theme.palette.mode === 'light'
-        ? 'linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)'
-        : 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)',
-      pt: 4,
-      pb: 8,
-      position: 'relative'
+      background: `linear-gradient(135deg, ${alpha(theme.palette.primary.main, 0.03)} 0%, ${alpha(theme.palette.secondary.main, 0.03)} 100%)`,
+      pt: { xs: 2, sm: 4 },
+      pb: { xs: 4, sm: 8 }
     }}>
-      <style>
-        {`
-          @keyframes shake {
-            0%, 100% { transform: rotate(0deg); }
-            25% { transform: rotate(10deg); }
-            75% { transform: rotate(-10deg); }
-          }
+      <Container maxWidth="xl">
+        {/* Header */}
+        <MotionBox initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} sx={{ mb: 4 }}>
+          <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems={{ xs: 'flex-start', sm: 'center' }} spacing={2}>
+            <Box>
+              <Typography variant="h4" sx={{ fontWeight: 800, background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', backgroundClip: 'text', WebkitBackgroundClip: 'text', color: 'transparent' }}>
+                История анализов
+              </Typography>
+              <Typography variant="body1" sx={{ color: theme.palette.text.secondary, mt: 0.5 }}>
+                Просматривайте все сеансы, отслеживайте прогресс и анализируйте результаты
+              </Typography>
+            </Box>
+            
+            <Stack direction="row" spacing={1}>
+              {selectedSessions.length === 2 && (
+                <Button startIcon={<CompareArrows />} onClick={() => setActiveTab(1)} variant="contained" sx={{ borderRadius: 2, background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}>
+                  Сравнить
+                </Button>
+              )}
+              {selectedSessions.length > 0 && (
+                <Button startIcon={<Clear />} onClick={clearSelection} variant="outlined" sx={{ borderRadius: 2 }}>
+                  Отмена ({selectedSessions.length})
+                </Button>
+              )}
+              <IconButton onClick={handleRefresh} disabled={isRefreshing} sx={{ bgcolor: alpha(theme.palette.background.paper, 0.8), backdropFilter: 'blur(10px)' }}>
+                <Refresh sx={{ animation: isRefreshing ? 'spin 1s linear infinite' : 'none' }} />
+              </IconButton>
+            </Stack>
+          </Stack>
           
-          @keyframes pulse {
-            0%, 100% { 
-              transform: scale(1);
-              opacity: 0.5;
-            }
-            50% { 
-              transform: scale(1.2);
-              opacity: 1;
-            }
-          }
+          {error && (
+            <Alert severity="error" sx={{ mt: 3, borderRadius: 3 }} onClose={() => setError(null)}>
+              {error}
+            </Alert>
+          )}
+        </MotionBox>
 
-          @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-          }
-        `}
-      </style>
+        {/* Stats Card */}
+        <StatsCard stats={stats} theme={theme} />
 
-      <Box sx={{
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        background: theme.palette.mode === 'light'
-          ? `radial-gradient(circle at 20% 80%, ${alpha(theme.palette.primary.main, 0.05)} 0%, transparent 50%),
-             radial-gradient(circle at 80% 20%, ${alpha(theme.palette.secondary.main, 0.05)} 0%, transparent 50%)`
-          : `radial-gradient(circle at 20% 80%, ${alpha(theme.palette.primary.main, 0.1)} 0%, transparent 50%),
-             radial-gradient(circle at 80% 20%, ${alpha(theme.palette.secondary.main, 0.1)} 0%, transparent 50%)`,
-        pointerEvents: 'none',
-        zIndex: 0
-      }} />
-
-      <Container maxWidth="xl" sx={{ position: 'relative', zIndex: 1 }}>
-        <motion.div
+        {/* Filters */}
+        <MotionPaper
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5 }}
-        >
-          <Box sx={{ mb: 4 }}>
-            <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems={{ xs: 'flex-start', sm: 'center' }} spacing={2}>
-              <Box>
-                <Typography 
-                  variant="h4" 
-                  component="h1" 
-                  sx={{ 
-                    color: theme.palette.text.primary,
-                    mb: 1,
-                    fontWeight: 800,
-                    letterSpacing: '0.5px'
-                  }}
-                >
-                  История анализов осанки
-                </Typography>
-                <Typography variant="body1" sx={{ 
-                  color: theme.palette.text.secondary,
-                  maxWidth: 600
-                }}>
-                  Просматривайте все сеансы анализа, статистику и отслеживайте прогресс
-                </Typography>
-              </Box>
-              
-              <Stack direction="row" spacing={1}>
-                {selectedSessions.length === 2 && (
-                  <Zoom in={selectedSessions.length === 2}>
-                    <Button
-                      startIcon={<CompareArrows />}
-                      onClick={() => setActiveTab(1)}
-                      variant="contained"
-                      sx={{
-                        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                        boxShadow: '0 4px 15px rgba(102, 126, 234, 0.4)',
-                        '&:hover': {
-                          background: 'linear-gradient(135deg, #764ba2 0%, #667eea 100%)'
-                        }
-                      }}
-                    >
-                      Сравнить выбранные
-                    </Button>
-                  </Zoom>
-                )}
-                
-                {selectedSessions.length > 0 && (
-                  <Button
-                    startIcon={<Clear />}
-                    onClick={clearSelection}
-                    variant="outlined"
-                    sx={{
-                      color: theme.palette.text.secondary,
-                      borderColor: theme.palette.divider,
-                      '&:hover': {
-                        borderColor: theme.palette.text.primary,
-                        background: alpha(theme.palette.primary.main, 0.05)
-                      }
-                    }}
-                  >
-                    Отмена ({selectedSessions.length})
-                  </Button>
-                )}
-                
-                <Tooltip title="Обновить данные">
-                  <IconButton
-                    onClick={handleRefresh}
-                    disabled={isRefreshing}
-                    sx={{
-                      color: theme.palette.text.secondary,
-                      '&:hover': {
-                        color: theme.palette.primary.main
-                      }
-                    }}
-                  >
-                    <Refresh sx={{
-                      animation: isRefreshing ? 'spin 1s linear infinite' : 'none'
-                    }} />
-                  </IconButton>
-                </Tooltip>
-              </Stack>
-            </Stack>
-
-            {error && (
-              <Alert 
-                severity="error" 
-                sx={{ 
-                  mt: 3,
-                  background: alpha(theme.palette.error.main, 0.1),
-                  border: `1px solid ${alpha(theme.palette.error.main, 0.2)}`,
-                  color: theme.palette.error.main,
-                  '& .MuiAlert-icon': {
-                    color: theme.palette.error.main
-                  }
-                }}
-                action={
-                  <Button 
-                    color="inherit" 
-                    size="small"
-                    onClick={() => loadSessions(page, rowsPerPage)}
-                    startIcon={<Refresh />}
-                    sx={{ color: theme.palette.error.main }}
-                  >
-                    Повторить
-                  </Button>
-                }
-              >
-                {error}
-              </Alert>
-            )}
-          </Box>
-        </motion.div>
-
-        {statsCard}
-        {filtersPanel}
-
-        <Paper
-          elevation={theme.palette.mode === 'light' ? 1 : 0}
+          transition={{ delay: 0.1 }}
           sx={{
+            p: 3,
             mb: 3,
-            background: theme.palette.mode === 'light'
-              ? alpha(theme.palette.background.paper, 0.7)
-              : alpha(theme.palette.background.paper, 0.4),
+            background: alpha(theme.palette.background.paper, 0.6),
             backdropFilter: 'blur(10px)',
-            border: `1px solid ${theme.palette.divider}`,
             borderRadius: 4,
-            overflow: 'hidden'
+            border: `1px solid ${alpha(theme.palette.primary.main, 0.1)}`,
           }}
         >
-          <Tabs 
-            value={activeTab} 
-            onChange={handleTabChange}
-            variant="fullWidth"
-            sx={{
-              '& .MuiTab-root': { 
-                color: theme.palette.text.secondary,
-                fontWeight: 600,
-                fontSize: '0.95rem',
-                minHeight: 56,
-                transition: 'all 0.2s',
-                '&:hover': {
-                  color: theme.palette.text.primary,
-                  background: alpha(theme.palette.primary.main, 0.02)
+          <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 3, flexWrap: 'wrap', gap: 1 }}>
+            <Stack direction="row" alignItems="center" spacing={1}>
+              <FilterList sx={{ color: theme.palette.primary.main }} />
+              <Typography variant="h6" sx={{ fontWeight: 700 }}>Фильтры</Typography>
+              <Chip 
+                label={`${Object.values(filters).filter(v => v && v !== false && v !== '').length} активных`} 
+                size="small" 
+                sx={{ bgcolor: alpha(theme.palette.primary.main, 0.1) }} 
+              />
+            </Stack>
+            <Stack direction="row" spacing={1}>
+              <Button startIcon={<Clear />} onClick={resetFilters} variant="outlined" size="small" sx={{ borderRadius: 2 }}>
+                Сбросить
+              </Button>
+              <Button 
+                startIcon={<Search />} 
+                onClick={applyFilters} 
+                variant="contained" 
+                size="small" 
+                sx={{ borderRadius: 2, background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}
+              >
+                Применить
+              </Button>
+            </Stack>
+          </Stack>
+          
+          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', md: 'repeat(4, 1fr)' }, gap: 2 }}>
+            <TextField 
+              label="Дата от" 
+              type="date" 
+              value={filters.dateFrom} 
+              onChange={(e) => handleFilterChange('dateFrom', e.target.value)} 
+              size="small" 
+              InputLabelProps={{ shrink: true }} 
+              fullWidth
+            />
+            <TextField 
+              label="Дата до" 
+              type="date" 
+              value={filters.dateTo} 
+              onChange={(e) => handleFilterChange('dateTo', e.target.value)} 
+              size="small" 
+              InputLabelProps={{ shrink: true }} 
+              fullWidth
+            />
+            <TextField 
+              label="Мин. оценка" 
+              type="number" 
+              value={filters.minScore} 
+              onChange={(e) => handleScoreChange('minScore', e.target.value)} 
+              size="small" 
+              placeholder="0-100"
+              InputProps={{ 
+                inputProps: { min: 0, max: 100 },
+                startAdornment: <InputAdornment position="start">%</InputAdornment>
+              }}
+              onKeyDown={(e) => {
+                if (e.key === '-' || e.key === 'e') {
+                  e.preventDefault();
                 }
-              },
-              '& .Mui-selected': { 
-                color: `${theme.palette.primary.main} !important`,
-                fontWeight: 700
-              },
-              '& .MuiTabs-indicator': { 
-                background: `linear-gradient(90deg, ${theme.palette.primary.main}, ${theme.palette.secondary.main})`,
-                height: 3,
-                borderRadius: '3px 3px 0 0'
-              }
-            }}
-          >
-            <Tab 
-              icon={<History />} 
-              iconPosition="start" 
-              label="История сеансов" 
+              }}
+              fullWidth
             />
-            <Tab 
-              icon={<TimelineIcon />} 
-              iconPosition="start" 
-              label="Прогресс" 
+            <TextField 
+              label="Макс. оценка" 
+              type="number" 
+              value={filters.maxScore} 
+              onChange={(e) => handleScoreChange('maxScore', e.target.value)} 
+              size="small" 
+              placeholder="0-100"
+              InputProps={{ 
+                inputProps: { min: 0, max: 100 },
+                startAdornment: <InputAdornment position="start">%</InputAdornment>
+              }}
+              onKeyDown={(e) => {
+                if (e.key === '-' || e.key === 'e') {
+                  e.preventDefault();
+                }
+              }}
+              fullWidth
             />
+          </Box>
+          
+          <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 2 }}>
+            <FormControlLabel 
+              control={
+                <Switch 
+                  checked={filters.showOnlyWithProblems} 
+                  onChange={(e) => handleFilterChange('showOnlyWithProblems', e.target.checked)} 
+                />
+              } 
+              label="Только с проблемами" 
+            />
+          </Box>
+        </MotionPaper>
+
+        {/* Tabs */}
+        <Paper sx={{ mb: 3, background: alpha(theme.palette.background.paper, 0.6), backdropFilter: 'blur(10px)', borderRadius: 4, overflow: 'hidden' }}>
+          <Tabs value={activeTab} onChange={handleTabChange} variant="fullWidth" sx={{ '& .MuiTabs-indicator': { background: 'linear-gradient(90deg, #667eea, #764ba2)', height: 3 } }}>
+            <Tab icon={<History />} iconPosition="start" label="История сеансов" />
+            <Tab icon={<TimelineIcon />} iconPosition="start" label="Прогресс и аналитика" />
           </Tabs>
         </Paper>
 
+        {/* History Tab */}
         <TabPanel value={activeTab} index={0}>
           {sessions.length === 0 ? (
-            emptyState
+            <MotionPaper initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} sx={{ textAlign: 'center', py: 8, px: 4, borderRadius: 4 }}>
+              <Box sx={{ width: 100, height: 100, borderRadius: '50%', background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 24px' }}>
+                <History sx={{ fontSize: 50, color: 'white' }} />
+              </Box>
+              <Typography variant="h5" sx={{ fontWeight: 700, mb: 1 }}>Нет данных о сеансах</Typography>
+              <Typography variant="body1" sx={{ color: theme.palette.text.secondary, mb: 3 }}>Выполните анализ осанки, чтобы увидеть историю здесь</Typography>
+              <Button variant="contained" onClick={() => navigate('/')} startIcon={<PlayCircleOutline />} sx={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', borderRadius: 2 }}>
+                Начать анализ осанки
+              </Button>
+            </MotionPaper>
           ) : (
             <>
-              <Stack 
-                direction="row" 
-                justifyContent="space-between" 
-                alignItems="center" 
-                sx={{ mb: 3 }}
-              >
+              <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 3 }}>
                 <Typography variant="body2" sx={{ color: theme.palette.text.secondary }}>
-                  Найдено сеансов: {totalSessions}
+                  Найдено: <strong>{totalSessions}</strong> сеансов
                 </Typography>
-                
-                <ToggleButtonGroup
-                  value={viewMode}
-                  exclusive
-                  onChange={handleViewModeChange}
-                  size="small"
-                  sx={{
-                    background: theme.palette.mode === 'light'
-                      ? alpha(theme.palette.background.paper, 0.7)
-                      : alpha(theme.palette.background.paper, 0.4),
-                    border: `1px solid ${theme.palette.divider}`,
-                    '& .MuiToggleButton-root': {
-                      color: theme.palette.text.secondary,
-                      borderColor: theme.palette.divider,
-                      '&.Mui-selected': {
-                        color: theme.palette.primary.main,
-                        background: alpha(theme.palette.primary.main, 0.1)
-                      },
-                      '&:hover': {
-                        background: alpha(theme.palette.primary.main, 0.05)
-                      }
-                    }
-                  }}
-                >
-                  <ToggleButton value="cards">
-                    <GridView />
-                  </ToggleButton>
-                  <ToggleButton value="table">
-                    <TableRows />
-                  </ToggleButton>
+                <ToggleButtonGroup value={viewMode} exclusive onChange={handleViewModeChange} size="small">
+                  <ToggleButton value="cards" sx={{ px: 2, py: 1 }}><GridView sx={{ mr: 0.5 }} />{!isTablet && 'Карточки'}</ToggleButton>
+                  <ToggleButton value="table" sx={{ px: 2, py: 1 }}><TableRows sx={{ mr: 0.5 }} />{!isTablet && 'Таблица'}</ToggleButton>
                 </ToggleButtonGroup>
               </Stack>
 
-              <AnimatePresence mode="wait">
-                {viewMode === 'cards' ? (
-                  <Grid container spacing={2} key="cards">
-                    {sessions.map((session, index) => renderSessionCard(session, index))}
-                  </Grid>
-                ) : (
-                  <Fade in={true} key="table">
-                    <Box>
-                      {tableComponent}
-                    </Box>
-                  </Fade>
-                )}
-              </AnimatePresence>
+              {viewMode === 'cards' ? (
+                <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', md: 'repeat(3, 1fr)', lg: 'repeat(4, 1fr)' }, gap: 3 }}>
+                  {sessionCards}
+                </Box>
+              ) : (
+                <Paper sx={{ borderRadius: 4, overflow: 'auto' }}>
+                  <TableContainer sx={{ maxHeight: 500 }}>
+                    <Table stickyHeader>
+                      <TableHead>
+                        <TableRow sx={{ bgcolor: alpha(theme.palette.primary.main, 0.05) }}>
+                          <TableCell sx={{ fontWeight: 700 }}>Дата и время</TableCell>
+                          <TableCell sx={{ fontWeight: 700 }}>Оценка</TableCell>
+                          <TableCell sx={{ fontWeight: 700 }}>Длительность</TableCell>
+                          <TableCell sx={{ fontWeight: 700 }}>Хорошая осанка</TableCell>
+                          <TableCell sx={{ fontWeight: 700 }}>Проблемы</TableCell>
+                          <TableCell align="center" sx={{ fontWeight: 700 }}>Действия</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>{tableRows}</TableBody>
+                    </Table>
+                  </TableContainer>
+                </Paper>
+              )}
 
               {sessions.length > 0 && (
-                <Box sx={{ mt: 4 }}>
-                  <TablePagination
-                    component="div"
-                    count={totalSessions}
-                    page={page}
-                    onPageChange={handleChangePage}
-                    rowsPerPage={rowsPerPage}
-                    onRowsPerPageChange={handleChangeRowsPerPage}
-                    labelRowsPerPage="Строк на странице:"
-                    labelDisplayedRows={({ from, to, count }) => 
-                      `${from}-${to} из ${count !== -1 ? count : `более ${to}`}`
-                    }
-                    sx={{
-                      color: theme.palette.text.secondary,
-                      '& .MuiTablePagination-select': {
-                        color: theme.palette.text.primary
-                      },
-                      '& .MuiTablePagination-selectIcon': {
-                        color: theme.palette.text.secondary
-                      },
-                      '& .MuiTablePagination-actions button': {
-                        color: theme.palette.text.secondary,
-                        '&:disabled': {
-                          color: theme.palette.action.disabled
-                        }
-                      }
-                    }}
-                  />
-                </Box>
+                <TablePagination
+                  component="div"
+                  count={totalSessions}
+                  page={page}
+                  onPageChange={handleChangePage}
+                  rowsPerPage={rowsPerPage}
+                  onRowsPerPageChange={handleChangeRowsPerPage}
+                  rowsPerPageOptions={[8, 12, 24, 48]}
+                  labelRowsPerPage="Строк на странице:"
+                  sx={{ mt: 3, '& .MuiToolbar-root': { minHeight: 40 } }}
+                />
               )}
             </>
           )}
         </TabPanel>
 
+        {/* Progress Tab */}
         <TabPanel value={activeTab} index={1}>
-          <SessionProgress 
-            sessions={allSessionsForProgress.length > 0 ? allSessionsForProgress : sessions} 
-            loading={loading && allSessionsForProgress.length === 0} 
-          />
+          <Suspense fallback={<CircularProgress sx={{ display: 'block', mx: 'auto', my: 4 }} />}>
+            <SessionProgressLazy sessions={allSessionsForProgress.length > 0 ? allSessionsForProgress : sessions} loading={loading} />
+          </Suspense>
         </TabPanel>
 
-        <Dialog
-          open={deleteDialog.open}
-          onClose={closeDeleteDialog}
-          TransitionComponent={Transition}
-          keepMounted
-          maxWidth="sm"
-          fullWidth
-          PaperProps={{
-            sx: {
-              bgcolor: theme.palette.background.paper,
-              backgroundImage: theme.palette.mode === 'light'
-                ? `linear-gradient(135deg, ${alpha(theme.palette.error.main, 0.05)} 0%, ${alpha(theme.palette.warning.main, 0.05)} 100%)`
-                : `linear-gradient(135deg, ${alpha(theme.palette.error.main, 0.1)} 0%, ${alpha(theme.palette.warning.main, 0.1)} 100%)`,
-              backdropFilter: 'blur(20px)',
-              border: `1px solid ${alpha(theme.palette.error.main, 0.2)}`,
-              borderRadius: 4,
-              boxShadow: theme.shadows[10],
-              overflow: 'hidden',
-              position: 'relative',
-              '&:before': {
-                content: '""',
-                position: 'absolute',
-                top: 0,
-                left: 0,
-                right: 0,
-                height: '4px',
-                background: `linear-gradient(90deg, ${theme.palette.error.main}, ${theme.palette.warning.main})`
-              }
-            }
-          }}
-        >
-          <Box sx={{
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            background: `radial-gradient(circle at 30% 50%, ${alpha(theme.palette.error.main, 0.1)} 0%, transparent 50%),
-                        radial-gradient(circle at 70% 50%, ${alpha(theme.palette.warning.main, 0.1)} 0%, transparent 50%)`,
-            pointerEvents: 'none'
-          }} />
-
-          <DialogTitle sx={{ 
-            pb: 1, 
-            position: 'relative',
-            display: 'flex',
-            alignItems: 'center',
-            gap: 1.5
-          }}>
-            <Box sx={{
-              width: 48,
-              height: 48,
-              borderRadius: '50%',
-              bgcolor: alpha(theme.palette.error.main, 0.2),
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              animation: 'pulse 2s infinite'
-            }}>
-              <WarningAmber sx={{ 
-                fontSize: 28, 
-                color: theme.palette.error.main,
-                animation: 'shake 0.5s ease-in-out infinite'
-              }} />
-            </Box>
-            <Box>
-              <Typography variant="h5" sx={{ 
-                color: theme.palette.text.primary,
-                fontWeight: 700,
-                letterSpacing: '-0.02em'
-              }}>
-                Подтверждение удаления
-              </Typography>
-              <Typography sx={{ 
-                color: theme.palette.text.secondary,
-                fontSize: '0.9rem',
-                mt: 0.5
-              }}>
-                Это действие нельзя будет отменить
-              </Typography>
-            </Box>
-            <IconButton
-              onClick={closeDeleteDialog}
-              sx={{
-                position: 'absolute',
-                right: 16,
-                top: 16,
-                color: theme.palette.text.secondary,
-                '&:hover': {
-                  color: theme.palette.text.primary,
-                  bgcolor: alpha(theme.palette.common.white, 0.1)
-                }
-              }}
-            >
-              <Close />
-            </IconButton>
-          </DialogTitle>
-
-          <DialogContent sx={{ position: 'relative', py: 3 }}>
-            <Fade in={true} timeout={500}>
+        {/* Delete Dialog */}
+        <Dialog open={deleteDialog.open} onClose={closeDeleteDialog} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: 4 } }}>
+          <Box sx={{ height: 4, background: 'linear-gradient(90deg, #f44336, #ff9800)' }} />
+          <DialogTitle sx={{ pb: 1 }}>
+            <Stack direction="row" alignItems="center" spacing={2}>
+              <Avatar sx={{ bgcolor: alpha(theme.palette.error.main, 0.1), color: theme.palette.error.main }}><WarningAmber /></Avatar>
               <Box>
-                <Paper sx={{ 
-                  p: 2.5,
-                  mb: 3,
-                  bgcolor: alpha(theme.palette.error.main, 0.1),
-                  border: `1px solid ${alpha(theme.palette.error.main, 0.3)}`,
-                  borderRadius: 3
-                }}>
-                  <Stack direction="row" spacing={2} alignItems="flex-start">
-                    <ErrorOutline sx={{ 
-                      color: theme.palette.error.main,
-                      fontSize: 24,
-                      flexShrink: 0
-                    }} />
-                    <Box>
-                      <Typography sx={{ 
-                        color: theme.palette.error.main,
-                        fontWeight: 600,
-                        mb: 0.5
-                      }}>
-                        Внимание!
-                      </Typography>
-                      <Typography sx={{ 
-                        color: theme.palette.error.main,
-                        fontSize: '0.95rem'
-                      }}>
-                        Вы собираетесь удалить сеанс анализа. Это действие необратимо, и все данные будут безвозвратно потеряны.
-                      </Typography>
-                    </Box>
-                  </Stack>
-                </Paper>
-
-                <Box sx={{ 
-                  p: 3,
-                  bgcolor: alpha(theme.palette.background.paper, 0.6),
-                  borderRadius: 3,
-                  border: `1px solid ${theme.palette.divider}`
-                }}>
-                  <Typography sx={{ 
-                    color: theme.palette.text.secondary,
-                    fontSize: '0.9rem',
-                    mb: 1,
-                    textTransform: 'uppercase',
-                    letterSpacing: '0.05em'
-                  }}>
-                    Удаляемый сеанс
-                  </Typography>
-                  
-                  <Typography sx={{ 
-                    color: theme.palette.text.primary,
-                    fontWeight: 600,
-                    fontSize: '1.1rem',
-                    mb: 2
-                  }}>
-                    Сеанс анализа от {deleteDialog.sessionDate}
-                  </Typography>
-                  
-                  <Stack direction="row" spacing={3} sx={{ mb: 1 }}>
-                    <Stack direction="row" alignItems="center" spacing={1}>
-                      <Star sx={{ fontSize: 16, color: theme.palette.warning.main }} />
-                      <Typography sx={{ color: theme.palette.warning.main, fontWeight: 600 }}>
-                        Оценка: {deleteDialog.sessionScore}%
-                      </Typography>
-                    </Stack>
-                    
-                    <Stack direction="row" alignItems="center" spacing={1}>
-                      <Timer sx={{ fontSize: 16, color: theme.palette.info.main }} />
-                      <Typography sx={{ color: theme.palette.info.main, fontWeight: 600 }}>
-                        Длительность: {formatSessionDuration(deleteDialog.sessionDuration)}
-                      </Typography>
-                    </Stack>
-                  </Stack>
-                  
-                  <Typography sx={{ 
-                    color: theme.palette.text.secondary,
-                    fontSize: '0.9rem',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 0.5,
-                    mt: 2
-                  }}>
-                    <Dangerous sx={{ fontSize: 16, color: theme.palette.error.main }} />
-                    После удаления восстановить данные будет невозможно
-                  </Typography>
-                </Box>
-
-                <Box sx={{
-                  mt: 3,
-                  display: 'flex',
-                  justifyContent: 'center'
-                }}>
-                  <Zoom in={true} timeout={1000}>
-                    <Box sx={{
-                      display: 'flex',
-                      gap: 1
-                    }}>
-                      {[...Array(3)].map((_, i) => (
-                        <Box
-                          key={i}
-                          sx={{
-                            width: 8,
-                            height: 8,
-                            borderRadius: '50%',
-                            bgcolor: alpha(theme.palette.error.main, 0.5 - i * 0.1),
-                            animation: `pulse 1.5s ease-in-out ${i * 0.2}s infinite`
-                          }}
-                        />
-                      ))}
-                    </Box>
-                  </Zoom>
-                </Box>
+                <Typography variant="h6" sx={{ fontWeight: 700 }}>Подтверждение удаления</Typography>
+                <Typography variant="body2" sx={{ color: theme.palette.text.secondary }}>Это действие нельзя будет отменить</Typography>
               </Box>
-            </Fade>
+            </Stack>
+          </DialogTitle>
+          <DialogContent>
+            <Alert severity="error" sx={{ mb: 3, borderRadius: 3 }} icon={<Dangerous />}>
+              Вы собираетесь удалить сеанс анализа. Все данные будут безвозвратно потеряны.
+            </Alert>
+            <Paper sx={{ p: 3, borderRadius: 3, bgcolor: alpha(theme.palette.background.default, 0.5) }}>
+              <Typography variant="body2" sx={{ color: theme.palette.text.secondary, mb: 2 }}>Удаляемый сеанс:</Typography>
+              <Stack direction="row" spacing={2} flexWrap="wrap" gap={1}>
+                <Chip icon={<CalendarToday />} label={deleteDialog.sessionDate} variant="outlined" />
+                <Chip icon={<Star />} label={`Оценка: ${deleteDialog.sessionScore}%`} color="warning" variant="outlined" />
+                <Chip icon={<Timer />} label={`Длительность: ${formatSessionDuration(deleteDialog.sessionDuration)}`} variant="outlined" />
+              </Stack>
+            </Paper>
           </DialogContent>
-
-          <DialogActions sx={{ 
-            p: 3, 
-            pt: 0,
-            gap: 2,
-            position: 'relative'
-          }}>
-            <Button
-              fullWidth
-              variant="outlined"
-              onClick={closeDeleteDialog}
-              disabled={deleteDialog.deleting}
-              sx={{
-                py: 1.5,
-                borderRadius: 3,
-                borderColor: alpha(theme.palette.text.secondary, 0.5),
-                color: theme.palette.text.secondary,
-                fontWeight: 600,
-                fontSize: '1rem',
-                '&:hover': {
-                  borderColor: theme.palette.text.primary,
-                  bgcolor: alpha(theme.palette.common.white, 0.05)
-                }
-              }}
-            >
-              Отмена
-            </Button>
-            
-            <Button
-              fullWidth
-              variant="contained"
-              onClick={handleDeleteConfirm}
-              disabled={deleteDialog.deleting}
-              sx={{
-                py: 1.5,
-                borderRadius: 3,
-                background: `linear-gradient(135deg, ${theme.palette.error.main} 0%, ${theme.palette.error.dark} 100%)`,
-                color: theme.palette.error.contrastText,
-                fontWeight: 700,
-                fontSize: '1rem',
-                position: 'relative',
-                overflow: 'hidden',
-                '&:hover': {
-                  background: `linear-gradient(135deg, ${theme.palette.error.dark} 0%, ${theme.palette.error.main} 100%)`,
-                  transform: 'scale(1.02)'
-                },
-                '&:active': {
-                  transform: 'scale(0.98)'
-                },
-                '&.Mui-disabled': {
-                  background: alpha(theme.palette.error.main, 0.3)
-                }
-              }}
-            >
-              {deleteDialog.deleting ? (
-                <Stack direction="row" alignItems="center" spacing={1}>
-                  <CircularProgress size={20} sx={{ color: theme.palette.error.contrastText }} />
-                  <Typography>Удаление...</Typography>
-                </Stack>
-              ) : (
-                'Удалить навсегда'
-              )}
+          <DialogActions sx={{ p: 3, pt: 0, gap: 2 }}>
+            <Button fullWidth variant="outlined" onClick={closeDeleteDialog} disabled={deleteDialog.deleting} sx={{ borderRadius: 2, py: 1 }}>Отмена</Button>
+            <Button fullWidth variant="contained" onClick={handleDeleteConfirm} disabled={deleteDialog.deleting} sx={{ borderRadius: 2, py: 1, background: 'linear-gradient(135deg, #f44336, #d32f2f)' }}>
+              {deleteDialog.deleting ? <CircularProgress size={24} /> : 'Удалить навсегда'}
             </Button>
           </DialogActions>
         </Dialog>
       </Container>
+      <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
     </Box>
   );
 };

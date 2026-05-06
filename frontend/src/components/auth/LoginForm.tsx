@@ -14,6 +14,8 @@ import {
   Alert,
   Divider,
   Typography,
+  useTheme,
+  alpha,
 } from '@mui/material';
 import {
   Visibility,
@@ -36,10 +38,12 @@ const LoginForm: React.FC = () => {
   const [yandexError, setYandexError] = useState<string | null>(null);
   
   const { login, isLoading, error, clearError } = useAuthStore();
+  const theme = useTheme();
   const navigate = useNavigate();
   const location = useLocation();
   
   const from = (location.state as any)?.from?.pathname || '/';
+  const isDark = theme.palette.mode === 'dark';
 
   useEffect(() => {
     const params = new URLSearchParams(location.search);
@@ -134,11 +138,11 @@ const LoginForm: React.FC = () => {
           sx={{ 
             mb: 3,
             borderRadius: '12px',
-            backgroundColor: 'rgba(239, 68, 68, 0.1)',
-            border: '1px solid rgba(239, 68, 68, 0.2)',
-            color: '#fca5a5',
+            backgroundColor: alpha(theme.palette.error.main, 0.1),
+            border: `1px solid ${alpha(theme.palette.error.main, 0.2)}`,
+            color: theme.palette.error.light,
             '& .MuiAlert-icon': {
-              color: '#fca5a5',
+              color: theme.palette.error.light,
             }
           }}
           action={
@@ -148,7 +152,7 @@ const LoginForm: React.FC = () => {
                 clearError();
                 setYandexError(null);
               }}
-              sx={{ color: '#fca5a5' }}
+              sx={{ color: theme.palette.error.light }}
             >
               <CloseIcon fontSize="small" />
             </IconButton>
@@ -177,25 +181,25 @@ const LoginForm: React.FC = () => {
         sx={{
           '& .MuiOutlinedInput-root': {
             borderRadius: '12px',
-            backgroundColor: 'rgba(255, 255, 255, 0.05)',
+            backgroundColor: isDark ? alpha(theme.palette.common.white, 0.05) : alpha(theme.palette.common.black, 0.02),
             '& fieldset': {
-              borderColor: 'rgba(255, 255, 255, 0.1)',
+              borderColor: isDark ? alpha(theme.palette.common.white, 0.1) : alpha(theme.palette.common.black, 0.1),
             },
             '&:hover fieldset': {
-              borderColor: 'rgba(255, 255, 255, 0.2)',
+              borderColor: isDark ? alpha(theme.palette.common.white, 0.2) : alpha(theme.palette.common.black, 0.2),
             },
             '&.Mui-focused fieldset': {
-              borderColor: '#3b82f6',
+              borderColor: theme.palette.primary.main,
             },
           },
           '& .MuiInputLabel-root': {
-            color: 'rgba(255, 255, 255, 0.6)',
+            color: isDark ? alpha(theme.palette.common.white, 0.6) : alpha(theme.palette.common.black, 0.6),
           },
           '& .MuiInputLabel-root.Mui-focused': {
-            color: '#3b82f6',
+            color: theme.palette.primary.main,
           },
           '& .MuiOutlinedInput-input': {
-            color: 'white',
+            color: theme.palette.text.primary,
           },
         }}
       />
@@ -223,7 +227,7 @@ const LoginForm: React.FC = () => {
                 onClick={() => setShowPassword(!showPassword)}
                 edge="end"
                 disabled={isLoading}
-                sx={{ color: 'rgba(255, 255, 255, 0.6)' }}
+                sx={{ color: isDark ? alpha(theme.palette.common.white, 0.6) : alpha(theme.palette.common.black, 0.6) }}
               >
                 {showPassword ? <VisibilityOff /> : <Visibility />}
               </IconButton>
@@ -233,27 +237,49 @@ const LoginForm: React.FC = () => {
         sx={{
           '& .MuiOutlinedInput-root': {
             borderRadius: '12px',
-            backgroundColor: 'rgba(255, 255, 255, 0.05)',
+            backgroundColor: isDark ? alpha(theme.palette.common.white, 0.05) : alpha(theme.palette.common.black, 0.02),
             '& fieldset': {
-              borderColor: 'rgba(255, 255, 255, 0.1)',
+              borderColor: isDark ? alpha(theme.palette.common.white, 0.1) : alpha(theme.palette.common.black, 0.1),
             },
             '&:hover fieldset': {
-              borderColor: 'rgba(255, 255, 255, 0.2)',
+              borderColor: isDark ? alpha(theme.palette.common.white, 0.2) : alpha(theme.palette.common.black, 0.2),
             },
             '&.Mui-focused fieldset': {
-              borderColor: '#3b82f6',
+              borderColor: theme.palette.primary.main,
             },
           },
           '& .MuiInputLabel-root': {
-            color: 'rgba(255, 255, 255, 0.6)',
+            color: isDark ? alpha(theme.palette.common.white, 0.6) : alpha(theme.palette.common.black, 0.6),
           },
           '& .MuiInputLabel-root.Mui-focused': {
-            color: '#3b82f6',
+            color: theme.palette.primary.main,
           },
           '& .MuiOutlinedInput-input': {
-            color: 'white',
+            color: theme.palette.text.primary,
           },
         }}
+      />
+
+      <FormControlLabel
+        control={
+          <Checkbox
+            name="rememberMe"
+            checked={formData.rememberMe}
+            onChange={handleChange}
+            disabled={isLoading}
+            sx={{
+              color: isDark ? alpha(theme.palette.common.white, 0.6) : alpha(theme.palette.common.black, 0.6),
+              '&.Mui-checked': {
+                color: theme.palette.primary.main,
+              },
+            }}
+          />
+        }
+        label={
+          <Typography sx={{ color: theme.palette.text.secondary, fontSize: '0.9rem' }}>
+            Запомнить меня
+          </Typography>
+        }
       />
 
       <Button
@@ -270,19 +296,19 @@ const LoginForm: React.FC = () => {
           fontSize: '1rem',
           fontWeight: 600,
           textTransform: 'none',
-          background: 'linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%)',
-          boxShadow: '0 4px 12px rgba(59, 130, 246, 0.3)',
+          background: `linear-gradient(135deg, ${theme.palette.primary.main} 0%, ${theme.palette.secondary.main} 100%)`,
+          boxShadow: `0 4px 12px ${alpha(theme.palette.primary.main, 0.3)}`,
           transition: 'all 0.2s ease',
           '&:hover': {
-            background: 'linear-gradient(135deg, #2563eb 0%, #7c3aed 100%)',
-            boxShadow: '0 6px 16px rgba(59, 130, 246, 0.4)',
+            background: `linear-gradient(135deg, ${theme.palette.primary.dark} 0%, ${theme.palette.secondary.dark} 100%)`,
+            boxShadow: `0 6px 16px ${alpha(theme.palette.primary.main, 0.4)}`,
             transform: 'translateY(-1px)',
           },
           '&:active': {
             transform: 'translateY(0)',
           },
           '&:disabled': {
-            background: 'rgba(59, 130, 246, 0.5)',
+            background: alpha(theme.palette.primary.main, 0.5),
           }
         }}
       >
@@ -295,19 +321,27 @@ const LoginForm: React.FC = () => {
         gap: 2,
         my: 2
       }}>
-        <Box sx={{ flex: 1, height: '1px', bgcolor: 'rgba(255, 255, 255, 0.1)' }} />
-        <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.5)' }}>
+        <Box sx={{ 
+          flex: 1, 
+          height: '1px', 
+          bgcolor: isDark ? alpha(theme.palette.common.white, 0.1) : alpha(theme.palette.common.black, 0.1)
+        }} />
+        <Typography variant="body2" sx={{ color: theme.palette.text.secondary }}>
           или
         </Typography>
-        <Box sx={{ flex: 1, height: '1px', bgcolor: 'rgba(255, 255, 255, 0.1)' }} />
+        <Box sx={{ 
+          flex: 1, 
+          height: '1px', 
+          bgcolor: isDark ? alpha(theme.palette.common.white, 0.1) : alpha(theme.palette.common.black, 0.1)
+        }} />
       </Box>
-<YandexLoginButton 
-  mode="login"
-  variant="white"
-  onError={(error) => setYandexError(error)}
-  fullWidth
-/>
 
+      <YandexLoginButton 
+        mode="login"
+        variant="white"
+        onError={(error) => setYandexError(error)}
+        fullWidth
+      />
     </Box>
   );
 };
