@@ -66,23 +66,49 @@ const RegisterForm: React.FC = () => {
     setPrivacyModalOpen(false);
   };
 
+  // Валидация имени/фамилии/отчества - только русские буквы, дефисы и пробелы
+  const validateRussianName = (value: string, fieldName: string): string | null => {
+    if (!value.trim()) {
+      return `${fieldName} обязательна для заполнения`;
+    }
+    
+    // Проверка на латиницу
+    if (/[a-zA-Z]/.test(value)) {
+      return `${fieldName} должно быть на русском языке`;
+    }
+    
+    // Проверка на цифры
+    if (/\d/.test(value)) {
+      return `${fieldName} не может содержать цифры`;
+    }
+    
+    // Проверка на допустимые символы: русские буквы, дефис, пробел
+    if (!/^[а-яА-ЯёЁ\s-]+$/.test(value)) {
+      return `${fieldName} должно содержать только русские буквы, дефисы и пробелы`;
+    }
+    
+    if (value.length > 50) {
+      return `${fieldName} не может превышать 50 символов`;
+    }
+    
+    return null;
+  };
+
   const validateForm = () => {
     const newErrors: Record<string, string> = {};
     
-    if (!formData.lastName.trim()) {
-      newErrors.lastName = 'Фамилия обязательна для заполнения';
-    } else if (formData.lastName.length > 50) {
-      newErrors.lastName = 'Фамилия не может превышать 50 символов';
-    }
+    // Валидация фамилии
+    const lastNameError = validateRussianName(formData.lastName, 'Фамилия');
+    if (lastNameError) newErrors.lastName = lastNameError;
     
-    if (!formData.firstName.trim()) {
-      newErrors.firstName = 'Имя обязательно для заполнения';
-    } else if (formData.firstName.length > 50) {
-      newErrors.firstName = 'Имя не может превышать 50 символов';
-    }
+    // Валидация имени
+    const firstNameError = validateRussianName(formData.firstName, 'Имя');
+    if (firstNameError) newErrors.firstName = firstNameError;
     
-    if (formData.middleName && formData.middleName.length > 50) {
-      newErrors.middleName = 'Отчество не может превышать 50 символов';
+    // Валидация отчества (если заполнено)
+    if (formData.middleName.trim()) {
+      const middleNameError = validateRussianName(formData.middleName, 'Отчество');
+      if (middleNameError) newErrors.middleName = middleNameError;
     }
     
     if (!formData.email.trim()) {
@@ -140,10 +166,21 @@ const RegisterForm: React.FC = () => {
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value, type, checked } = e.target;
-    setFormData(prev => ({ 
-      ...prev, 
-      [name]: type === 'checkbox' ? checked : value 
-    }));
+    
+    // Для полей ФИО фильтруем недопустимые символы на лету
+    if (['lastName', 'firstName', 'middleName'].includes(name)) {
+      // Разрешаем только русские буквы, дефисы, пробелы и backspace
+      const filteredValue = value.replace(/[^а-яА-ЯёЁ\s-]/g, '');
+      setFormData(prev => ({ 
+        ...prev, 
+        [name]: filteredValue
+      }));
+    } else {
+      setFormData(prev => ({ 
+        ...prev, 
+        [name]: type === 'checkbox' ? checked : value 
+      }));
+    }
     
     if (errors[name]) {
       setErrors(prev => ({ ...prev, [name]: '' }));
@@ -274,6 +311,10 @@ const RegisterForm: React.FC = () => {
                 disabled={isLoading}
                 variant="outlined"
                 sx={textFieldStyles}
+                inputProps={{ 
+                  autoComplete: 'off',
+                  style: { textTransform: 'capitalize' }
+                }}
               />
             </Grid>
             <Grid item xs={12} sm={6} sx={{ width: '100%' }}>
@@ -291,6 +332,10 @@ const RegisterForm: React.FC = () => {
                 disabled={isLoading}
                 variant="outlined"
                 sx={textFieldStyles}
+                inputProps={{ 
+                  autoComplete: 'off',
+                  style: { textTransform: 'capitalize' }
+                }}
               />
             </Grid>
           </Grid>
@@ -310,6 +355,10 @@ const RegisterForm: React.FC = () => {
             disabled={isLoading}
             variant="outlined"
             sx={textFieldStyles}
+            inputProps={{ 
+              autoComplete: 'off',
+              style: { textTransform: 'capitalize' }
+            }}
           />
         </Box>
 

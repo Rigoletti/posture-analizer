@@ -28,6 +28,16 @@ import {
   Zoom,
   Pagination,
   Fade,
+  Drawer,
+  BottomNavigation,
+  BottomNavigationAction,
+  SwipeableDrawer,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Slider,
+  Divider,
 } from '@mui/material';
 import {
   PlayArrow,
@@ -51,6 +61,10 @@ import {
   CheckCircle,
   EmojiEvents,
   Timer,
+  Home,
+  Explore,
+  Person,
+  Menu as MenuIcon,
 } from '@mui/icons-material';
 import { motion, AnimatePresence } from 'framer-motion';
 import { exercisesApi } from '../../api/exercises';
@@ -80,17 +94,17 @@ const CACHE_KEY = 'exercises_cache';
 const Exercises: React.FC = () => {
   const theme = useTheme();
   const navigate = useNavigate();
-  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
-  const isTablet = useMediaQuery(theme.breakpoints.down('sm'));
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+  const isTablet = useMediaQuery(theme.breakpoints.down('md'));
+  const isLandscape = useMediaQuery('(orientation: landscape)');
   
   const [exercises, setExercises] = useState<Exercise[]>(() => {
-    // Инициализация из кэша при монтировании
     const cached = cache.get(CACHE_KEY);
     return cached || [];
   });
   const [loading, setLoading] = useState(() => {
     const cached = cache.get(CACHE_KEY);
-    return !cached; // Если есть кэш, не показываем загрузку
+    return !cached;
   });
   const [searchTerm, setSearchTerm] = useState('');
   const [page, setPage] = useState(1);
@@ -102,46 +116,44 @@ const Exercises: React.FC = () => {
   const [show3dOnly, setShow3dOnly] = useState(false);
   const [sortBy, setSortBy] = useState<'popular' | 'newest' | 'duration'>('popular');
   const [showFilters, setShowFilters] = useState(false);
+  const [showSortDialog, setShowSortDialog] = useState(false);
   const [favorites, setFavorites] = useState<Set<string>>(new Set());
+  const [searchFocused, setSearchFocused] = useState(false);
   
-  // Ref для предотвращения двойной загрузки
   const isMounted = useRef(false);
   const initialLoadDone = useRef(false);
   const abortControllerRef = useRef<AbortController | null>(null);
 
   // Доступные типы упражнений
   const exerciseTypes = useMemo(() => [
-    { value: 'all', label: 'Все типы', icon: <FitnessCenter />, color: theme.palette.primary.main, count: exercises.length },
-    { value: 'stretching', label: 'Растяжка', icon: <Spa />, color: theme.palette.primary.main, count: exercises.filter(e => e.type === 'stretching').length },
-    { value: 'cardio', label: 'Кардио', icon: <Whatshot />, color: theme.palette.error.main, count: exercises.filter(e => e.type === 'cardio').length },
-    { value: 'strength', label: 'Силовые', icon: <FitnessCenter />, color: theme.palette.info.main, count: exercises.filter(e => e.type === 'strength').length },
-    { value: 'posture', label: 'Осанка', icon: <TrendingUp />, color: theme.palette.success.main, count: exercises.filter(e => e.type === 'posture').length },
-    { value: 'flexibility', label: 'Гибкость', icon: <Spa />, color: theme.palette.primary.main, count: exercises.filter(e => e.type === 'flexibility').length },
-    { value: 'warmup', label: 'Разминка', icon: <Bolt />, color: theme.palette.warning.main, count: exercises.filter(e => e.type === 'warmup').length },
-    { value: 'cooldown', label: 'Заминка', icon: <Restore />, color: theme.palette.grey[500], count: exercises.filter(e => e.type === 'cooldown').length }
-  ], [exercises, theme]);
+    { value: 'all', label: 'Все', icon: <FitnessCenter />, color: theme.palette.primary.main, shortLabel: 'Все' },
+    { value: 'stretching', label: 'Растяжка', icon: <Spa />, color: theme.palette.primary.main, shortLabel: 'Растяжка' },
+    { value: 'cardio', label: 'Кардио', icon: <Whatshot />, color: theme.palette.error.main, shortLabel: 'Кардио' },
+    { value: 'strength', label: 'Силовые', icon: <FitnessCenter />, color: theme.palette.info.main, shortLabel: 'Силовые' },
+    { value: 'posture', label: 'Осанка', icon: <TrendingUp />, color: theme.palette.success.main, shortLabel: 'Осанка' },
+    { value: 'flexibility', label: 'Гибкость', icon: <Spa />, color: theme.palette.primary.main, shortLabel: 'Гибкость' },
+    { value: 'warmup', label: 'Разминка', icon: <Bolt />, color: theme.palette.warning.main, shortLabel: 'Разминка' },
+    { value: 'cooldown', label: 'Заминка', icon: <Restore />, color: theme.palette.grey[500], shortLabel: 'Заминка' }
+  ], [theme]);
 
   const difficulties = useMemo(() => [
-    { value: 'all', label: 'Любой уровень', color: theme.palette.primary.main },
-    { value: 'beginner', label: 'Начальный', color: theme.palette.success.main },
-    { value: 'intermediate', label: 'Средний', color: theme.palette.warning.main },
-    { value: 'advanced', label: 'Продвинутый', color: theme.palette.error.main }
+    { value: 'all', label: 'Любой', color: theme.palette.primary.main, description: 'Все уровни' },
+    { value: 'beginner', label: 'Начальный', color: theme.palette.success.main, description: 'Для новичков' },
+    { value: 'intermediate', label: 'Средний', color: theme.palette.warning.main, description: 'С опытом' },
+    { value: 'advanced', label: 'Продвинутый', color: theme.palette.error.main, description: 'Для профи' }
   ], [theme]);
 
   const sortOptions = [
-    { value: 'popular', label: 'Популярные', icon: <TrendingUp sx={{ fontSize: 16 }} /> },
-    { value: 'newest', label: 'Новые', icon: <Timer sx={{ fontSize: 16 }} /> },
-    { value: 'duration', label: 'По длительности', icon: <AccessTime sx={{ fontSize: 16 }} /> },
+    { value: 'popular', label: 'Популярные', icon: <TrendingUp sx={{ fontSize: 16 }} />, description: 'Самые популярные' },
+    { value: 'newest', label: 'Сначала новые', icon: <Timer sx={{ fontSize: 16 }} />, description: 'Недавно добавленные' },
+    { value: 'duration', label: 'По длительности', icon: <AccessTime sx={{ fontSize: 16 }} />, description: 'От коротких к длинным' },
   ];
 
-  // Функция для генерации ключа кэша
   const getCacheKey = useCallback(() => {
     return `${CACHE_KEY}_${selectedType}_${selectedDifficulty}_${show3dOnly}_${sortBy}_${page}_${searchTerm}`;
   }, [selectedType, selectedDifficulty, show3dOnly, sortBy, page, searchTerm]);
 
-  // Основная функция загрузки
   const fetchExercises = useCallback(async (skipCache = false) => {
-    // Отменяем предыдущий запрос
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
     }
@@ -151,7 +163,6 @@ const Exercises: React.FC = () => {
     
     const cacheKey = getCacheKey();
     
-    // Проверяем кэш
     if (!skipCache && cache.has(cacheKey)) {
       const cachedData = cache.get(cacheKey);
       setExercises(cachedData.exercises);
@@ -165,7 +176,7 @@ const Exercises: React.FC = () => {
     try {
       const params: any = {
         page,
-        limit: 20,
+        limit: isMobile ? 12 : 20,
         sortBy,
       };
       
@@ -201,7 +212,6 @@ const Exercises: React.FC = () => {
         totalPages: response.data.pages || 1
       };
       
-      // Сохраняем в кэш
       cache.set(cacheKey, result);
       
       setExercises(formattedExercises);
@@ -216,9 +226,8 @@ const Exercises: React.FC = () => {
         setLoading(false);
       }
     }
-  }, [selectedType, selectedDifficulty, show3dOnly, searchTerm, page, sortBy, favorites, getCacheKey]);
+  }, [selectedType, selectedDifficulty, show3dOnly, searchTerm, page, sortBy, favorites, getCacheKey, isMobile]);
 
-  // Загрузка при монтировании - только один раз
   useEffect(() => {
     if (!initialLoadDone.current) {
       initialLoadDone.current = true;
@@ -230,12 +239,10 @@ const Exercises: React.FC = () => {
         abortControllerRef.current.abort();
       }
     };
-  }, []); // Пустой массив - только при монтировании
+  }, []);
 
-  // Обновление при изменении фильтров
   useEffect(() => {
     if (initialLoadDone.current) {
-      // Сбрасываем страницу если изменились фильтры
       if (page !== 1 && (selectedType !== 'all' || selectedDifficulty !== 'all' || show3dOnly || searchTerm || sortBy !== 'popular')) {
         setPage(1);
       } else {
@@ -247,7 +254,6 @@ const Exercises: React.FC = () => {
     }
   }, [selectedType, selectedDifficulty, show3dOnly, searchTerm, sortBy]);
 
-  // Обновление при изменении страницы
   useEffect(() => {
     if (initialLoadDone.current && page !== 1) {
       fetchExercises();
@@ -260,6 +266,7 @@ const Exercises: React.FC = () => {
     setShow3dOnly(false);
     setSearchTerm('');
     setPage(1);
+    setShowFilters(false);
   }, []);
 
   const toggleFavorite = useCallback((id: string) => {
@@ -310,9 +317,175 @@ const Exercises: React.FC = () => {
     visible: {
       y: 0,
       opacity: 1,
-      transition: { type: "spring", stiffness: 100 }
+      transition: { type: "spring", stiffness: 100, damping: 20 }
     }
   };
+
+  // Мобильный компонент фильтров
+  const FiltersDrawer = () => (
+    <SwipeableDrawer
+      anchor="bottom"
+      open={showFilters}
+      onClose={() => setShowFilters(false)}
+      onOpen={() => setShowFilters(true)}
+      disableSwipeToOpen
+      sx={{
+        '& .MuiDrawer-paper': {
+          borderTopLeftRadius: 20,
+          borderTopRightRadius: 20,
+          maxHeight: '85vh',
+          background: theme.palette.background.paper,
+        }
+      }}
+    >
+      <Box sx={{ p: 2, pb: 4 }}>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+          <Typography variant="h6" sx={{ fontWeight: 700 }}>
+            Фильтры
+          </Typography>
+          <IconButton onClick={() => setShowFilters(false)} size="small">
+            <Close />
+          </IconButton>
+        </Box>
+        
+        <Divider sx={{ mb: 2 }} />
+        
+        <Box sx={{ mb: 3 }}>
+          <Typography sx={{ fontWeight: 600, mb: 1.5, fontSize: '0.9rem' }}>
+            Тип упражнений
+          </Typography>
+          <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap sx={{ gap: 1 }}>
+            {exerciseTypes.map((type) => (
+              <Chip
+                key={type.value}
+                icon={type.icon}
+                label={type.shortLabel}
+                onClick={() => setSelectedType(type.value === selectedType ? 'all' : type.value)}
+                variant={selectedType === type.value ? 'filled' : 'outlined'}
+                size="small"
+                sx={{
+                  bgcolor: selectedType === type.value ? alpha(type.color, 0.15) : 'transparent',
+                  borderColor: alpha(type.color, 0.3),
+                  color: selectedType === type.value ? type.color : theme.palette.text.secondary,
+                }}
+              />
+            ))}
+          </Stack>
+        </Box>
+        
+        <Box sx={{ mb: 3 }}>
+          <Typography sx={{ fontWeight: 600, mb: 1.5, fontSize: '0.9rem' }}>
+            Уровень сложности
+          </Typography>
+          <Stack direction="row" spacing={1} flexWrap="wrap" sx={{ gap: 1 }}>
+            {difficulties.map((diff) => (
+              <Chip
+                key={diff.value}
+                label={diff.label}
+                onClick={() => setSelectedDifficulty(diff.value === selectedDifficulty ? 'all' : diff.value)}
+                variant={selectedDifficulty === diff.value ? 'filled' : 'outlined'}
+                size="small"
+                sx={{
+                  bgcolor: selectedDifficulty === diff.value ? alpha(diff.color, 0.15) : 'transparent',
+                  borderColor: alpha(diff.color, 0.3),
+                  color: selectedDifficulty === diff.value ? diff.color : theme.palette.text.secondary,
+                }}
+              />
+            ))}
+          </Stack>
+        </Box>
+        
+        <Box sx={{ mb: 3 }}>
+          <FormControlLabel
+            control={
+              <Switch
+                checked={show3dOnly}
+                onChange={(e) => setShow3dOnly(e.target.checked)}
+                size="small"
+              />
+            }
+            label={
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                <ModelTraining sx={{ fontSize: 18 }} />
+                <Typography variant="body2">Только с 3D моделью</Typography>
+              </Box>
+            }
+          />
+        </Box>
+        
+        <Stack direction="row" spacing={2}>
+          <Button
+            fullWidth
+            variant="outlined"
+            onClick={clearFilters}
+            startIcon={<ClearAll />}
+            size="medium"
+          >
+            Сбросить
+          </Button>
+          <Button
+            fullWidth
+            variant="contained"
+            onClick={() => setShowFilters(false)}
+            size="medium"
+          >
+            Применить
+          </Button>
+        </Stack>
+      </Box>
+    </SwipeableDrawer>
+  );
+
+  // Мобильный диалог сортировки
+  const SortDialog = () => (
+    <Dialog
+      open={showSortDialog}
+      onClose={() => setShowSortDialog(false)}
+      PaperProps={{
+        sx: {
+          borderRadius: 3,
+          width: '100%',
+          maxWidth: 320,
+          m: 2
+        }
+      }}
+    >
+      <DialogTitle sx={{ pb: 1, fontWeight: 700 }}>
+        Сортировка
+      </DialogTitle>
+      <DialogContent>
+        <Stack spacing={1}>
+          {sortOptions.map((option) => (
+            <Button
+              key={option.value}
+              fullWidth
+              variant={sortBy === option.value ? 'contained' : 'outlined'}
+              onClick={() => {
+                setSortBy(option.value as any);
+                setShowSortDialog(false);
+              }}
+              startIcon={option.icon}
+              sx={{
+                justifyContent: 'flex-start',
+                textTransform: 'none',
+                py: 1.5,
+                borderRadius: 2
+              }}
+            >
+              <Box sx={{ textAlign: 'left', width: '100%' }}>
+                <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                  {option.label}
+                </Typography>
+                <Typography variant="caption" color="textSecondary">
+                  {option.description}
+                </Typography>
+              </Box>
+            </Button>
+          ))}
+        </Stack>
+      </DialogContent>
+    </Dialog>
+  );
 
   return (
     <Box sx={{ 
@@ -321,94 +494,118 @@ const Exercises: React.FC = () => {
       background: theme.palette.mode === 'light' 
         ? 'linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)'
         : 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)',
-      py: 3
+      pb: isMobile ? 8 : 3,
+      pt: { xs: 1, sm: 3 }
     }}>
-      <Container maxWidth="xl">
+      <Container maxWidth="xl" sx={{ px: { xs: 1.5, sm: 2, md: 3 } }}>
         <Fade in timeout={600}>
           <Box>
-            <Box sx={{ textAlign: 'center', mb: 6 }}>
-              <Chip
-                label="⚡ ТРЕНИРОВКИ С 3D ГИДОМ"
-                sx={{
-                  bgcolor: alpha(theme.palette.primary.main, 0.1),
-                  color: theme.palette.primary.main,
-                  mb: 3,
-                  fontWeight: 700,
-                  px: 2,
-                  py: 1,
-                  fontSize: '0.7rem',
-                  letterSpacing: 0.5,
-                  border: `1px solid ${alpha(theme.palette.primary.main, 0.3)}`,
-                  borderRadius: '6px'
-                }}
-              />
+            <Box sx={{ textAlign: 'center', mb: { xs: 3, md: 6 } }}>
+              {!isMobile && (
+                <Chip
+                  label="⚡ ТРЕНИРОВКИ С 3D ГИДОМ"
+                  sx={{
+                    bgcolor: alpha(theme.palette.primary.main, 0.1),
+                    color: theme.palette.primary.main,
+                    mb: 3,
+                    fontWeight: 700,
+                    px: 2,
+                    py: 1,
+                    fontSize: '0.7rem',
+                    letterSpacing: 0.5,
+                    border: `1px solid ${alpha(theme.palette.primary.main, 0.3)}`,
+                    borderRadius: '6px'
+                  }}
+                />
+              )}
               
               <Typography
                 variant="h1"
                 sx={{
-                  fontSize: { xs: '2rem', md: '2.5rem', lg: '3rem' },
+                  fontSize: { xs: '1.5rem', sm: '2rem', md: '2.5rem', lg: '3rem' },
                   fontWeight: 800,
-                  mb: 2,
-                  lineHeight: 1.1,
+                  mb: 1.5,
+                  lineHeight: 1.2,
                   background: `linear-gradient(135deg, ${theme.palette.primary.main}, ${theme.palette.secondary.main})`,
                   backgroundClip: 'text',
                   WebkitBackgroundClip: 'text',
                   WebkitTextFillColor: 'transparent'
                 }}
               >
-                Система упражнений
+                {isMobile ? 'Упражнения' : 'Система упражнений'}
               </Typography>
               
-              <Typography
-                variant="h6"
-                sx={{
-                  color: theme.palette.text.secondary,
-                  maxWidth: 600,
-                  mx: 'auto',
-                  mb: 4,
-                  lineHeight: 1.6,
-                  fontSize: { xs: '0.9rem', md: '1rem' },
-                  fontWeight: 400
-                }}
-              >
-                Профессионально подобранные упражнения с 3D демонстрациями
-              </Typography>
+              {!isMobile && (
+                <Typography
+                  variant="h6"
+                  sx={{
+                    color: theme.palette.text.secondary,
+                    maxWidth: 600,
+                    mx: 'auto',
+                    mb: 4,
+                    lineHeight: 1.6,
+                    fontSize: { xs: '0.9rem', md: '1rem' },
+                    fontWeight: 400
+                  }}
+                >
+                  Профессионально подобранные упражнения с 3D демонстрациями
+                </Typography>
+              )}
 
-              {/* Быстрые фильтры */}
-              <Stack 
-                direction="row" 
-                spacing={1} 
-                justifyContent="center" 
-                sx={{ 
-                  flexWrap: 'wrap', 
-                  gap: 1,
-                  mb: 4 
-                }}
-              >
-                {exerciseTypes.slice(0, 5).map((type) => (
-                  <Chip
-                    key={type.value}
-                    icon={type.icon}
-                    label={`${type.label} ${type.count > 0 ? `(${type.count})` : ''}`}
-                    onClick={() => setSelectedType(type.value === selectedType ? 'all' : type.value)}
-                    variant={selectedType === type.value ? 'filled' : 'outlined'}
-                    sx={{
-                      bgcolor: selectedType === type.value ? alpha(type.color, 0.15) : 'transparent',
-                      borderColor: alpha(type.color, 0.3),
-                      color: selectedType === type.value ? type.color : theme.palette.text.secondary,
-                      '&:hover': {
-                        bgcolor: alpha(type.color, 0.1),
-                      },
-                      transition: 'all 0.2s'
-                    }}
-                  />
-                ))}
-              </Stack>
+              {/* Быстрые фильтры - горизонтальная прокрутка на мобильных */}
+              <Box sx={{ 
+                overflowX: 'auto', 
+                overflowY: 'hidden',
+                whiteSpace: 'nowrap',
+                pb: 1,
+                mb: 2,
+                '&::-webkit-scrollbar': {
+                  height: 4,
+                },
+                '&::-webkit-scrollbar-track': {
+                  backgroundColor: alpha(theme.palette.divider, 0.3),
+                  borderRadius: 4,
+                },
+                '&::-webkit-scrollbar-thumb': {
+                  backgroundColor: alpha(theme.palette.primary.main, 0.5),
+                  borderRadius: 4,
+                },
+              }}>
+                <Stack 
+                  direction="row" 
+                  spacing={1} 
+                  sx={{ 
+                    display: 'inline-flex',
+                    px: 0.5 
+                  }}
+                >
+                  {exerciseTypes.slice(0, isMobile ? 6 : 8).map((type) => (
+                    <Chip
+                      key={type.value}
+                      icon={type.icon}
+                      label={isMobile ? type.shortLabel : `${type.label}`}
+                      onClick={() => setSelectedType(type.value === selectedType ? 'all' : type.value)}
+                      variant={selectedType === type.value ? 'filled' : 'outlined'}
+                      size={isMobile ? "small" : "medium"}
+                      sx={{
+                        bgcolor: selectedType === type.value ? alpha(type.color, 0.15) : 'transparent',
+                        borderColor: alpha(type.color, 0.3),
+                        color: selectedType === type.value ? type.color : theme.palette.text.secondary,
+                        flexShrink: 0,
+                        transition: 'all 0.2s',
+                        '& .MuiChip-icon': {
+                          marginLeft: isMobile ? '4px' : '8px',
+                        }
+                      }}
+                    />
+                  ))}
+                </Stack>
+              </Box>
             </Box>
           </Box>
         </Fade>
 
-        {/* Панель поиска и фильтров */}
+        {/* Панель поиска и фильтров - адаптивная */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -417,260 +614,251 @@ const Exercises: React.FC = () => {
           <Paper
             elevation={0}
             sx={{
-              p: 2,
-              mb: 4,
+              p: { xs: 1.5, sm: 2 },
+              mb: { xs: 2, md: 4 },
               bgcolor: theme.palette.mode === 'light' 
-                ? alpha(theme.palette.background.paper, 0.8)
-                : alpha(theme.palette.background.paper, 0.4),
+                ? alpha(theme.palette.background.paper, 0.9)
+                : alpha(theme.palette.background.paper, 0.6),
               border: `1px solid ${theme.palette.divider}`,
               borderRadius: 3,
               backdropFilter: 'blur(10px)'
             }}
           >
-            <Grid container spacing={2} alignItems="center">
-              <Grid item xs={12} md={4}>
-                <Box sx={{ 
-                  display: 'flex', 
-                  alignItems: 'center',
-                  bgcolor: theme.palette.mode === 'light' 
-                    ? theme.palette.background.paper
-                    : alpha(theme.palette.background.paper, 0.6),
-                  borderRadius: 2,
-                  px: 2,
-                  py: 0.5,
-                  border: `1px solid ${theme.palette.divider}`
-                }}>
-                  <Search sx={{ color: theme.palette.primary.main, mr: 1, fontSize: '1rem' }} />
-                  <InputBase
-                    placeholder="Поиск упражнений..."
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    sx={{ 
-                      flex: 1,
-                      color: theme.palette.text.primary,
-                      fontSize: '0.9rem',
-                    }}
-                  />
-                  {searchTerm && (
-                    <IconButton 
-                      size="small" 
-                      onClick={() => setSearchTerm('')}
-                      sx={{ color: theme.palette.text.secondary }}
+            <Stack spacing={2}>
+              {/* Поисковая строка */}
+              <Box sx={{ 
+                display: 'flex', 
+                alignItems: 'center',
+                gap: 1,
+                bgcolor: theme.palette.mode === 'light' 
+                  ? theme.palette.background.paper
+                  : alpha(theme.palette.background.paper, 0.8),
+                borderRadius: 2,
+                px: { xs: 1.5, sm: 2 },
+                py: 0.5,
+                border: `1px solid ${searchFocused ? theme.palette.primary.main : theme.palette.divider}`,
+                transition: 'border-color 0.2s'
+              }}>
+                <Search sx={{ color: theme.palette.primary.main, fontSize: { xs: '1rem', sm: '1.2rem' } }} />
+                <InputBase
+                  placeholder={isMobile ? "Поиск..." : "Поиск упражнений..."}
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  onFocus={() => setSearchFocused(true)}
+                  onBlur={() => setSearchFocused(false)}
+                  sx={{ 
+                    flex: 1,
+                    color: theme.palette.text.primary,
+                    fontSize: { xs: '0.85rem', sm: '0.9rem' },
+                    py: { xs: 1, sm: 1.2 }
+                  }}
+                  autoComplete="off"
+                />
+                {searchTerm && (
+                  <IconButton 
+                    size="small" 
+                    onClick={() => setSearchTerm('')}
+                    sx={{ color: theme.palette.text.secondary }}
+                  >
+                    <Close sx={{ fontSize: { xs: 14, sm: 16 } }} />
+                  </IconButton>
+                )}
+              </Box>
+
+              {/* Кнопки управления */}
+              <Stack 
+                direction="row" 
+                spacing={1} 
+                justifyContent="space-between"
+              >
+                <Stack direction="row" spacing={1}>
+                  {/* Кнопка сортировки для мобильных */}
+                  {isMobile ? (
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      onClick={() => setShowSortDialog(true)}
+                      startIcon={<Sort />}
+                      sx={{ borderRadius: 2, textTransform: 'none', fontSize: '0.75rem' }}
                     >
-                      <Close sx={{ fontSize: 16 }} />
-                    </IconButton>
+                      {sortOptions.find(s => s.value === sortBy)?.label || 'Сортировка'}
+                    </Button>
+                  ) : (
+                    <FormControl size="small" sx={{ minWidth: 140 }}>
+                      <Select
+                        value={sortBy}
+                        onChange={(e) => setSortBy(e.target.value as any)}
+                        startAdornment={<Sort sx={{ mr: 1, fontSize: 16, color: theme.palette.primary.main }} />}
+                        sx={{
+                          bgcolor: theme.palette.mode === 'light' 
+                            ? theme.palette.background.paper
+                            : alpha(theme.palette.background.paper, 0.6),
+                          borderRadius: 2,
+                          fontSize: '0.85rem',
+                        }}
+                      >
+                        {sortOptions.map(opt => (
+                          <MenuItem key={opt.value} value={opt.value}>
+                            <Stack direction="row" spacing={1} alignItems="center">
+                              {opt.icon}
+                              <Typography>{opt.label}</Typography>
+                            </Stack>
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
                   )}
-                </Box>
-              </Grid>
-              
-              <Grid item xs={12} md={8}>
-                <Stack 
-                  direction="row" 
-                  spacing={1.5} 
-                  justifyContent={{ xs: 'flex-start', md: 'flex-end' }} 
-                  alignItems="center" 
-                  flexWrap="wrap"
-                >
-                  {/* Сортировка */}
-                  <FormControl size="small" sx={{ minWidth: 140 }}>
-                    <Select
-                      value={sortBy}
-                      onChange={(e) => setSortBy(e.target.value as any)}
-                      startAdornment={<Sort sx={{ mr: 1, fontSize: 16, color: theme.palette.primary.main }} />}
-                      sx={{
-                        bgcolor: theme.palette.mode === 'light' 
-                          ? theme.palette.background.paper
-                          : alpha(theme.palette.background.paper, 0.6),
-                        borderRadius: 2,
-                        fontSize: '0.85rem',
-                      }}
-                    >
-                      {sortOptions.map(opt => (
-                        <MenuItem key={opt.value} value={opt.value}>
-                          <Stack direction="row" spacing={1} alignItems="center">
-                            {opt.icon}
-                            <Typography>{opt.label}</Typography>
-                          </Stack>
-                        </MenuItem>
-                      ))}
-                    </Select>
-                  </FormControl>
 
-                  {/* Фильтр сложности */}
-                  <FormControl size="small" sx={{ minWidth: 140 }}>
-                    <Select
-                      value={selectedDifficulty}
-                      onChange={(e) => setSelectedDifficulty(e.target.value)}
-                      displayEmpty
-                      renderValue={(selected) => {
-                        if (!selected || selected === 'all') return 'Любой уровень';
-                        return difficulties.find(d => d.value === selected)?.label;
-                      }}
-                      sx={{
-                        bgcolor: theme.palette.mode === 'light' 
-                          ? theme.palette.background.paper
-                          : alpha(theme.palette.background.paper, 0.6),
-                        borderRadius: 2,
-                        fontSize: '0.85rem',
-                      }}
-                    >
-                      {difficulties.map(diff => (
-                        <MenuItem key={diff.value} value={diff.value}>
-                          <Stack direction="row" spacing={1} alignItems="center">
-                            <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: diff.color }} />
-                            <Typography>{diff.label}</Typography>
-                          </Stack>
-                        </MenuItem>
-                      ))}
-                    </Select>
-                  </FormControl>
+                  {/* Фильтр сложности для десктопа */}
+                  {!isMobile && (
+                    <FormControl size="small" sx={{ minWidth: 140 }}>
+                      <Select
+                        value={selectedDifficulty}
+                        onChange={(e) => setSelectedDifficulty(e.target.value)}
+                        displayEmpty
+                        renderValue={(selected) => {
+                          if (!selected || selected === 'all') return 'Любой уровень';
+                          return difficulties.find(d => d.value === selected)?.label;
+                        }}
+                        sx={{
+                          bgcolor: theme.palette.mode === 'light' 
+                            ? theme.palette.background.paper
+                            : alpha(theme.palette.background.paper, 0.6),
+                          borderRadius: 2,
+                          fontSize: '0.85rem',
+                        }}
+                      >
+                        {difficulties.map(diff => (
+                          <MenuItem key={diff.value} value={diff.value}>
+                            <Stack direction="row" spacing={1} alignItems="center">
+                              <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: diff.color }} />
+                              <Typography>{diff.label}</Typography>
+                            </Stack>
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                  )}
 
+                  {/* Кнопка 3D */}
                   <Tooltip title="Только с 3D моделью">
                     <IconButton
                       onClick={() => setShow3dOnly(!show3dOnly)}
+                      size={isMobile ? "small" : "medium"}
                       sx={{
                         bgcolor: show3dOnly ? alpha(theme.palette.primary.main, 0.1) : 'transparent',
                         color: show3dOnly ? theme.palette.primary.main : theme.palette.text.secondary,
                         border: `1px solid ${theme.palette.divider}`,
-                        '&:hover': { bgcolor: alpha(theme.palette.primary.main, 0.1) }
                       }}
                     >
-                      <ModelTraining />
+                      <ModelTraining sx={{ fontSize: { xs: 18, sm: 20 } }} />
                     </IconButton>
                   </Tooltip>
+                </Stack>
 
-                  <Badge
-                    badgeContent={activeFiltersCount}
-                    color="primary"
-                    sx={{ '& .MuiBadge-badge': { fontSize: '0.6rem', height: 18, minWidth: 18 } }}
+                {/* Кнопка фильтров */}
+                <Badge
+                  badgeContent={activeFiltersCount}
+                  color="primary"
+                  sx={{ 
+                    '& .MuiBadge-badge': { 
+                      fontSize: { xs: '0.55rem', sm: '0.6rem' }, 
+                      height: { xs: 16, sm: 18 }, 
+                      minWidth: { xs: 16, sm: 18 },
+                      top: { xs: -4, sm: -6 },
+                      right: { xs: -4, sm: -6 }
+                    } 
+                  }}
+                >
+                  <Button
+                    variant={activeFiltersCount > 0 ? 'contained' : 'outlined'}
+                    startIcon={<FilterList />}
+                    onClick={() => setShowFilters(true)}
+                    size={isMobile ? "small" : "medium"}
+                    sx={{
+                      borderRadius: 2,
+                      textTransform: 'none',
+                      fontSize: { xs: '0.75rem', sm: '0.875rem' },
+                      ...(activeFiltersCount > 0 && { bgcolor: theme.palette.primary.main })
+                    }}
                   >
-                    <Button
-                      variant={activeFiltersCount > 0 ? 'contained' : 'outlined'}
-                      startIcon={<FilterList />}
-                      onClick={() => setShowFilters(!showFilters)}
+                    {isMobile ? 'Фильтры' : 'Фильтры'}
+                  </Button>
+                </Badge>
+
+                {activeFiltersCount > 0 && !isMobile && (
+                  <Tooltip title="Сбросить все">
+                    <IconButton
+                      onClick={clearFilters}
+                      size="small"
                       sx={{
-                        borderRadius: 2,
-                        textTransform: 'none',
-                        ...(activeFiltersCount > 0 && { bgcolor: theme.palette.primary.main })
+                        color: theme.palette.error.main,
+                        border: `1px solid ${alpha(theme.palette.error.main, 0.3)}`,
                       }}
                     >
-                      Фильтры
-                    </Button>
-                  </Badge>
+                      <ClearAll />
+                    </IconButton>
+                  </Tooltip>
+                )}
+              </Stack>
 
-                  {activeFiltersCount > 0 && (
-                    <Tooltip title="Сбросить все">
-                      <IconButton
-                        onClick={clearFilters}
-                        sx={{
-                          color: theme.palette.error.main,
-                          border: `1px solid ${alpha(theme.palette.error.main, 0.3)}`,
-                        }}
-                      >
-                        <ClearAll />
-                      </IconButton>
-                    </Tooltip>
+              {/* Отображение активных фильтров на мобильных */}
+              {isMobile && activeFiltersCount > 0 && (
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap', mt: 1 }}>
+                  <Typography variant="caption" color="textSecondary">Активные фильтры:</Typography>
+                  {selectedType !== 'all' && (
+                    <Chip
+                      label={exerciseTypes.find(t => t.value === selectedType)?.shortLabel}
+                      size="small"
+                      onDelete={() => setSelectedType('all')}
+                      deleteIcon={<Close sx={{ fontSize: 14 }} />}
+                      sx={{ height: 24 }}
+                    />
                   )}
-                </Stack>
-              </Grid>
-            </Grid>
-
-            {/* Панель расширенных фильтров */}
-            <AnimatePresence>
-              {showFilters && (
-                <motion.div
-                  initial={{ height: 0, opacity: 0 }}
-                  animate={{ height: 'auto', opacity: 1 }}
-                  exit={{ height: 0, opacity: 0 }}
-                  transition={{ duration: 0.3 }}
-                >
-                  <Box sx={{ mt: 3, pt: 3, borderTop: `1px solid ${theme.palette.divider}` }}>
-                    <Grid container spacing={3}>
-                      <Grid item xs={12}>
-                        <Typography sx={{ fontWeight: 600, mb: 2, color: theme.palette.text.primary }}>
-                          Типы упражнений
-                        </Typography>
-                        <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-                          {exerciseTypes.map((type) => (
-                            <Chip
-                              key={type.value}
-                              icon={type.icon}
-                              label={`${type.label} (${type.count})`}
-                              onClick={() => setSelectedType(type.value === selectedType ? 'all' : type.value)}
-                              variant={selectedType === type.value ? 'filled' : 'outlined'}
-                              sx={{
-                                bgcolor: selectedType === type.value ? alpha(type.color, 0.15) : 'transparent',
-                                borderColor: alpha(type.color, 0.3),
-                                color: selectedType === type.value ? type.color : theme.palette.text.secondary,
-                              }}
-                            />
-                          ))}
-                        </Stack>
-                      </Grid>
-
-                      <Grid item xs={12}>
-                        <Typography sx={{ fontWeight: 600, mb: 2, color: theme.palette.text.primary }}>
-                          Уровень сложности
-                        </Typography>
-                        <Stack direction="row" spacing={1}>
-                          {difficulties.map((diff) => (
-                            <Chip
-                              key={diff.value}
-                              label={diff.label}
-                              onClick={() => setSelectedDifficulty(diff.value === selectedDifficulty ? 'all' : diff.value)}
-                              variant={selectedDifficulty === diff.value ? 'filled' : 'outlined'}
-                              sx={{
-                                bgcolor: selectedDifficulty === diff.value ? alpha(diff.color, 0.15) : 'transparent',
-                                borderColor: alpha(diff.color, 0.3),
-                                color: selectedDifficulty === diff.value ? diff.color : theme.palette.text.secondary,
-                              }}
-                            />
-                          ))}
-                        </Stack>
-                      </Grid>
-
-                      <Grid item xs={12}>
-                        <FormControlLabel
-                          control={
-                            <Switch
-                              checked={show3dOnly}
-                              onChange={(e) => setShow3dOnly(e.target.checked)}
-                              sx={{
-                                '& .MuiSwitch-switchBase.Mui-checked': {
-                                  color: theme.palette.primary.main,
-                                },
-                                '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': {
-                                  bgcolor: alpha(theme.palette.primary.main, 0.3),
-                                },
-                              }}
-                            />
-                          }
-                          label={
-                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                              <ModelTraining sx={{ color: theme.palette.primary.main, fontSize: 18 }} />
-                              <Typography sx={{ color: theme.palette.text.primary }}>
-                                Только с 3D моделью
-                              </Typography>
-                            </Box>
-                          }
-                        />
-                      </Grid>
-                    </Grid>
-                  </Box>
-                </motion.div>
+                  {selectedDifficulty !== 'all' && (
+                    <Chip
+                      label={difficulties.find(d => d.value === selectedDifficulty)?.label}
+                      size="small"
+                      onDelete={() => setSelectedDifficulty('all')}
+                      deleteIcon={<Close sx={{ fontSize: 14 }} />}
+                      sx={{ height: 24 }}
+                    />
+                  )}
+                  {show3dOnly && (
+                    <Chip
+                      label="3D модели"
+                      size="small"
+                      onDelete={() => setShow3dOnly(false)}
+                      deleteIcon={<Close sx={{ fontSize: 14 }} />}
+                      sx={{ height: 24 }}
+                    />
+                  )}
+                  {searchTerm && (
+                    <Chip
+                      label={`Поиск: ${searchTerm}`}
+                      size="small"
+                      onDelete={() => setSearchTerm('')}
+                      deleteIcon={<Close sx={{ fontSize: 14 }} />}
+                      sx={{ height: 24 }}
+                    />
+                  )}
+                  <Button size="small" onClick={clearFilters} sx={{ textTransform: 'none', fontSize: '0.7rem' }}>
+                    Сбросить все
+                  </Button>
+                </Box>
               )}
-            </AnimatePresence>
+            </Stack>
           </Paper>
         </motion.div>
 
         {/* Список упражнений */}
         {loading && exercises.length === 0 ? (
-          <Grid container spacing={2}>
-            {[...Array(12)].map((_, index) => (
+          <Grid container spacing={{ xs: 1.5, sm: 2 }}>
+            {[...Array(isMobile ? 6 : 12)].map((_, index) => (
               <Grid item xs={6} sm={4} md={3} lg={2.4} key={index}>
                 <Skeleton 
                   variant="rectangular" 
-                  height={280} 
+                  height={isMobile ? 240 : 280} 
                   sx={{ 
                     borderRadius: 3,
                     bgcolor: theme.palette.mode === 'light' 
@@ -691,7 +879,7 @@ const Exercises: React.FC = () => {
             {exercises.length === 0 ? (
               <Paper
                 sx={{
-                  p: 8,
+                  p: { xs: 4, md: 8 },
                   textAlign: 'center',
                   bgcolor: theme.palette.mode === 'light' 
                     ? alpha(theme.palette.background.paper, 0.7)
@@ -701,8 +889,8 @@ const Exercises: React.FC = () => {
                   backdropFilter: 'blur(10px)'
                 }}
               >
-                <FilterList sx={{ fontSize: 64, color: theme.palette.text.secondary, mb: 2 }} />
-                <Typography variant="h5" sx={{ color: theme.palette.text.primary, mb: 1, fontWeight: 600 }}>
+                <FilterList sx={{ fontSize: { xs: 48, md: 64 }, color: theme.palette.text.secondary, mb: 2 }} />
+                <Typography variant="h6" sx={{ color: theme.palette.text.primary, mb: 1, fontWeight: 600 }}>
                   Упражнения не найдены
                 </Typography>
                 <Typography variant="body2" sx={{ color: theme.palette.text.secondary, mb: 3 }}>
@@ -712,6 +900,7 @@ const Exercises: React.FC = () => {
                   variant="contained"
                   onClick={clearFilters}
                   startIcon={<Restore />}
+                  size={isMobile ? "small" : "medium"}
                   sx={{ borderRadius: 2, textTransform: 'none' }}
                 >
                   Сбросить фильтры
@@ -727,14 +916,14 @@ const Exercises: React.FC = () => {
                     md: 'repeat(4, 1fr)',
                     lg: 'repeat(5, 1fr)'
                   },
-                  gap: 2.5,
+                  gap: { xs: 1.5, sm: 2, md: 2.5 },
                   mb: 4
                 }}>
                   {exercises.map((exercise) => (
                     <motion.div
                       key={exercise._id}
                       variants={itemVariants}
-                      whileHover={{ y: -4 }}
+                      whileHover={!isMobile ? { y: -4 } : {}}
                       transition={{ type: "spring", stiffness: 200 }}
                     >
                       <Card 
@@ -747,18 +936,22 @@ const Exercises: React.FC = () => {
                           transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
                           bgcolor: theme.palette.background.paper,
                           border: `1px solid ${theme.palette.divider}`,
-                          borderRadius: 3,
+                          borderRadius: { xs: 2, sm: 3 },
                           overflow: 'hidden',
-                          '&:hover': {
+                          '&:active': isMobile ? {
+                            transform: 'scale(0.98)',
+                            transition: 'transform 0.1s'
+                          } : {},
+                          '&:hover': !isMobile ? {
                             borderColor: getTypeColor(exercise.type),
                             boxShadow: `0 12px 24px ${alpha(getTypeColor(exercise.type), 0.15)}`,
                             transform: 'translateY(-4px)'
-                          }
+                          } : {}
                         }}
                       >
                         <Box sx={{ 
                           position: 'relative', 
-                          height: 140,
+                          height: { xs: 110, sm: 140 },
                           bgcolor: alpha(getTypeColor(exercise.type), 0.08),
                           display: 'flex',
                           alignItems: 'center',
@@ -769,15 +962,15 @@ const Exercises: React.FC = () => {
                               display: 'flex',
                               alignItems: 'center',
                               justifyContent: 'center',
-                              width: 60,
-                              height: 60,
+                              width: { xs: 48, sm: 60 },
+                              height: { xs: 48, sm: 60 },
                               borderRadius: '50%',
                               bgcolor: alpha(getTypeColor(exercise.type), 0.15),
                               border: `1px solid ${alpha(getTypeColor(exercise.type), 0.3)}`,
                               backdropFilter: 'blur(10px)'
                             }}>
                               {React.cloneElement(getTypeIcon(exercise.type), {
-                                sx: { fontSize: 28, color: getTypeColor(exercise.type) }
+                                sx: { fontSize: { xs: 22, sm: 28 }, color: getTypeColor(exercise.type) }
                               })}
                             </Box>
                           </Zoom>
@@ -790,81 +983,84 @@ const Exercises: React.FC = () => {
                             size="small"
                             sx={{
                               position: 'absolute',
-                              top: 8,
-                              right: 8,
+                              top: { xs: 6, sm: 8 },
+                              right: { xs: 6, sm: 8 },
                               bgcolor: alpha(theme.palette.background.paper, 0.9),
                               backdropFilter: 'blur(4px)',
-                              width: 28,
-                              height: 28,
+                              width: { xs: 24, sm: 28 },
+                              height: { xs: 24, sm: 28 },
                               '&:hover': { bgcolor: theme.palette.error.light }
                             }}
                           >
                             {exercise.isFavorite ? (
-                              <Favorite sx={{ color: theme.palette.error.main, fontSize: 16 }} />
+                              <Favorite sx={{ color: theme.palette.error.main, fontSize: { xs: 14, sm: 16 } }} />
                             ) : (
-                              <FavoriteBorder sx={{ fontSize: 16 }} />
+                              <FavoriteBorder sx={{ fontSize: { xs: 14, sm: 16 } }} />
                             )}
                           </IconButton>
 
                           <Chip
-                            label={exercise.level.charAt(0)}
+                            label={exercise.difficulty === 'beginner' ? 'Н' : exercise.difficulty === 'intermediate' ? 'С' : 'П'}
                             size="small"
                             sx={{
                               position: 'absolute',
-                              top: 8,
-                              left: 8,
+                              top: { xs: 6, sm: 8 },
+                              left: { xs: 6, sm: 8 },
                               bgcolor: exercise.difficulty === 'beginner' ? theme.palette.success.main :
                                       exercise.difficulty === 'intermediate' ? theme.palette.warning.main : theme.palette.error.main,
                               color: '#fff',
                               fontWeight: 700,
-                              fontSize: '0.7rem',
-                              minWidth: 24,
-                              height: 24
+                              fontSize: { xs: '0.6rem', sm: '0.7rem' },
+                              minWidth: { xs: 20, sm: 24 },
+                              height: { xs: 20, sm: 24 },
+                              '& .MuiChip-label': { px: 0.5 }
                             }}
                           />
 
                           {exercise.has3dModel && (
                             <Chip
-                              icon={<ModelTraining sx={{ fontSize: 12 }} />}
+                              icon={<ModelTraining sx={{ fontSize: { xs: 10, sm: 12 } }} />}
                               label="3D"
                               size="small"
                               sx={{
                                 position: 'absolute',
-                                bottom: 8,
-                                right: 8,
+                                bottom: { xs: 6, sm: 8 },
+                                right: { xs: 6, sm: 8 },
                                 bgcolor: alpha(theme.palette.primary.main, 0.95),
                                 color: '#fff',
-                                fontSize: '0.65rem',
-                                height: 22,
+                                fontSize: { xs: '0.55rem', sm: '0.65rem' },
+                                height: { xs: 18, sm: 22 },
                                 backdropFilter: 'blur(4px)',
-                                '& .MuiChip-icon': { ml: 0.5, fontSize: 12 }
+                                '& .MuiChip-icon': { ml: 0.5, fontSize: { xs: 10, sm: 12 } },
+                                '& .MuiChip-label': { px: 0.5 }
                               }}
                             />
                           )}
                         </Box>
 
-                        <CardContent sx={{ p: 2, flexGrow: 1, display: 'flex', flexDirection: 'column' }}>
+                        <CardContent sx={{ p: { xs: 1.5, sm: 2 }, flexGrow: 1, display: 'flex', flexDirection: 'column' }}>
                           <Typography 
                             variant="subtitle1" 
                             sx={{ 
                               fontWeight: 700, 
-                              mb: 1,
+                              mb: 0.5,
                               lineHeight: 1.3,
-                              fontSize: '0.95rem',
+                              fontSize: { xs: '0.85rem', sm: '0.95rem' },
                               display: '-webkit-box',
                               WebkitLineClamp: 2,
                               WebkitBoxOrient: 'vertical',
-                              overflow: 'hidden'
+                              overflow: 'hidden',
+                              minHeight: { xs: '2.2rem', sm: '2.5rem' }
                             }}
                           >
                             {exercise.title}
                           </Typography>
 
-                          <Stack direction="row" spacing={1.5} sx={{ mb: 1.5 }}>
+                          <Stack direction="row" spacing={1.5} sx={{ mb: 1 }}>
                             <Tooltip title="Длительность">
                               <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                                <AccessTime sx={{ fontSize: 14, color: theme.palette.info.main }} />
-                                <Typography variant="caption" sx={{ fontWeight: 500 }}>
+                                <AccessTime sx={{ fontSize: { xs: 12, sm: 14 }, color: theme.palette.info.main }} />
+                                <Typography variant="caption" sx={{ fontWeight: 500, fontSize: { xs: '0.65rem', sm: '0.7rem' } }}>
                                   {exercise.duration} мин
                                 </Typography>
                               </Box>
@@ -872,15 +1068,15 @@ const Exercises: React.FC = () => {
                             
                             <Tooltip title="Сжигаемые калории">
                               <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                                <LocalFireDepartment sx={{ fontSize: 14, color: theme.palette.error.main }} />
-                                <Typography variant="caption" sx={{ fontWeight: 500 }}>
+                                <LocalFireDepartment sx={{ fontSize: { xs: 12, sm: 14 }, color: theme.palette.error.main }} />
+                                <Typography variant="caption" sx={{ fontWeight: 500, fontSize: { xs: '0.65rem', sm: '0.7rem' } }}>
                                   {exercise.caloriesBurned || '~50'}
                                 </Typography>
                               </Box>
                             </Tooltip>
                           </Stack>
 
-                          {exercise.muscleGroups && exercise.muscleGroups.length > 0 && (
+                          {exercise.muscleGroups && exercise.muscleGroups.length > 0 && !isMobile && (
                             <Typography 
                               variant="caption" 
                               sx={{ 
@@ -905,21 +1101,21 @@ const Exercises: React.FC = () => {
                               e.stopPropagation();
                               handleExerciseClick(exercise._id);
                             }}
-                            startIcon={<PlayArrow sx={{ fontSize: 16 }} />}
+                            startIcon={<PlayArrow sx={{ fontSize: { xs: 14, sm: 16 } }} />}
                             sx={{
                               mt: 'auto',
-                              py: 0.8,
+                              py: { xs: 0.6, sm: 0.8 },
                               background: `linear-gradient(135deg, ${getTypeColor(exercise.type)} 0%, ${alpha(getTypeColor(exercise.type), 0.8)} 100%)`,
                               borderRadius: 2,
                               fontWeight: 600,
-                              fontSize: '0.8rem',
+                              fontSize: { xs: '0.7rem', sm: '0.8rem' },
                               textTransform: 'none',
                               '&:hover': {
                                 background: `linear-gradient(135deg, ${getTypeColor(exercise.type)} 0%, ${alpha(getTypeColor(exercise.type), 0.9)} 100%)`,
                               }
                             }}
                           >
-                            Начать тренировку
+                            {isMobile ? 'Начать' : 'Начать тренировку'}
                           </Button>
                         </CardContent>
                       </Card>
@@ -935,10 +1131,15 @@ const Exercises: React.FC = () => {
                       page={page}
                       onChange={(_, value) => setPage(value)}
                       color="primary"
-                      size={isTablet ? 'small' : 'medium'}
+                      size={isMobile ? 'small' : 'medium'}
+                      siblingCount={isMobile ? 0 : 1}
+                      boundaryCount={isMobile ? 1 : 2}
                       sx={{
                         '& .MuiPaginationItem-root': {
                           borderRadius: 2,
+                          fontSize: { xs: '0.75rem', sm: '0.875rem' },
+                          minWidth: { xs: 32, sm: 40 },
+                          height: { xs: 32, sm: 40 }
                         }
                       }}
                     />
@@ -950,33 +1151,44 @@ const Exercises: React.FC = () => {
         )}
       </Container>
 
-      {/* Плавающая кнопка фильтров для мобильных */}
-      <AnimatePresence>
-        {isMobile && !showFilters && (
-          <motion.div
-            initial={{ scale: 0, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            exit={{ scale: 0, opacity: 0 }}
-            transition={{ type: "spring", stiffness: 300 }}
-          >
-            <Fab
-              onClick={() => setShowFilters(true)}
-              sx={{
-                position: 'fixed',
-                bottom: 20,
-                right: 20,
-                bgcolor: theme.palette.primary.main,
-                color: '#fff',
-                '&:hover': { bgcolor: theme.palette.primary.dark }
-              }}
-            >
-              <Badge badgeContent={activeFiltersCount} color="error">
-                <FilterList />
-              </Badge>
-            </Fab>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {/* Мобильные компоненты */}
+      {isMobile && (
+        <>
+          <FiltersDrawer />
+          <SortDialog />
+          
+          {/* Плавающая кнопка фильтров */}
+          <AnimatePresence>
+            {!showFilters && activeFiltersCount > 0 && (
+              <motion.div
+                initial={{ scale: 0, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0, opacity: 0 }}
+                transition={{ type: "spring", stiffness: 300 }}
+              >
+                <Fab
+                  onClick={() => setShowFilters(true)}
+                  size="small"
+                  sx={{
+                    position: 'fixed',
+                    bottom: 20,
+                    right: 20,
+                    bgcolor: theme.palette.primary.main,
+                    color: '#fff',
+                    '&:hover': { bgcolor: theme.palette.primary.dark },
+                    width: 48,
+                    height: 48
+                  }}
+                >
+                  <Badge badgeContent={activeFiltersCount} color="error">
+                    <FilterList />
+                  </Badge>
+                </Fab>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </>
+      )}
     </Box>
   );
 };

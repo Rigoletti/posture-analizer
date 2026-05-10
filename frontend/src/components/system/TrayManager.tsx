@@ -1,10 +1,3 @@
-/**
- * TrayManager — компонент управления фоновым мониторингом осанки.
- *
- * После рефакторинга использует реальный PostureAnalysisService вместо демо.
- * Показывает статус мониторинга, последние alert'ы и позволяет управлять.
- */
-
 import React, { useEffect, useState } from 'react';
 import { usePostureAnalysis, usePostureControl } from '../../contexts/PostureAnalysisContext';
 import '../../assets/styles/system/TrayManager.css';

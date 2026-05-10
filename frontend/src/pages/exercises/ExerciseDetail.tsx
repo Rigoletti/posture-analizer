@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   Container,
@@ -24,12 +24,15 @@ import {
   Badge,
   Tooltip,
   useTheme,
+  useMediaQuery,
+  Drawer,
+  SwipeableDrawer,
+  Divider,
 } from '@mui/material';
 import {
   ArrowBack,
   PlayArrow,
   Pause,
-  RestartAlt,
   AccessTime,
   FitnessCenter,
   LocalFireDepartment,
@@ -40,29 +43,21 @@ import {
   ModelTraining,
   SkipNext,
   SkipPrevious,
-  Sports,
-  HealthAndSafety,
   FormatListNumbered,
-  Speed,
-  Favorite,
-  Bolt,
   Replay,
   Share,
   Bookmark,
   BookmarkBorder,
-  VolumeUp,
-  VolumeOff,
   Fullscreen,
   Info,
-  TrendingFlat,
   Science,
   Psychology,
-  Spa,
   Thermostat,
   FlashOn,
-  DirectionsRun
+  DirectionsRun,
+  Close as CloseIcon,
 } from '@mui/icons-material';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { exercisesApi } from '../../api/exercises';
 import Simple3DViewer from '../../components/exercises/ThreeDModelViewer';
 
@@ -99,6 +94,10 @@ const ExerciseDetail: React.FC = () => {
   const theme = useTheme();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+  const isTablet = useMediaQuery(theme.breakpoints.down('md'));
+  
+  // Все хуки useState
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentStep, setCurrentStep] = useState(0);
   const [timeRemaining, setTimeRemaining] = useState(0);
@@ -106,15 +105,28 @@ const ExerciseDetail: React.FC = () => {
   const [exercise, setExercise] = useState<Exercise | null>(null);
   const [loading, setLoading] = useState(true);
   const [isBookmarked, setIsBookmarked] = useState(false);
-  const [isMuted, setIsMuted] = useState(false);
+  const [showMobileSteps, setShowMobileSteps] = useState(false);
+  const [showMobileInfo, setShowMobileInfo] = useState(false);
+  
+  // Все useRef хуки
+  const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const animationFrameRef = useRef<number | null>(null);
+  const lastTimestampRef = useRef<number>(0);
 
-  useEffect(() => {
-    if (id) {
-      fetchExercise(id);
+  // Cleanup функция для таймеров
+  const cleanupTimers = useCallback(() => {
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
     }
-  }, [id]);
+    if (animationFrameRef.current) {
+      cancelAnimationFrame(animationFrameRef.current);
+      animationFrameRef.current = null;
+    }
+  }, []);
 
-  const fetchExercise = async (exerciseId: string) => {
+  // Функция загрузки упражнения
+  const fetchExercise = useCallback(async (exerciseId: string) => {
     try {
       setLoading(true);
       const response = await exercisesApi.getExerciseById(exerciseId);
@@ -137,24 +149,24 @@ const ExerciseDetail: React.FC = () => {
         duration: `${exerciseData.duration || 10} минут`,
         difficulty: exerciseData.difficulty === 'beginner' ? 'Начальный' : 
                    exerciseData.difficulty === 'intermediate' ? 'Средний' : 'Продвинутый',
-        steps: Array.isArray(exerciseData.instructions) ? exerciseData.instructions.map((instruction: string, index: number) => ({
-          instruction: instruction || `Шаг ${index + 1}`,
-          duration: 5000,
-          tip: (exerciseData.warnings && exerciseData.warnings[index]) 
-            ? exerciseData.warnings[index] 
-            : 'Выполняйте упражнение плавно и без резких движений'
-        })) : [
-          {
-            instruction: 'Начните выполнение упражнения',
-            duration: 5000,
-            tip: 'Выполняйте упражнение плавно и без резких движений'
-          }
-        ],
-        benefits: exerciseData.benefits || [],
-        warnings: exerciseData.warnings || [],
+        steps: Array.isArray(exerciseData.instructions) && exerciseData.instructions.length > 0 
+          ? exerciseData.instructions.map((instruction: string, index: number) => ({
+              instruction: instruction || `Шаг ${index + 1}`,
+              duration: 5000,
+              tip: (exerciseData.warnings && exerciseData.warnings[index]) 
+                ? exerciseData.warnings[index] 
+                : 'Выполняйте упражнение плавно и без резких движений'
+            }))
+          : [{
+              instruction: 'Начните выполнение упражнения',
+              duration: 5000,
+              tip: 'Выполняйте упражнение плавно и без резких движений'
+            }],
+        benefits: exerciseData.benefits || ['Улучшение гибкости', 'Укрепление мышц', 'Повышение выносливости'],
+        warnings: exerciseData.warnings || ['Перед началом выполните разминку', 'При болях прекратите выполнение'],
         has3dModel: exerciseData.has3dModel || false,
-        caloriesBurned: exerciseData.caloriesBurned || 0,
-        muscleGroups: exerciseData.muscleGroups || [],
+        caloriesBurned: exerciseData.caloriesBurned || 50,
+        muscleGroups: exerciseData.muscleGroups || ['Все тело'],
         videoUrl: exerciseData.videoUrl || '',
         imageUrl: exerciseData.imageUrl || '',
         intensity: exerciseData.intensity || 'Средняя',
@@ -173,12 +185,33 @@ const ExerciseDetail: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
+  // useEffect для загрузки данных
   useEffect(() => {
-    if (!isPlaying || !exercise) return;
+    if (id) {
+      fetchExercise(id);
+    }
+    return cleanupTimers;
+  }, [id, fetchExercise, cleanupTimers]);
 
-    const timer = setInterval(() => {
+  // Оптимизированный таймер
+  useEffect(() => {
+    if (!isPlaying || !exercise) {
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
+      return;
+    }
+
+    let lastUpdate = Date.now();
+    
+    timerRef.current = setInterval(() => {
+      const now = Date.now();
+      const delta = now - lastUpdate;
+      lastUpdate = now;
+      
       setTimeRemaining(prev => {
         if (prev <= 1000) {
           const nextStep = (currentStep + 1) % exercise.steps.length;
@@ -187,23 +220,30 @@ const ExerciseDetail: React.FC = () => {
           setProgress(((nextStep + 1) / exercise.steps.length) * 100);
           return newTime;
         }
-        return prev - 1000;
+        return prev - delta;
       });
-    }, 1000);
+    }, 100);
 
-    return () => clearInterval(timer);
+    return () => {
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
+    };
   }, [isPlaying, currentStep, exercise]);
 
-  const handleStepClick = (stepIndex: number) => {
+  // Мемоизированные обработчики
+  const handleStepClick = useCallback((stepIndex: number) => {
     if (!exercise) return;
     
     setCurrentStep(stepIndex);
     setIsPlaying(false);
     setTimeRemaining(exercise.steps[stepIndex].duration);
     setProgress(((stepIndex + 1) / exercise.steps.length) * 100);
-  };
+    if (isMobile) setShowMobileSteps(false);
+  }, [exercise, isMobile]);
 
-  const formatTime = (milliseconds: number) => {
+  const formatTime = useCallback((milliseconds: number) => {
     const seconds = Math.ceil(milliseconds / 1000);
     const minutes = Math.floor(seconds / 60);
     const remainingSeconds = seconds % 60;
@@ -212,45 +252,44 @@ const ExerciseDetail: React.FC = () => {
       return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
     }
     return seconds.toString().padStart(2, '0');
-  };
+  }, []);
 
-  const togglePlay = () => {
-    setIsPlaying(!isPlaying);
-  };
+  const togglePlay = useCallback(() => {
+    setIsPlaying(prev => !prev);
+  }, []);
 
-  const resetExercise = () => {
+  const resetExercise = useCallback(() => {
     if (!exercise) return;
     
     setIsPlaying(false);
     setCurrentStep(0);
     setTimeRemaining(exercise.steps[0].duration);
     setProgress(0);
-  };
+  }, [exercise]);
 
-  const nextStep = () => {
+  const nextStep = useCallback(() => {
     if (!exercise) return;
-    
     const next = (currentStep + 1) % exercise.steps.length;
     handleStepClick(next);
-  };
+  }, [exercise, currentStep, handleStepClick]);
 
-  const prevStep = () => {
+  const prevStep = useCallback(() => {
     if (!exercise) return;
-    
     const prev = currentStep > 0 ? currentStep - 1 : exercise.steps.length - 1;
     handleStepClick(prev);
-  };
+  }, [exercise, currentStep, handleStepClick]);
 
-  const getDifficultyColor = (difficulty: string) => {
+  // Мемоизированные вычисления
+  const getDifficultyColor = useCallback((difficulty: string) => {
     switch (difficulty.toLowerCase()) {
       case 'начальный': return theme.palette.success.main;
       case 'средний': return theme.palette.warning.main;
       case 'продвинутый': return theme.palette.error.main;
       default: return theme.palette.primary.main;
     }
-  };
+  }, [theme]);
 
-  const getTypeColor = (type: string) => {
+  const getTypeColor = useCallback((type: string) => {
     switch (type) {
       case 'stretching': return theme.palette.secondary.main;
       case 'strength': return theme.palette.primary.main;
@@ -259,8 +298,304 @@ const ExerciseDetail: React.FC = () => {
       case 'yoga': return theme.palette.secondary.main;
       default: return theme.palette.primary.main;
     }
+  }, [theme]);
+
+  const currentStepData = useMemo(() => 
+    exercise?.steps[currentStep], 
+    [exercise, currentStep]
+  );
+
+  const stepProgress = useMemo(() => {
+    if (!currentStepData) return 0;
+    return ((currentStepData.duration - timeRemaining) / currentStepData.duration) * 100;
+  }, [currentStepData, timeRemaining]);
+
+  const exerciseTypeColor = useMemo(() => 
+    exercise ? getTypeColor(exercise.type) : theme.palette.primary.main,
+    [exercise, getTypeColor, theme]
+  );
+
+  const stats = useMemo(() => exercise ? [
+    { 
+      icon: <DirectionsRun />, 
+      label: 'Интенсивность',
+      value: exercise.intensity,
+      color: theme.palette.error.main,
+    },
+    { 
+      icon: <Thermostat />, 
+      label: 'Сложность',
+      value: exercise.difficulty,
+      color: getDifficultyColor(exercise.difficulty),
+    },
+    { 
+      icon: <FlashOn />, 
+      label: 'Шагов',
+      value: exercise.steps.length,
+      color: theme.palette.warning.main,
+    },
+    { 
+      icon: <Science />, 
+      label: 'Тип',
+      value: exercise.type.toUpperCase(),
+      color: exerciseTypeColor,
+    }
+  ] : [], [exercise, getDifficultyColor, exerciseTypeColor, theme]);
+
+  // Функции для рендеринга мобильных дроверов
+  const renderMobileStepsDrawer = () => {
+    if (!isMobile || !exercise) return null;
+    
+    return (
+      <SwipeableDrawer
+        anchor="bottom"
+        open={showMobileSteps}
+        onClose={() => setShowMobileSteps(false)}
+        onOpen={() => setShowMobileSteps(true)}
+        disableSwipeToOpen
+        key="mobile-steps-drawer"
+        sx={{
+          '& .MuiDrawer-paper': {
+            borderTopLeftRadius: 20,
+            borderTopRightRadius: 20,
+            maxHeight: '80vh',
+            background: theme.palette.background.paper,
+          }
+        }}
+      >
+        <Box sx={{ p: 2, pb: 4 }}>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+            <Typography variant="h6" sx={{ fontWeight: 700 }}>
+              Все шаги ({exercise.steps.length})
+            </Typography>
+            <IconButton onClick={() => setShowMobileSteps(false)} size="small">
+              <CloseIcon />
+            </IconButton>
+          </Box>
+          
+          <Divider sx={{ mb: 2 }} />
+          
+          <Box sx={{ maxHeight: 'calc(80vh - 80px)', overflowY: 'auto' }}>
+            <Grid container spacing={2}>
+              {exercise.steps.map((step, index) => (
+                <Grid item xs={12} key={index}>
+                  <Paper
+                    onClick={() => handleStepClick(index)}
+                    sx={{ 
+                      p: 2,
+                      borderRadius: 2,
+                      cursor: 'pointer',
+                      transition: 'all 0.2s',
+                      border: `2px solid ${
+                        index === currentStep 
+                          ? exerciseTypeColor 
+                          : theme.palette.divider
+                      }`,
+                      bgcolor: index === currentStep 
+                        ? alpha(exerciseTypeColor, 0.1)
+                        : theme.palette.mode === 'light' 
+                          ? theme.palette.background.paper
+                          : alpha(theme.palette.background.paper, 0.6),
+                    }}
+                  >
+                    <Box sx={{ position: 'relative' }}>
+                      <Box sx={{ 
+                        position: 'absolute',
+                        top: 0,
+                        left: 0,
+                        width: 4,
+                        height: '100%',
+                        bgcolor: index === currentStep 
+                          ? exerciseTypeColor 
+                          : index < currentStep
+                          ? theme.palette.success.main
+                          : alpha(theme.palette.text.disabled, 0.5)
+                      }} />
+                      
+                      <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 2, pl: 2 }}>
+                        <Avatar sx={{ 
+                          width: 36,
+                          height: 36,
+                          bgcolor: index === currentStep 
+                            ? exerciseTypeColor 
+                            : index < currentStep
+                            ? theme.palette.success.main
+                            : alpha(theme.palette.text.disabled, 0.3),
+                          color: '#fff',
+                          fontWeight: 800,
+                          fontSize: '0.875rem'
+                        }}>
+                          {index < currentStep ? '✓' : index + 1}
+                        </Avatar>
+                        
+                        <Box sx={{ flex: 1 }}>
+                          <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 0.5 }}>
+                            Шаг {index + 1}
+                          </Typography>
+                          <Typography variant="body2" sx={{ color: theme.palette.text.secondary, mb: 1 }}>
+                            {step.instruction}
+                          </Typography>
+                          <Chip
+                            icon={<AccessTime sx={{ fontSize: 14 }} />}
+                            label={formatTime(step.duration)}
+                            size="small"
+                            sx={{
+                              bgcolor: alpha(theme.palette.primary.main, 0.1),
+                              color: theme.palette.primary.main,
+                              fontSize: '0.7rem',
+                            }}
+                          />
+                        </Box>
+                      </Box>
+                    </Box>
+                  </Paper>
+                </Grid>
+              ))}
+            </Grid>
+          </Box>
+        </Box>
+      </SwipeableDrawer>
+    );
   };
 
+  const renderMobileInfoDrawer = () => {
+    if (!isMobile || !exercise) return null;
+    
+    return (
+      <SwipeableDrawer
+        anchor="bottom"
+        open={showMobileInfo}
+        onClose={() => setShowMobileInfo(false)}
+        onOpen={() => setShowMobileInfo(true)}
+        disableSwipeToOpen
+        key="mobile-info-drawer"
+        sx={{
+          '& .MuiDrawer-paper': {
+            borderTopLeftRadius: 20,
+            borderTopRightRadius: 20,
+            maxHeight: '85vh',
+            background: theme.palette.background.paper,
+          }
+        }}
+      >
+        <Box sx={{ p: 2, pb: 4 }}>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+            <Typography variant="h6" sx={{ fontWeight: 700 }}>
+              Информация
+            </Typography>
+            <IconButton onClick={() => setShowMobileInfo(false)} size="small">
+              <CloseIcon />
+            </IconButton>
+          </Box>
+          
+          <Divider sx={{ mb: 2 }} />
+          
+          <Box sx={{ maxHeight: 'calc(85vh - 80px)', overflowY: 'auto' }}>
+            {exercise.muscleGroups.length > 0 && (
+              <Box sx={{ mb: 3 }}>
+                <Typography sx={{ fontWeight: 600, mb: 1.5, fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <FitnessCenter sx={{ fontSize: 18, color: theme.palette.primary.main }} />
+                  Группы мышц
+                </Typography>
+                <Stack direction="row" flexWrap="wrap" gap={1}>
+                  {exercise.muscleGroups.map((muscle, index) => (
+                    <Chip
+                      key={index}
+                      label={muscle}
+                      size="small"
+                      sx={{ 
+                        bgcolor: alpha(theme.palette.primary.main, 0.1),
+                        color: theme.palette.primary.main,
+                        fontWeight: 600,
+                      }}
+                    />
+                  ))}
+                </Stack>
+              </Box>
+            )}
+
+            <Box sx={{ mb: 3 }}>
+              <Typography sx={{ fontWeight: 600, mb: 1.5, fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: 1 }}>
+                <TrendingUp sx={{ fontSize: 18, color: theme.palette.success.main }} />
+                Польза
+              </Typography>
+              <List disablePadding>
+                {exercise.benefits.map((benefit, index) => (
+                  <ListItem key={index} sx={{ px: 0, py: 1 }}>
+                    <ListItemIcon sx={{ minWidth: 32 }}>
+                      <CheckCircle sx={{ color: theme.palette.success.main, fontSize: 18 }} />
+                    </ListItemIcon>
+                    <ListItemText 
+                      primary={benefit}
+                      primaryTypographyProps={{ variant: 'body2' }}
+                    />
+                  </ListItem>
+                ))}
+              </List>
+            </Box>
+
+            {exercise.warnings.length > 0 && (
+              <Box>
+                <Typography sx={{ fontWeight: 600, mb: 1.5, fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <Warning sx={{ fontSize: 18, color: theme.palette.error.main }} />
+                  Внимание
+                </Typography>
+                <List disablePadding>
+                  {exercise.warnings.map((warning, index) => (
+                    <ListItem key={index} sx={{ px: 0, py: 1 }}>
+                      <ListItemIcon sx={{ minWidth: 32 }}>
+                        <Warning sx={{ color: theme.palette.error.main, fontSize: 16 }} />
+                      </ListItemIcon>
+                      <ListItemText 
+                        primary={warning}
+                        primaryTypographyProps={{ variant: 'body2', color: theme.palette.error.main }}
+                      />
+                    </ListItem>
+                  ))}
+                </List>
+              </Box>
+            )}
+
+            <Box sx={{ mt: 3 }}>
+              <Typography sx={{ fontWeight: 600, mb: 2, fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: 1 }}>
+                <Psychology sx={{ fontSize: 18, color: exerciseTypeColor }} />
+                Статистика
+              </Typography>
+              
+              <Grid container spacing={2}>
+                <Grid item xs={4}>
+                  <Paper sx={{ p: 2, textAlign: 'center', bgcolor: alpha(theme.palette.primary.main, 0.1) }}>
+                    <Typography variant="caption" color="text.secondary">Шагов</Typography>
+                    <Typography variant="h6" fontWeight={800} color="primary.main">
+                      {currentStep + 1}/{exercise.steps.length}
+                    </Typography>
+                  </Paper>
+                </Grid>
+                <Grid item xs={4}>
+                  <Paper sx={{ p: 2, textAlign: 'center', bgcolor: alpha(theme.palette.success.main, 0.1) }}>
+                    <Typography variant="caption" color="text.secondary">Время</Typography>
+                    <Typography variant="h6" fontWeight={800} color="success.main">
+                      {exercise.duration}
+                    </Typography>
+                  </Paper>
+                </Grid>
+                <Grid item xs={4}>
+                  <Paper sx={{ p: 2, textAlign: 'center', bgcolor: alpha(theme.palette.error.main, 0.1) }}>
+                    <Typography variant="caption" color="text.secondary">Калории</Typography>
+                    <Typography variant="h6" fontWeight={800} color="error.main">
+                      {Math.round((currentStep + 1) / exercise.steps.length * exercise.caloriesBurned)}/{exercise.caloriesBurned}
+                    </Typography>
+                  </Paper>
+                </Grid>
+              </Grid>
+            </Box>
+          </Box>
+        </Box>
+      </SwipeableDrawer>
+    );
+  };
+
+  // Ранние возвраты после всех хуков
   if (loading) {
     return (
       <Box sx={{ 
@@ -271,8 +606,8 @@ const ExerciseDetail: React.FC = () => {
         bgcolor: theme.palette.background.default
       }}>
         <Stack alignItems="center" spacing={2}>
-          <CircularProgress size={60} sx={{ color: theme.palette.primary.main }} />
-          <Typography variant="h6" color={theme.palette.text.secondary}>
+          <CircularProgress size={isMobile ? 40 : 60} sx={{ color: theme.palette.primary.main }} />
+          <Typography variant="body1" color={theme.palette.text.secondary}>
             Загрузка упражнения...
           </Typography>
         </Stack>
@@ -283,66 +618,53 @@ const ExerciseDetail: React.FC = () => {
   if (!exercise) {
     return (
       <Box sx={{ minHeight: '100vh', bgcolor: theme.palette.background.default }}>
-        <Container maxWidth="md" sx={{ py: 8 }}>
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6 }}
+        <Container maxWidth="md" sx={{ py: { xs: 4, md: 8 } }}>
+          <Paper
+            sx={{
+              p: { xs: 3, md: 6 },
+              textAlign: 'center',
+              bgcolor: theme.palette.mode === 'light' 
+                ? alpha(theme.palette.background.paper, 0.7)
+                : alpha(theme.palette.background.paper, 0.4),
+              border: `1px solid ${theme.palette.divider}`,
+              borderRadius: 3,
+              backdropFilter: 'blur(10px)'
+            }}
           >
-            <Paper
+            <Warning sx={{ fontSize: { xs: 48, md: 64 }, color: theme.palette.error.main, mb: 3 }} />
+            <Typography variant="h4" sx={{ 
+              fontWeight: 800,
+              mb: 2,
+              fontSize: { xs: '1.5rem', md: '2rem' },
+              color: theme.palette.text.primary
+            }}>
+              Упражнение не найдено
+            </Typography>
+            <Typography variant="body1" sx={{ color: theme.palette.text.secondary, mb: 4 }}>
+              Возможно, упражнение было удалено или перемещено
+            </Typography>
+            <Button
+              startIcon={<ArrowBack />}
+              onClick={() => navigate('/exercises')}
+              variant="contained"
+              fullWidth={isMobile}
               sx={{
-                p: 6,
-                textAlign: 'center',
-                bgcolor: theme.palette.mode === 'light' 
-                  ? alpha(theme.palette.background.paper, 0.7)
-                  : alpha(theme.palette.background.paper, 0.4),
-                border: `1px solid ${theme.palette.divider}`,
+                px: { xs: 3, md: 6 },
+                py: { xs: 1.5, md: 2 },
+                background: `linear-gradient(135deg, ${theme.palette.primary.main} 0%, ${theme.palette.secondary.main} 100%)`,
                 borderRadius: 3,
-                backdropFilter: 'blur(10px)'
+                fontWeight: 700,
               }}
             >
-              <Warning sx={{ fontSize: 64, color: theme.palette.error.main, mb: 3 }} />
-              <Typography variant="h3" sx={{ 
-                fontWeight: 800,
-                mb: 2,
-                color: theme.palette.text.primary
-              }}>
-                Упражнение не найдено
-              </Typography>
-              <Typography variant="h6" sx={{ color: theme.palette.text.secondary, mb: 4 }}>
-                Возможно, упражнение было удалено или перемещено
-              </Typography>
-              <Button
-                startIcon={<ArrowBack />}
-                onClick={() => navigate('/exercises')}
-                variant="contained"
-                sx={{
-                  px: 6,
-                  py: 2,
-                  background: `linear-gradient(135deg, ${theme.palette.primary.main} 0%, ${theme.palette.secondary.main} 100%)`,
-                  borderRadius: 3,
-                  fontWeight: 700,
-                  color: '#ffffff',
-                  '&:hover': {
-                    background: `linear-gradient(135deg, ${theme.palette.primary.dark} 0%, ${theme.palette.secondary.dark} 100%)`,
-                    transform: 'translateY(-2px)'
-                  },
-                  transition: 'all 0.3s ease'
-                }}
-              >
-                Вернуться к упражнениям
-              </Button>
-            </Paper>
-          </motion.div>
+              Вернуться к упражнениям
+            </Button>
+          </Paper>
         </Container>
       </Box>
     );
   }
 
-  const currentStepData = exercise.steps[currentStep];
-  const stepProgress = ((currentStepData.duration - timeRemaining) / currentStepData.duration) * 100;
-  const exerciseTypeColor = getTypeColor(exercise.type);
-
+  // Основной рендер
   return (
     <Box sx={{ 
       minHeight: '100vh',
@@ -350,258 +672,237 @@ const ExerciseDetail: React.FC = () => {
       background: theme.palette.mode === 'light' 
         ? 'linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)'
         : 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)',
-      py: 4
+      py: { xs: 1, sm: 2, md: 4 },
+      pb: { xs: 8, md: 4 }
     }}>
-      <Container maxWidth="xl">
-        <motion.div
-          initial={{ opacity: 0, y: -20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6 }}
-        >
-          <Box sx={{ mb: 6 }}>
-            <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 4 }}>
-              <Button
-                startIcon={<ArrowBack />}
-                onClick={() => navigate('/exercises')}
-                sx={{ 
-                  color: theme.palette.text.secondary,
-                  fontWeight: 600,
-                  '&:hover': {
-                    bgcolor: alpha(theme.palette.primary.main, 0.1),
-                    color: theme.palette.primary.main
-                  }
-                }}
-              >
-                Назад
-              </Button>
+      <Container maxWidth="xl" sx={{ px: { xs: 1.5, sm: 2, md: 3 } }}>
+        {/* Header */}
+        <Box sx={{ mb: { xs: 2, sm: 3, md: 6 } }}>
+          <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: { xs: 2, sm: 3, md: 4 } }}>
+            <Button
+              startIcon={<ArrowBack />}
+              onClick={() => navigate('/exercises')}
+              size={isMobile ? "small" : "medium"}
+              sx={{ 
+                color: theme.palette.text.secondary,
+                fontWeight: 600,
+                '&:hover': {
+                  bgcolor: alpha(theme.palette.primary.main, 0.1),
+                  color: theme.palette.primary.main
+                }
+              }}
+            >
+              {isMobile ? "Назад" : "Назад"}
+            </Button>
 
-              <Stack direction="row" spacing={2}>
-                <Tooltip title="Добавить в избранное">
+            <Stack direction="row" spacing={isMobile ? 1 : 2}>
+              <Tooltip title="Добавить в избранное">
+                <IconButton
+                  onClick={() => setIsBookmarked(!isBookmarked)}
+                  size={isMobile ? "small" : "medium"}
+                  sx={{ 
+                    bgcolor: theme.palette.mode === 'light' 
+                      ? theme.palette.background.paper
+                      : alpha(theme.palette.background.paper, 0.6),
+                    border: `1px solid ${theme.palette.divider}`,
+                  }}
+                >
+                  {isBookmarked ? (
+                    <Bookmark sx={{ color: theme.palette.error.main }} />
+                  ) : (
+                    <BookmarkBorder sx={{ color: theme.palette.text.secondary }} />
+                  )}
+                </IconButton>
+              </Tooltip>
+              
+              <Tooltip title="Поделиться">
+                <IconButton
+                  size={isMobile ? "small" : "medium"}
+                  sx={{ 
+                    bgcolor: theme.palette.mode === 'light' 
+                      ? theme.palette.background.paper
+                      : alpha(theme.palette.background.paper, 0.6),
+                    border: `1px solid ${theme.palette.divider}`,
+                  }}
+                >
+                  <Share sx={{ color: theme.palette.text.secondary }} />
+                </IconButton>
+              </Tooltip>
+
+              {isMobile && (
+                <Tooltip title="Информация">
                   <IconButton
-                    onClick={() => setIsBookmarked(!isBookmarked)}
+                    onClick={() => setShowMobileInfo(true)}
+                    size="small"
                     sx={{ 
                       bgcolor: theme.palette.mode === 'light' 
                         ? theme.palette.background.paper
                         : alpha(theme.palette.background.paper, 0.6),
                       border: `1px solid ${theme.palette.divider}`,
-                      '&:hover': {
-                        bgcolor: alpha(theme.palette.error.main, 0.1)
-                      }
                     }}
                   >
-                    {isBookmarked ? (
-                      <Bookmark sx={{ color: theme.palette.error.main }} />
-                    ) : (
-                      <BookmarkBorder sx={{ color: theme.palette.text.secondary }} />
-                    )}
+                    <Info />
                   </IconButton>
                 </Tooltip>
-                
-                <Tooltip title="Поделиться">
-                  <IconButton
-                    sx={{ 
-                      bgcolor: theme.palette.mode === 'light' 
-                        ? theme.palette.background.paper
-                        : alpha(theme.palette.background.paper, 0.6),
-                      border: `1px solid ${theme.palette.divider}`,
-                      '&:hover': {
-                        bgcolor: alpha(theme.palette.primary.main, 0.1)
-                      }
-                    }}
-                  >
-                    <Share sx={{ color: theme.palette.text.secondary }} />
-                  </IconButton>
-                </Tooltip>
-              </Stack>
+              )}
+            </Stack>
+          </Stack>
+
+          {/* Exercise Info */}
+          <Box sx={{ mb: { xs: 2, sm: 3, md: 4 } }}>
+            <Stack direction="row" spacing={1} sx={{ mb: { xs: 2, sm: 3 }, flexWrap: 'wrap', gap: 1 }}>
+              <Chip
+                label={exercise.difficulty}
+                size={isMobile ? "small" : "medium"}
+                sx={{ 
+                  bgcolor: getDifficultyColor(exercise.difficulty),
+                  color: '#ffffff',
+                  fontWeight: 700,
+                  fontSize: { xs: '0.7rem', sm: '0.8rem' },
+                  borderRadius: '6px'
+                }}
+              />
+              
+              {exercise.has3dModel && (
+                <Chip
+                  icon={<ModelTraining />}
+                  label="3D ГИД"
+                  size={isMobile ? "small" : "medium"}
+                  sx={{ 
+                    bgcolor: alpha(theme.palette.secondary.main, 0.1),
+                    color: theme.palette.secondary.main,
+                    fontWeight: 700,
+                    fontSize: { xs: '0.7rem', sm: '0.8rem' },
+                    borderRadius: '6px',
+                    border: `1px solid ${alpha(theme.palette.secondary.main, 0.3)}`
+                  }}
+                />
+              )}
+              
+              <Chip
+                icon={<LocalFireDepartment />}
+                label={`${exercise.caloriesBurned} ккал`}
+                size={isMobile ? "small" : "medium"}
+                sx={{ 
+                  bgcolor: alpha(theme.palette.error.main, 0.1),
+                  color: theme.palette.error.main,
+                  fontWeight: 700,
+                  fontSize: { xs: '0.7rem', sm: '0.8rem' },
+                  borderRadius: '6px',
+                  border: `1px solid ${alpha(theme.palette.error.main, 0.3)}`
+                }}
+              />
+              
+              <Chip
+                icon={<Timer />}
+                label={exercise.duration}
+                size={isMobile ? "small" : "medium"}
+                sx={{ 
+                  bgcolor: alpha(theme.palette.primary.main, 0.1),
+                  color: theme.palette.primary.main,
+                  fontWeight: 700,
+                  fontSize: { xs: '0.7rem', sm: '0.8rem' },
+                  borderRadius: '6px',
+                  border: `1px solid ${alpha(theme.palette.primary.main, 0.3)}`
+                }}
+              />
             </Stack>
 
-            <Box sx={{ mb: 4 }}>
-              <Stack direction="row" spacing={2} sx={{ mb: 3, flexWrap: 'wrap', gap: 2 }}>
-                <Chip
-                  label={exercise.difficulty}
-                  sx={{ 
-                    bgcolor: getDifficultyColor(exercise.difficulty),
-                    color: '#ffffff',
-                    fontWeight: 700,
-                    fontSize: '0.8rem',
-                    borderRadius: '6px'
-                  }}
-                />
-                
-                {exercise.has3dModel && (
-                  <Chip
-                    icon={<ModelTraining />}
-                    label="3D ГИД"
-                    sx={{ 
-                      bgcolor: alpha(theme.palette.secondary.main, 0.1),
-                      color: theme.palette.secondary.main,
-                      fontWeight: 700,
-                      fontSize: '0.8rem',
-                      borderRadius: '6px',
-                      border: `1px solid ${alpha(theme.palette.secondary.main, 0.3)}`
-                    }}
-                  />
-                )}
-                
-                <Chip
-                  icon={<LocalFireDepartment />}
-                  label={`${exercise.caloriesBurned} ккал`}
-                  sx={{ 
-                    bgcolor: alpha(theme.palette.error.main, 0.1),
-                    color: theme.palette.error.main,
-                    fontWeight: 700,
-                    fontSize: '0.8rem',
-                    borderRadius: '6px',
-                    border: `1px solid ${alpha(theme.palette.error.main, 0.3)}`
-                  }}
-                />
-                
-                <Chip
-                  icon={<Timer />}
-                  label={exercise.duration}
-                  sx={{ 
-                    bgcolor: alpha(theme.palette.primary.main, 0.1),
-                    color: theme.palette.primary.main,
-                    fontWeight: 700,
-                    fontSize: '0.8rem',
-                    borderRadius: '6px',
-                    border: `1px solid ${alpha(theme.palette.primary.main, 0.3)}`
-                  }}
-                />
-              </Stack>
-
-              <Typography variant="h1" sx={{ 
-                fontSize: { xs: '2.5rem', md: '3.5rem', lg: '4rem' },
-                fontWeight: 800,
-                mb: 2,
-                lineHeight: 1.1,
-                color: theme.palette.text.primary
-              }}>
-                {exercise.title}
-              </Typography>
-              
-              <Typography variant="h6" sx={{ 
-                color: theme.palette.text.secondary,
-                maxWidth: 800,
-                lineHeight: 1.6,
-                fontWeight: 400
-              }}>
-                {exercise.description}
-              </Typography>
-            </Box>
+            <Typography variant="h1" sx={{ 
+              fontSize: { xs: '1.5rem', sm: '2rem', md: '3rem', lg: '3.5rem' },
+              fontWeight: 800,
+              mb: { xs: 1, sm: 2 },
+              lineHeight: 1.2,
+              color: theme.palette.text.primary
+            }}>
+              {exercise.title}
+            </Typography>
             
-            <Grid container spacing={3}>
-              {[
-                { 
-                  icon: <DirectionsRun />, 
-                  label: 'Интенсивность',
-                  value: exercise.intensity,
-                  color: theme.palette.error.main,
-                },
-                { 
-                  icon: <Thermostat />, 
-                  label: 'Сложность',
-                  value: exercise.difficulty,
-                  color: getDifficultyColor(exercise.difficulty),
-                },
-                { 
-                  icon: <FlashOn />, 
-                  label: 'Шагов',
-                  value: exercise.steps.length,
-                  color: theme.palette.warning.main,
-                },
-                { 
-                  icon: <Science />, 
-                  label: 'Тип',
-                  value: exercise.type.toUpperCase(),
-                  color: exerciseTypeColor,
-                }
-              ].map((stat, index) => (
-                <Grid item xs={6} sm={3} key={index}>
-                  <motion.div
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.5, delay: index * 0.1 }}
-                  >
-                    <Paper sx={{ 
-                      p: 3,
-                      bgcolor: theme.palette.mode === 'light' 
-                        ? alpha(theme.palette.background.paper, 0.7)
-                        : alpha(theme.palette.background.paper, 0.4),
-                      border: `1px solid ${theme.palette.divider}`,
-                      borderRadius: 3,
-                      backdropFilter: 'blur(10px)',
-                      height: '100%',
-                      transition: 'all 0.3s ease',
-                      '&:hover': {
-                        borderColor: stat.color,
-                        transform: 'translateY(-4px)'
-                      }
-                    }}>
-                      <Box sx={{ 
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 2,
-                        mb: 2
-                      }}>
-                        <Box sx={{ 
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          width: 48,
-                          height: 48,
-                          borderRadius: 2,
-                          background: `linear-gradient(135deg, ${stat.color} 0%, ${alpha(stat.color, 0.8)} 100%)`,
-                          color: 'white'
-                        }}>
-                          {stat.icon}
-                        </Box>
-                        <Box>
-                          <Typography variant="caption" sx={{ 
-                            color: theme.palette.text.secondary,
-                            fontWeight: 600,
-                            display: 'block'
-                          }}>
-                            {stat.label}
-                          </Typography>
-                          <Typography variant="h4" sx={{ 
-                            fontWeight: 800,
-                            color: theme.palette.text.primary
-                          }}>
-                            {stat.value}
-                          </Typography>
-                        </Box>
-                      </Box>
-                    </Paper>
-                  </motion.div>
-                </Grid>
-              ))}
-            </Grid>
+            <Typography variant="body1" sx={{ 
+              color: theme.palette.text.secondary,
+              maxWidth: 800,
+              lineHeight: 1.6,
+              fontSize: { xs: '0.875rem', sm: '1rem' }
+            }}>
+              {exercise.description}
+            </Typography>
           </Box>
-        </motion.div>
-
-        {/* Main Content */}
-        <Grid container spacing={4}>
-          {/* Left Column - Player */}
-          <Grid item xs={12} lg={8}>
-            <Stack spacing={4}>
-              {/* 3D Player */}
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.6 }}
-              >
+          
+          {/* Stats Grid */}
+          <Grid container spacing={isMobile ? 1.5 : 3}>
+            {stats.map((stat, index) => (
+              <Grid item xs={6} sm={3} key={index}>
                 <Paper sx={{ 
+                  p: { xs: 2, sm: 3 },
                   bgcolor: theme.palette.mode === 'light' 
                     ? alpha(theme.palette.background.paper, 0.7)
                     : alpha(theme.palette.background.paper, 0.4),
                   border: `1px solid ${theme.palette.divider}`,
-                  borderRadius: 3,
-                  overflow: 'hidden',
+                  borderRadius: { xs: 2, sm: 3 },
                   backdropFilter: 'blur(10px)',
-                  position: 'relative'
+                  height: '100%',
+                  transition: 'all 0.3s ease',
                 }}>
-                  {/* Player Header */}
+                  <Box sx={{ 
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: { xs: 1, sm: 2 },
+                    mb: { xs: 1, sm: 2 }
+                  }}>
+                    <Box sx={{ 
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      width: { xs: 36, sm: 48 },
+                      height: { xs: 36, sm: 48 },
+                      borderRadius: 2,
+                      background: `linear-gradient(135deg, ${stat.color} 0%, ${alpha(stat.color, 0.8)} 100%)`,
+                      color: 'white'
+                    }}>
+                      {React.cloneElement(stat.icon, { sx: { fontSize: { xs: 20, sm: 24 } } })}
+                    </Box>
+                    <Box>
+                      <Typography variant="caption" sx={{ 
+                        color: theme.palette.text.secondary,
+                        fontWeight: 600,
+                        display: 'block',
+                        fontSize: { xs: '0.65rem', sm: '0.75rem' }
+                      }}>
+                        {stat.label}
+                      </Typography>
+                      <Typography variant="h6" sx={{ 
+                        fontWeight: 800,
+                        fontSize: { xs: '1rem', sm: '1.25rem' },
+                        color: theme.palette.text.primary
+                      }}>
+                        {stat.value}
+                      </Typography>
+                    </Box>
+                  </Box>
+                </Paper>
+              </Grid>
+            ))}
+          </Grid>
+        </Box>
+
+        {/* Main Content */}
+        <Grid container spacing={isMobile ? 2 : 4}>
+          {/* Left Column - Player */}
+          <Grid item xs={12} lg={8}>
+            <Stack spacing={isMobile ? 2 : 4}>
+              {/* 3D Player */}
+              <Paper sx={{ 
+                bgcolor: theme.palette.mode === 'light' 
+                  ? alpha(theme.palette.background.paper, 0.7)
+                  : alpha(theme.palette.background.paper, 0.4),
+                border: `1px solid ${theme.palette.divider}`,
+                borderRadius: { xs: 2, sm: 3 },
+                overflow: 'hidden',
+                backdropFilter: 'blur(10px)',
+                position: 'relative'
+              }}>
+                {/* Player Header - для десктопа */}
+                {!isMobile && (
                   <Box sx={{ 
                     p: 3,
                     borderBottom: `1px solid ${theme.palette.divider}`,
@@ -619,25 +920,6 @@ const ExerciseDetail: React.FC = () => {
                     </Typography>
                     
                     <Stack direction="row" spacing={1}>
-                      <Tooltip title={isMuted ? "Включить звук" : "Выключить звук"}>
-                        <IconButton
-                          onClick={() => setIsMuted(!isMuted)}
-                          sx={{ 
-                            bgcolor: theme.palette.mode === 'light' 
-                              ? theme.palette.background.paper
-                              : alpha(theme.palette.background.paper, 0.6),
-                            border: `1px solid ${theme.palette.divider}`,
-                            color: theme.palette.text.secondary,
-                            '&:hover': { 
-                              color: exerciseTypeColor,
-                              borderColor: exerciseTypeColor
-                            }
-                          }}
-                        >
-                          {isMuted ? <VolumeOff /> : <VolumeUp />}
-                        </IconButton>
-                      </Tooltip>
-                      
                       <Tooltip title="Полный экран">
                         <IconButton
                           sx={{ 
@@ -657,124 +939,119 @@ const ExerciseDetail: React.FC = () => {
                       </Tooltip>
                     </Stack>
                   </Box>
+                )}
 
-                  {/* 3D Viewer */}
-                  <Box sx={{ 
-                    height: 500,
-                    bgcolor: theme.palette.mode === 'light' ? '#f1f5f9' : '#0f172a',
-                    position: 'relative',
-                    overflow: 'hidden'
+                {/* 3D Viewer */}
+                <Box sx={{ 
+                  height: { xs: 300, sm: 400, md: 500 },
+                  bgcolor: theme.palette.mode === 'light' ? '#f1f5f9' : '#0f172a',
+                  position: 'relative',
+                  overflow: 'hidden'
+                }}>
+                  {exercise.has3dModel ? (
+                    <Simple3DViewer 
+                      modelUrl={exercise.modelUrl || undefined}
+                      modelType={exercise.modelType}
+                      isPlaying={isPlaying}
+                    />
+                  ) : (
+                    <Box sx={{ 
+                      height: '100%',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      flexDirection: 'column',
+                      p: 4
+                    }}>
+                      <ModelTraining sx={{ 
+                        fontSize: { xs: 48, sm: 80 }, 
+                        mb: 2, 
+                        color: alpha(theme.palette.text.disabled, 0.5)
+                      }} />
+                      <Typography variant={isMobile ? "body1" : "h5"} sx={{ 
+                        color: theme.palette.text.disabled,
+                        mb: 1,
+                        fontWeight: 700,
+                        textAlign: 'center'
+                      }}>
+                        3D модель не настроена
+                      </Typography>
+                      <Typography variant="caption" sx={{ 
+                        color: theme.palette.text.disabled,
+                        textAlign: 'center'
+                      }}>
+                        Используйте видеогид для правильного выполнения упражнения
+                      </Typography>
+                    </Box>
+                  )}
+                  
+                  {/* Timer Overlay */}
+                  <Paper sx={{ 
+                    position: 'absolute',
+                    top: { xs: 10, sm: 20 },
+                    right: { xs: 10, sm: 20 },
+                    bgcolor: theme.palette.mode === 'light' 
+                      ? alpha(theme.palette.background.paper, 0.95)
+                      : alpha(theme.palette.background.paper, 0.9),
+                    border: `1px solid ${theme.palette.divider}`,
+                    borderRadius: { xs: 2, sm: 3 },
+                    p: { xs: 1.5, sm: 3 },
+                    minWidth: { xs: 100, sm: 140 },
+                    textAlign: 'center',
+                    backdropFilter: 'blur(10px)'
                   }}>
-                    {exercise.has3dModel ? (
-                      <Simple3DViewer 
-                        modelUrl={exercise.modelUrl || undefined}
-                        modelType={exercise.modelType}
-                        isPlaying={isPlaying}
-                      />
-                    ) : (
-                      <Box sx={{ 
-                        height: '100%',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        flexDirection: 'column',
-                        p: 4
-                      }}>
-                        <ModelTraining sx={{ 
-                          fontSize: 80, 
-                          mb: 3, 
-                          color: alpha(theme.palette.text.disabled, 0.5)
-                        }} />
-                        <Typography variant="h5" sx={{ 
-                          color: theme.palette.text.disabled,
-                          mb: 2,
-                          fontWeight: 700
-                        }}>
-                          3D модель не настроена
-                        </Typography>
-                        <Typography variant="body2" sx={{ 
-                          color: theme.palette.text.disabled,
-                          textAlign: 'center'
-                        }}>
-                          Используйте видеогид для правильного выполнения упражнения
-                        </Typography>
-                      </Box>
-                    )}
-                    
-                    {/* Timer Overlay */}
-                    <motion.div
-                      initial={{ scale: 0.8, opacity: 0 }}
-                      animate={{ scale: 1, opacity: 1 }}
-                      transition={{ type: "spring", stiffness: 200 }}
-                    >
-                      <Paper sx={{ 
-                        position: 'absolute',
-                        top: 20,
-                        right: 20,
-                        bgcolor: theme.palette.mode === 'light' 
-                          ? alpha(theme.palette.background.paper, 0.95)
-                          : alpha(theme.palette.background.paper, 0.9),
-                        border: `1px solid ${theme.palette.divider}`,
-                        borderRadius: 3,
-                        p: 3,
-                        minWidth: 140,
-                        textAlign: 'center',
-                        backdropFilter: 'blur(10px)'
-                      }}>
-                        <Typography variant="caption" sx={{ 
-                          color: theme.palette.text.secondary,
-                          fontWeight: 600,
-                          letterSpacing: 1
-                        }}>
-                          ТАЙМЕР
-                        </Typography>
-                        <Typography variant="h1" sx={{ 
-                          fontWeight: 900,
-                          fontSize: '3.5rem',
-                          lineHeight: 1,
-                          mb: 1,
-                          color: exerciseTypeColor
-                        }}>
-                          {formatTime(timeRemaining)}
-                        </Typography>
-                        <Typography variant="caption" sx={{ 
-                          color: theme.palette.text.secondary,
-                          fontWeight: 600
-                        }}>
-                          Шаг {currentStep + 1} из {exercise.steps.length}
-                        </Typography>
-                      </Paper>
-                    </motion.div>
-                  </Box>
-                </Paper>
-              </motion.div>
+                    <Typography variant="caption" sx={{ 
+                      color: theme.palette.text.secondary,
+                      fontWeight: 600,
+                      letterSpacing: 1,
+                      fontSize: { xs: '0.65rem', sm: '0.75rem' }
+                    }}>
+                      ТАЙМЕР
+                    </Typography>
+                    <Typography variant="h1" sx={{ 
+                      fontWeight: 900,
+                      fontSize: { xs: '2rem', sm: '2.5rem', md: '3.5rem' },
+                      lineHeight: 1,
+                      mb: 0.5,
+                      color: exerciseTypeColor
+                    }}>
+                      {formatTime(timeRemaining)}
+                    </Typography>
+                    <Typography variant="caption" sx={{ 
+                      color: theme.palette.text.secondary,
+                      fontWeight: 600,
+                      fontSize: { xs: '0.65rem', sm: '0.75rem' }
+                    }}>
+                      Шаг {currentStep + 1} из {exercise.steps.length}
+                    </Typography>
+                  </Paper>
+                </Box>
+              </Paper>
 
               {/* Current Step Info */}
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.6, delay: 0.1 }}
-              >
+              {currentStepData && (
                 <Paper sx={{ 
                   bgcolor: theme.palette.mode === 'light' 
                     ? alpha(theme.palette.background.paper, 0.7)
                     : alpha(theme.palette.background.paper, 0.4),
                   border: `1px solid ${theme.palette.divider}`,
-                  borderRadius: 3,
+                  borderRadius: { xs: 2, sm: 3 },
                   overflow: 'hidden',
                   backdropFilter: 'blur(10px)'
                 }}>
-                  <CardContent sx={{ p: 4 }}>
+                  <CardContent sx={{ p: { xs: 2, sm: 4 } }}>
                     <Box sx={{ 
                       display: 'flex', 
                       alignItems: 'flex-start', 
                       justifyContent: 'space-between',
-                      mb: 4 
+                      mb: { xs: 2, sm: 4 },
+                      flexDirection: { xs: 'column', sm: 'row' }
                     }}>
-                      <Box sx={{ flex: 1 }}>
-                        <Typography variant="h4" sx={{ 
+                      <Box sx={{ flex: 1, mb: { xs: 2, sm: 0 } }}>
+                        <Typography variant={isMobile ? "h6" : "h4"} sx={{ 
                           fontWeight: 800,
-                          mb: 2,
+                          mb: { xs: 1, sm: 2 },
+                          fontSize: { xs: '1.1rem', sm: '1.5rem', md: '2rem' },
                           color: theme.palette.text.primary
                         }}>
                           <Box component="span" sx={{ color: exerciseTypeColor }}>
@@ -783,17 +1060,17 @@ const ExerciseDetail: React.FC = () => {
                         </Typography>
                         
                         <Paper sx={{ 
-                          p: 3,
-                          mb: 3,
+                          p: { xs: 2, sm: 3 },
                           bgcolor: alpha(exerciseTypeColor, 0.1),
                           border: `1px solid ${theme.palette.divider}`,
                           borderRadius: 2
                         }}>
-                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                            <Info sx={{ color: exerciseTypeColor }} />
+                          <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1.5 }}>
+                            <Info sx={{ color: exerciseTypeColor, fontSize: { xs: 18, sm: 20 }, mt: 0.5 }} />
                             <Typography variant="body2" sx={{ 
                               color: theme.palette.text.primary,
-                              fontStyle: 'italic'
+                              fontStyle: 'italic',
+                              fontSize: { xs: '0.75rem', sm: '0.875rem' }
                             }}>
                               💡 {currentStepData.tip}
                             </Typography>
@@ -804,13 +1081,14 @@ const ExerciseDetail: React.FC = () => {
                       <Badge
                         badgeContent={formatTime(currentStepData.duration)}
                         sx={{
+                          alignSelf: { xs: 'flex-start', sm: 'center' },
                           '& .MuiBadge-badge': {
                             bgcolor: exerciseTypeColor,
                             color: '#ffffff',
                             fontWeight: 700,
-                            fontSize: '0.75rem',
-                            minWidth: 60,
-                            height: 32,
+                            fontSize: { xs: '0.7rem', sm: '0.75rem' },
+                            minWidth: { xs: 50, sm: 60 },
+                            height: { xs: 28, sm: 32 },
                             borderRadius: '6px'
                           }
                         }}
@@ -819,34 +1097,36 @@ const ExerciseDetail: React.FC = () => {
                           display: 'flex',
                           alignItems: 'center',
                           justifyContent: 'center',
-                          width: 80,
-                          height: 80,
+                          width: { xs: 60, sm: 80 },
+                          height: { xs: 60, sm: 80 },
                           borderRadius: '50%',
                           bgcolor: alpha(exerciseTypeColor, 0.1),
                           border: `2px solid ${alpha(exerciseTypeColor, 0.3)}`,
-                          ml: 2
+                          ml: { xs: 0, sm: 2 }
                         }}>
-                          <Timer sx={{ color: exerciseTypeColor, fontSize: 32 }} />
+                          <Timer sx={{ color: exerciseTypeColor, fontSize: { xs: 24, sm: 32 } }} />
                         </Box>
                       </Badge>
                     </Box>
 
                     {/* Progress Bar */}
-                    <Box sx={{ mb: 4 }}>
+                    <Box sx={{ mb: { xs: 3, sm: 4 } }}>
                       <Box sx={{ 
                         display: 'flex', 
                         justifyContent: 'space-between', 
-                        mb: 2 
+                        mb: 1 
                       }}>
-                        <Typography variant="body1" sx={{ 
+                        <Typography variant="body2" sx={{ 
                           color: theme.palette.text.secondary,
-                          fontWeight: 600
+                          fontWeight: 600,
+                          fontSize: { xs: '0.75rem', sm: '0.875rem' }
                         }}>
                           Прогресс шага
                         </Typography>
-                        <Typography variant="body1" sx={{ 
+                        <Typography variant="body2" sx={{ 
                           color: exerciseTypeColor,
-                          fontWeight: 700
+                          fontWeight: 700,
+                          fontSize: { xs: '0.75rem', sm: '0.875rem' }
                         }}>
                           {Math.round(stepProgress)}%
                         </Typography>
@@ -855,7 +1135,7 @@ const ExerciseDetail: React.FC = () => {
                         variant="determinate" 
                         value={stepProgress}
                         sx={{ 
-                          height: 10,
+                          height: { xs: 6, sm: 10 },
                           borderRadius: 5,
                           bgcolor: alpha(exerciseTypeColor, 0.1),
                           '& .MuiLinearProgress-bar': {
@@ -868,50 +1148,43 @@ const ExerciseDetail: React.FC = () => {
                     </Box>
 
                     {/* Control Buttons */}
-                    <Stack direction="row" spacing={3} justifyContent="center" alignItems="center">
+                    <Stack direction="row" spacing={isMobile ? 1.5 : 3} justifyContent="center" alignItems="center">
                       <Tooltip title="Предыдущий шаг">
                         <IconButton
                           onClick={prevStep}
+                          size={isMobile ? "medium" : "large"}
                           sx={{ 
-                            width: 64,
-                            height: 64,
+                            width: { xs: 48, sm: 64 },
+                            height: { xs: 48, sm: 64 },
                             bgcolor: theme.palette.mode === 'light' 
                               ? theme.palette.background.paper
                               : alpha(theme.palette.background.paper, 0.6),
                             border: `1px solid ${theme.palette.divider}`,
                             color: theme.palette.text.primary,
-                            '&:hover': { 
-                              bgcolor: alpha(exerciseTypeColor, 0.1),
-                              borderColor: exerciseTypeColor,
-                              transform: 'translateY(-2px)'
-                            },
                             transition: 'all 0.3s ease'
                           }}
                         >
-                          <SkipPrevious sx={{ fontSize: 32 }} />
+                          <SkipPrevious sx={{ fontSize: { xs: 24, sm: 32 } }} />
                         </IconButton>
                       </Tooltip>
                       
                       <Tooltip title={isPlaying ? "Пауза" : "Старт"}>
                         <IconButton
                           onClick={togglePlay}
+                          size={isMobile ? "large" : "large"}
                           sx={{ 
-                            width: 80,
-                            height: 80,
+                            width: { xs: 64, sm: 80 },
+                            height: { xs: 64, sm: 80 },
                             background: `linear-gradient(135deg, ${exerciseTypeColor} 0%, ${alpha(exerciseTypeColor, 0.8)} 100%)`,
                             color: '#ffffff',
-                            '&:hover': { 
-                              background: `linear-gradient(135deg, ${exerciseTypeColor} 0%, ${alpha(exerciseTypeColor, 0.9)} 100%)`,
-                              transform: 'scale(1.05)'
-                            },
                             transition: 'all 0.3s ease',
                             boxShadow: `0 8px 32px ${alpha(exerciseTypeColor, 0.4)}`
                           }}
                         >
                           {isPlaying ? (
-                            <Pause sx={{ fontSize: 40 }} />
+                            <Pause sx={{ fontSize: { xs: 32, sm: 40 } }} />
                           ) : (
-                            <PlayArrow sx={{ fontSize: 40 }} />
+                            <PlayArrow sx={{ fontSize: { xs: 32, sm: 40 } }} />
                           )}
                         </IconButton>
                       </Tooltip>
@@ -919,58 +1192,61 @@ const ExerciseDetail: React.FC = () => {
                       <Tooltip title="Следующий шаг">
                         <IconButton
                           onClick={nextStep}
+                          size={isMobile ? "medium" : "large"}
                           sx={{ 
-                            width: 64,
-                            height: 64,
+                            width: { xs: 48, sm: 64 },
+                            height: { xs: 48, sm: 64 },
                             bgcolor: theme.palette.mode === 'light' 
                               ? theme.palette.background.paper
                               : alpha(theme.palette.background.paper, 0.6),
                             border: `1px solid ${theme.palette.divider}`,
                             color: theme.palette.text.primary,
-                            '&:hover': { 
-                              bgcolor: alpha(exerciseTypeColor, 0.1),
-                              borderColor: exerciseTypeColor,
-                              transform: 'translateY(-2px)'
-                            },
                             transition: 'all 0.3s ease'
                           }}
                         >
-                          <SkipNext sx={{ fontSize: 32 }} />
+                          <SkipNext sx={{ fontSize: { xs: 24, sm: 32 } }} />
                         </IconButton>
                       </Tooltip>
                       
-                      <Tooltip title="Сбросить">
-                        <IconButton
-                          onClick={resetExercise}
-                          sx={{ 
-                            width: 64,
-                            height: 64,
-                            bgcolor: theme.palette.mode === 'light' 
-                              ? theme.palette.background.paper
-                              : alpha(theme.palette.background.paper, 0.6),
-                            border: `1px solid ${alpha(theme.palette.error.main, 0.3)}`,
-                            color: theme.palette.error.main,
-                            '&:hover': { 
-                              bgcolor: alpha(theme.palette.error.main, 0.1),
-                              transform: 'translateY(-2px)'
-                            },
-                            transition: 'all 0.3s ease'
-                          }}
-                        >
-                          <Replay sx={{ fontSize: 32 }} />
-                        </IconButton>
-                      </Tooltip>
+                      {!isMobile && (
+                        <Tooltip title="Сбросить">
+                          <IconButton
+                            onClick={resetExercise}
+                            size="large"
+                            sx={{ 
+                              width: 64,
+                              height: 64,
+                              bgcolor: theme.palette.mode === 'light' 
+                                ? theme.palette.background.paper
+                                : alpha(theme.palette.background.paper, 0.6),
+                              border: `1px solid ${alpha(theme.palette.error.main, 0.3)}`,
+                              color: theme.palette.error.main,
+                              transition: 'all 0.3s ease'
+                            }}
+                          >
+                            <Replay sx={{ fontSize: 32 }} />
+                          </IconButton>
+                        </Tooltip>
+                      )}
                     </Stack>
+
+                    {isMobile && (
+                      <Button
+                        fullWidth
+                        variant="outlined"
+                        onClick={() => setShowMobileSteps(true)}
+                        startIcon={<FormatListNumbered />}
+                        sx={{ mt: 3, borderRadius: 2 }}
+                      >
+                        Все шаги ({exercise.steps.length})
+                      </Button>
+                    )}
                   </CardContent>
                 </Paper>
-              </motion.div>
+              )}
 
-              {/* All Steps */}
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.6, delay: 0.2 }}
-              >
+              {/* All Steps Desktop */}
+              {!isMobile && (
                 <Paper sx={{ 
                   bgcolor: theme.palette.mode === 'light' 
                     ? alpha(theme.palette.background.paper, 0.7)
@@ -996,129 +1272,109 @@ const ExerciseDetail: React.FC = () => {
                     <Grid container spacing={3}>
                       {exercise.steps.map((step, index) => (
                         <Grid item xs={12} sm={6} key={index}>
-                          <motion.div
-                            whileHover={{ scale: 1.02 }}
-                            whileTap={{ scale: 0.98 }}
+                          <Paper
+                            onClick={() => handleStepClick(index)}
+                            sx={{ 
+                              p: 3,
+                              borderRadius: 3,
+                              cursor: 'pointer',
+                              transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                              border: `2px solid ${
+                                index === currentStep 
+                                  ? exerciseTypeColor 
+                                  : theme.palette.divider
+                              }`,
+                              bgcolor: index === currentStep 
+                                ? alpha(exerciseTypeColor, 0.1)
+                                : theme.palette.mode === 'light' 
+                                  ? theme.palette.background.paper
+                                  : alpha(theme.palette.background.paper, 0.6),
+                              position: 'relative',
+                              overflow: 'hidden'
+                            }}
                           >
-                            <Paper
-                              onClick={() => handleStepClick(index)}
-                              sx={{ 
-                                p: 3,
-                                borderRadius: 3,
-                                cursor: 'pointer',
-                                transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-                                border: `2px solid ${
-                                  index === currentStep 
-                                    ? exerciseTypeColor 
-                                    : theme.palette.divider
-                                }`,
-                                bgcolor: index === currentStep 
-                                  ? alpha(exerciseTypeColor, 0.1)
-                                  : theme.palette.mode === 'light' 
-                                    ? theme.palette.background.paper
-                                    : alpha(theme.palette.background.paper, 0.6),
-                                position: 'relative',
-                                overflow: 'hidden',
-                                '&:hover': {
-                                  borderColor: exerciseTypeColor,
-                                  bgcolor: alpha(exerciseTypeColor, 0.1),
-                                  transform: 'translateY(-4px)',
-                                  boxShadow: `0 12px 24px ${alpha(exerciseTypeColor, 0.2)}`
-                                }
-                              }}
-                            >
-                              {/* Step Status Indicator */}
-                              <Box sx={{ 
-                                position: 'absolute',
-                                top: 0,
-                                left: 0,
-                                width: 6,
-                                height: '100%',
+                            <Box sx={{ 
+                              position: 'absolute',
+                              top: 0,
+                              left: 0,
+                              width: 6,
+                              height: '100%',
+                              bgcolor: index === currentStep 
+                                ? exerciseTypeColor 
+                                : index < currentStep
+                                ? theme.palette.success.main
+                                : alpha(theme.palette.text.disabled, 0.5)
+                            }} />
+                            
+                            <Box sx={{ 
+                              display: 'flex', 
+                              alignItems: 'flex-start', 
+                              gap: 3,
+                              pl: 2
+                            }}>
+                              <Avatar sx={{ 
+                                width: 40,
+                                height: 40,
                                 bgcolor: index === currentStep 
                                   ? exerciseTypeColor 
                                   : index < currentStep
                                   ? theme.palette.success.main
-                                  : alpha(theme.palette.text.disabled, 0.5)
-                              }} />
-                              
-                              <Box sx={{ 
-                                display: 'flex', 
-                                alignItems: 'flex-start', 
-                                gap: 3,
-                                pl: 2
+                                  : alpha(theme.palette.text.disabled, 0.3),
+                                color: '#ffffff',
+                                fontWeight: 800,
+                                fontSize: '1rem'
                               }}>
-                                <Avatar sx={{ 
-                                  width: 40,
-                                  height: 40,
-                                  bgcolor: index === currentStep 
-                                    ? exerciseTypeColor 
-                                    : index < currentStep
-                                    ? theme.palette.success.main
-                                    : alpha(theme.palette.text.disabled, 0.3),
-                                  color: '#ffffff',
-                                  fontWeight: 800,
-                                  fontSize: '1rem'
+                                {index < currentStep ? '✓' : index + 1}
+                              </Avatar>
+                              
+                              <Box sx={{ flex: 1 }}>
+                                <Typography variant="subtitle1" sx={{ 
+                                  fontWeight: 700,
+                                  color: theme.palette.text.primary,
+                                  mb: 1
                                 }}>
-                                  {index < currentStep ? '✓' : index + 1}
-                                </Avatar>
+                                  Шаг {index + 1}
+                                </Typography>
+                                <Typography variant="body2" sx={{ 
+                                  color: theme.palette.text.secondary,
+                                  mb: 2,
+                                  lineHeight: 1.5
+                                }}>
+                                  {step.instruction}
+                                </Typography>
                                 
-                                <Box sx={{ flex: 1 }}>
-                                  <Typography variant="subtitle1" sx={{ 
-                                    fontWeight: 700,
-                                    color: theme.palette.text.primary,
-                                    mb: 1
-                                  }}>
-                                    Шаг {index + 1}
-                                  </Typography>
-                                  <Typography variant="body2" sx={{ 
-                                    color: theme.palette.text.secondary,
-                                    mb: 2,
-                                    lineHeight: 1.5
-                                  }}>
-                                    {step.instruction}
-                                  </Typography>
-                                  
-                                  <Box sx={{ 
-                                    display: 'flex', 
-                                    alignItems: 'center', 
-                                    gap: 2 
-                                  }}>
-                                    <Chip
-                                      icon={<AccessTime />}
-                                      label={formatTime(step.duration)}
-                                      size="small"
-                                      sx={{
-                                        bgcolor: alpha(theme.palette.primary.main, 0.1),
-                                        color: theme.palette.primary.main,
-                                        fontSize: '0.7rem',
-                                        border: `1px solid ${alpha(theme.palette.primary.main, 0.3)}`,
-                                        borderRadius: '6px'
-                                      }}
-                                    />
-                                  </Box>
+                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                                  <Chip
+                                    icon={<AccessTime />}
+                                    label={formatTime(step.duration)}
+                                    size="small"
+                                    sx={{
+                                      bgcolor: alpha(theme.palette.primary.main, 0.1),
+                                      color: theme.palette.primary.main,
+                                      fontSize: '0.7rem',
+                                      border: `1px solid ${alpha(theme.palette.primary.main, 0.3)}`,
+                                      borderRadius: '6px'
+                                    }}
+                                  />
                                 </Box>
                               </Box>
-                            </Paper>
-                          </motion.div>
+                            </Box>
+                          </Paper>
                         </Grid>
                       ))}
                     </Grid>
                   </CardContent>
                 </Paper>
-              </motion.div>
+              )}
             </Stack>
           </Grid>
 
-          {/* Right Column - Info Panel */}
-          <Grid item xs={12} lg={4}>
-            <Stack spacing={4}>
-              {/* Muscle Groups */}
-              {exercise.muscleGroups.length > 0 && (
-                <motion.div
-                  initial={{ opacity: 0, x: 20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ duration: 0.6 }}
-                >
+          {/* Right Column Desktop */}
+          {!isMobile && (
+            <Grid item xs={12} lg={4}>
+              <Stack spacing={4}>
+                {/* Muscle Groups */}
+                {exercise.muscleGroups.length > 0 && (
                   <Paper sx={{ 
                     bgcolor: theme.palette.mode === 'light' 
                       ? alpha(theme.palette.background.paper, 0.7)
@@ -1166,40 +1422,26 @@ const ExerciseDetail: React.FC = () => {
                       
                       <Stack direction="row" flexWrap="wrap" gap={1.5}>
                         {exercise.muscleGroups.map((muscle, index) => (
-                          <motion.div
+                          <Chip
                             key={index}
-                            whileHover={{ scale: 1.05 }}
-                            whileTap={{ scale: 0.95 }}
-                          >
-                            <Chip
-                              label={muscle}
-                              sx={{ 
-                                bgcolor: alpha(theme.palette.primary.main, 0.1),
-                                color: theme.palette.primary.main,
-                                fontWeight: 600,
-                                fontSize: '0.8rem',
-                                py: 1.5,
-                                border: `1px solid ${alpha(theme.palette.primary.main, 0.3)}`,
-                                borderRadius: '6px',
-                                '&:hover': {
-                                  bgcolor: alpha(theme.palette.primary.main, 0.2)
-                                }
-                              }}
-                            />
-                          </motion.div>
+                            label={muscle}
+                            sx={{ 
+                              bgcolor: alpha(theme.palette.primary.main, 0.1),
+                              color: theme.palette.primary.main,
+                              fontWeight: 600,
+                              fontSize: '0.8rem',
+                              py: 1.5,
+                              border: `1px solid ${alpha(theme.palette.primary.main, 0.3)}`,
+                              borderRadius: '6px'
+                            }}
+                          />
                         ))}
                       </Stack>
                     </CardContent>
                   </Paper>
-                </motion.div>
-              )}
+                )}
 
-              {/* Benefits */}
-              <motion.div
-                initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ duration: 0.6, delay: 0.1 }}
-              >
+                {/* Benefits */}
                 <Paper sx={{ 
                   bgcolor: theme.palette.mode === 'light' 
                     ? alpha(theme.palette.background.paper, 0.7)
@@ -1267,15 +1509,9 @@ const ExerciseDetail: React.FC = () => {
                     </List>
                   </CardContent>
                 </Paper>
-              </motion.div>
 
-              {/* Warnings */}
-              {exercise.warnings.length > 0 && (
-                <motion.div
-                  initial={{ opacity: 0, x: 20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ duration: 0.6, delay: 0.2 }}
-                >
+                {/* Warnings */}
+                {exercise.warnings.length > 0 && (
                   <Paper sx={{ 
                     bgcolor: theme.palette.mode === 'light' 
                       ? alpha(theme.palette.background.paper, 0.7)
@@ -1344,15 +1580,9 @@ const ExerciseDetail: React.FC = () => {
                       </List>
                     </CardContent>
                   </Paper>
-                </motion.div>
-              )}
+                )}
 
-              {/* Progress Stats */}
-              <motion.div
-                initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ duration: 0.6, delay: 0.3 }}
-              >
+                {/* Progress Stats */}
                 <Paper sx={{ 
                   bgcolor: theme.palette.mode === 'light' 
                     ? alpha(theme.palette.background.paper, 0.7)
@@ -1378,11 +1608,7 @@ const ExerciseDetail: React.FC = () => {
                     <Stack spacing={3}>
                       {/* Overall Progress */}
                       <Box>
-                        <Box sx={{ 
-                          display: 'flex', 
-                          justifyContent: 'space-between', 
-                          mb: 2 
-                        }}>
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
                           <Typography variant="body1" sx={{ 
                             color: theme.palette.text.secondary,
                             fontWeight: 600
@@ -1509,11 +1735,6 @@ const ExerciseDetail: React.FC = () => {
                           fontWeight: 700,
                           fontSize: '1rem',
                           color: '#ffffff',
-                          '&:hover': {
-                            background: `linear-gradient(135deg, ${exerciseTypeColor} 0%, ${alpha(exerciseTypeColor, 0.9)} 100%)`,
-                            transform: 'translateY(-2px)',
-                            boxShadow: `0 12px 24px ${alpha(exerciseTypeColor, 0.3)}`
-                          },
                           '&:disabled': {
                             bgcolor: alpha(theme.palette.text.disabled, 0.5)
                           },
@@ -1525,28 +1746,34 @@ const ExerciseDetail: React.FC = () => {
                     </Stack>
                   </CardContent>
                 </Paper>
-              </motion.div>
-            </Stack>
-          </Grid>
+              </Stack>
+            </Grid>
+          )}
         </Grid>
       </Container>
 
-      {/* Floating Action Buttons */}
-      <Fab
-        sx={{
-          position: 'fixed',
-          bottom: 32,
-          right: 32,
-          background: `linear-gradient(135deg, ${exerciseTypeColor} 0%, ${alpha(exerciseTypeColor, 0.8)} 100%)`,
-          color: '#ffffff',
-          '&:hover': {
-            background: `linear-gradient(135deg, ${exerciseTypeColor} 0%, ${alpha(exerciseTypeColor, 0.9)} 100%)`
-          }
-        }}
-        onClick={togglePlay}
-      >
-        {isPlaying ? <Pause /> : <PlayArrow />}
-      </Fab>
+      {/* Mobile Drawers - вызываем функции рендеринга */}
+      {renderMobileStepsDrawer()}
+      {renderMobileInfoDrawer()}
+
+      {/* Floating Action Button for Desktop */}
+      {!isMobile && (
+        <Fab
+          sx={{
+            position: 'fixed',
+            bottom: 32,
+            right: 32,
+            background: `linear-gradient(135deg, ${exerciseTypeColor} 0%, ${alpha(exerciseTypeColor, 0.8)} 100%)`,
+            color: '#ffffff',
+            '&:hover': {
+              background: `linear-gradient(135deg, ${exerciseTypeColor} 0%, ${alpha(exerciseTypeColor, 0.9)} 100%)`
+            }
+          }}
+          onClick={togglePlay}
+        >
+          {isPlaying ? <Pause /> : <PlayArrow />}
+        </Fab>
+      )}
     </Box>
   );
 };

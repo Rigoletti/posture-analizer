@@ -260,27 +260,7 @@ const LoginForm: React.FC = () => {
         }}
       />
 
-      <FormControlLabel
-        control={
-          <Checkbox
-            name="rememberMe"
-            checked={formData.rememberMe}
-            onChange={handleChange}
-            disabled={isLoading}
-            sx={{
-              color: isDark ? alpha(theme.palette.common.white, 0.6) : alpha(theme.palette.common.black, 0.6),
-              '&.Mui-checked': {
-                color: theme.palette.primary.main,
-              },
-            }}
-          />
-        }
-        label={
-          <Typography sx={{ color: theme.palette.text.secondary, fontSize: '0.9rem' }}>
-            Запомнить меня
-          </Typography>
-        }
-      />
+    
 
       <Button
         type="submit"

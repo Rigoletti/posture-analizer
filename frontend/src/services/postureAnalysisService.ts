@@ -1,19 +1,3 @@
-/**
- * PostureAnalysisService — singleton-сервис для анализа осанки.
- *
- * В Electron renderer-процесс НЕ throttle'ится браузером, поэтому:
- * - setInterval работает с точным интервалом даже когда окно скрыто
- * - getUserMedia и TensorFlow.js работают непрерывно
- * - Нативные уведомления через IPC в main process
- * - Статус в системном трее через IPC
- *
- * Загрузка модели:
- * - По умолчанию @tensorflow-models/pose-detection загружает модель с tfhub.dev
- * - В Electron настроены session-разрешения (main.cjs) для доступа к внешним CDN
- * - Добавлен retry с разными бэкендами (webgl → cpu → wasm)
- * - fallback URL для загрузки через зеркало Hugging Face / jsDelivr
- */
-
 import * as poseDetection from '@tensorflow-models/pose-detection';
 import * as tf from '@tensorflow/tfjs';
 
@@ -51,8 +35,6 @@ const NOTIFICATION_COOLDOWN = 5000;
 const HISTORY_SIZE = 5;
 const NOTIFICATION_TAG = 'posture-analyzer-alert';
 
-// ─── Типы ────────────────────────────────────────────────────────────────────
-
 export type PostureIssueType = 'shoulders' | 'head' | 'hips';
 
 export interface PostureIssue {
@@ -82,7 +64,6 @@ export interface PostureAnalysisState {
 
 export type PostureAnalysisListener = (state: PostureAnalysisState) => void;
 
-// ─── Вспомогательные функции ────────────────────────────────────────────────
 
 const calculateDistance = (x1: number, y1: number, x2: number, y2: number): number =>
   Math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2);
@@ -376,15 +357,6 @@ class PostureAnalysisService {
 
   // ─── Захват кадра (ключевой метод для фоновой работы) ──────────────────
 
-  /**
-   * Захватывает кадр с камеры для TensorFlow.js.
-   *
-   * Стратегия (по приоритету):
-   * 1. ImageCapture.grabFrame() — читает напрямую с MediaStreamTrack
-   *    Работает в фоновых вкладках, т.к. не зависит от <video>
-   * 2. <video> элемент — когда вкладка активна (быстрее)
-   * 3. Canvas fallback — если ImageCapture недоступен
-   */
   private async grabFrame(): Promise<HTMLVideoElement | HTMLCanvasElement | ImageBitmap | null> {
     // Приоритет 1: ImageCapture (работает в фоне!)
     if (this.mediaStream && typeof ImageCapture !== 'undefined') {

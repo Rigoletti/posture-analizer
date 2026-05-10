@@ -1,10 +1,3 @@
-/**
- * Electron Preload Script
- *
- * Предоставляет безопасный IPC-мост между main и renderer процессами
- * через contextBridge. Renderer НЕ имеет прямого доступа к Node.js API.
- */
-
 const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('electronAPI', {

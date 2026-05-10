@@ -35,7 +35,15 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
-  DialogContentText
+  DialogContentText,
+  Drawer,
+  SwipeableDrawer,
+  BottomNavigation,
+  BottomNavigationAction,
+  Fab,
+  SpeedDial,
+  SpeedDialAction,
+  SpeedDialIcon
 } from '@mui/material';
 import {
   Star,
@@ -67,7 +75,10 @@ import {
   WarningAmber,
   ErrorOutline,
   Dangerous,
-  Close
+  Close,
+  FilterAlt,
+  Close as CloseIcon,
+  KeyboardArrowUp
 } from '@mui/icons-material';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../store/auth';
@@ -86,6 +97,7 @@ const ReviewsPage: React.FC = () => {
   const { user } = useAuthStore();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
+  const isSmallMobile = useMediaQuery(theme.breakpoints.down('sm'));
   
   const [reviews, setReviews] = useState<Review[]>([]);
   const [loading, setLoading] = useState(true);
@@ -114,6 +126,8 @@ const ReviewsPage: React.FC = () => {
   const [activeFilter, setActiveFilter] = useState('all');
   const [showWriteButton, setShowWriteButton] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [filterDrawerOpen, setFilterDrawerOpen] = useState(false);
+  const [showScrollTop, setShowScrollTop] = useState(false);
 
   // Состояния для диалога удаления
   const [deleteDialog, setDeleteDialog] = useState({
@@ -128,6 +142,15 @@ const ReviewsPage: React.FC = () => {
   // Дебаунс для поиска
   const [searchInput, setSearchInput] = useState('');
   const searchTimeoutRef = React.useRef<NodeJS.Timeout>();
+
+  // Отслеживание скролла для кнопки "наверх"
+  useEffect(() => {
+    const handleScroll = () => {
+      setShowScrollTop(window.scrollY > 300);
+    };
+    window.addEventListener('scroll', handleScroll);
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
 
   const loadReviews = useCallback(async () => {
     try {
@@ -233,15 +256,13 @@ const ReviewsPage: React.FC = () => {
       
       await reviewsApi.deleteReview(deleteDialog.reviewId);
       
-      // Показываем успешное уведомление через Alert
-      setError(null); // Сбрасываем предыдущие ошибки
+      setError(null);
       setTimeout(() => {
-        // Можно добавить Snackbar для уведомлений
         console.log('Отзыв успешно удален');
       }, 100);
       
       closeDeleteDialog();
-      await loadReviews(); // Перезагружаем список отзывов
+      await loadReviews();
       
     } catch (err) {
       console.error('Error deleting review:', err);
@@ -257,6 +278,9 @@ const ReviewsPage: React.FC = () => {
       [field]: value
     }));
     setPagination(prev => ({ ...prev, page: 1 }));
+    if (isMobile) {
+      setFilterDrawerOpen(false);
+    }
   };
 
   const handleSearchChange = (value: string) => {
@@ -291,6 +315,7 @@ const ReviewsPage: React.FC = () => {
 
   const handlePageChange = (_: any, page: number) => {
     setPagination(prev => ({ ...prev, page }));
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const handleReply = async (reviewId: string) => {
@@ -323,6 +348,10 @@ const ReviewsPage: React.FC = () => {
     loadReviews();
   };
 
+  const scrollToTop = () => {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
   const getRatingDistribution = () => {
     if (!stats?.distribution) return [];
     return Array.from({ length: 5 }, (_, i) => ({
@@ -342,13 +371,12 @@ const ReviewsPage: React.FC = () => {
       
       if (diff === 0) return 'Сегодня';
       if (diff === 1) return 'Вчера';
-      if (diff < 7) return `${diff} дня назад`;
-      if (diff < 30) return `${Math.floor(diff / 7)} недели назад`;
+      if (diff < 7) return `${diff} дн. назад`;
+      if (diff < 30) return `${Math.floor(diff / 7)} нед. назад`;
       
       return date.toLocaleDateString('ru-RU', {
         day: 'numeric',
-        month: 'long',
-        year: 'numeric'
+        month: 'short'
       });
     } catch {
       return 'Дата не указана';
@@ -371,10 +399,96 @@ const ReviewsPage: React.FC = () => {
       'service': 'О сервисе',
       'product': 'О продукте',
       'feature': 'О функции',
-      'general': 'Общее впечатление'
+      'general': 'Общее'
     };
     return types[type] || type;
   };
+
+  // Компонент фильтров для мобильного drawer
+  const FilterDrawerContent = () => (
+    <Box sx={{ width: '100%', p: 2 }}>
+      <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 3 }}>
+        <Typography variant="h6" sx={{ fontWeight: 700 }}>
+          Фильтры
+        </Typography>
+        <IconButton onClick={() => setFilterDrawerOpen(false)}>
+          <CloseIcon />
+        </IconButton>
+      </Stack>
+
+      <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 600 }}>
+        Сортировка
+      </Typography>
+      <FormControl fullWidth size="small" sx={{ mb: 3 }}>
+        <Select
+          value={filters.sort}
+          onChange={(e) => handleFilterChange('sort', e.target.value)}
+          sx={{ borderRadius: 2 }}
+        >
+          <MenuItem value="-createdAt">Сначала новые</MenuItem>
+          <MenuItem value="createdAt">Сначала старые</MenuItem>
+          <MenuItem value="-rating">Высокая оценка</MenuItem>
+          <MenuItem value="rating">Низкая оценка</MenuItem>
+          <MenuItem value="-helpful">Самые полезные</MenuItem>
+        </Select>
+      </FormControl>
+
+      <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 600 }}>
+        Тип отзыва
+      </Typography>
+      <FormControl fullWidth size="small" sx={{ mb: 3 }}>
+        <Select
+          value={filters.type}
+          onChange={(e) => handleFilterChange('type', e.target.value)}
+          displayEmpty
+          sx={{ borderRadius: 2 }}
+        >
+          <MenuItem value="">Все типы</MenuItem>
+          <MenuItem value="service">О сервисе</MenuItem>
+          <MenuItem value="product">О продукте</MenuItem>
+          <MenuItem value="feature">О функции</MenuItem>
+          <MenuItem value="general">Общее</MenuItem>
+        </Select>
+      </FormControl>
+
+      <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 600 }}>
+        Ответы
+      </Typography>
+      <FormControl fullWidth size="small" sx={{ mb: 3 }}>
+        <Select
+          value={filters.hasReply}
+          onChange={(e) => handleFilterChange('hasReply', e.target.value)}
+          displayEmpty
+          sx={{ borderRadius: 2 }}
+        >
+          <MenuItem value="">Все ответы</MenuItem>
+          <MenuItem value="true">С ответами</MenuItem>
+          <MenuItem value="false">Без ответов</MenuItem>
+        </Select>
+      </FormControl>
+
+      <Button
+        fullWidth
+        variant="outlined"
+        onClick={() => {
+          setFilters({
+            sort: '-createdAt',
+            minRating: 0,
+            maxRating: 5,
+            type: '',
+            hasReply: '',
+            tags: [],
+            search: searchInput
+          });
+          setActiveFilter('all');
+          setFilterDrawerOpen(false);
+        }}
+        sx={{ borderRadius: 2 }}
+      >
+        Сбросить фильтры
+      </Button>
+    </Box>
+  );
 
   if (loading && !reviews.length) {
     return (
@@ -384,19 +498,14 @@ const ReviewsPage: React.FC = () => {
         alignItems: 'center', 
         justifyContent: 'center',
         bgcolor: theme.palette.background.default,
-        background: theme.palette.mode === 'light'
-          ? 'linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)'
-          : 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)'
+        p: 2
       }}>
         <Stack alignItems="center" spacing={3}>
           <Box sx={{ position: 'relative' }}>
             <CircularProgress 
-              size={80} 
+              size={isMobile ? 60 : 80} 
               thickness={2}
-              sx={{ 
-                color: theme.palette.primary.main,
-                animationDuration: '2s'
-              }}
+              sx={{ color: theme.palette.primary.main }}
             />
             <Box sx={{
               position: 'absolute',
@@ -404,17 +513,10 @@ const ReviewsPage: React.FC = () => {
               left: '50%',
               transform: 'translate(-50%, -50%)',
             }}>
-              <Star sx={{ 
-                fontSize: 32, 
-                color: alpha(theme.palette.common.white, 0.7),
-                animation: 'pulse 2s infinite'
-              }} />
+              <Star sx={{ fontSize: isMobile ? 24 : 32, color: alpha(theme.palette.common.white, 0.7) }} />
             </Box>
           </Box>
-          <Typography variant="h6" sx={{ 
-            color: theme.palette.text.primary,
-            fontWeight: 500
-          }}>
+          <Typography variant={isMobile ? "body1" : "h6"} sx={{ fontWeight: 500 }}>
             Загрузка отзывов...
           </Typography>
         </Stack>
@@ -426,122 +528,83 @@ const ReviewsPage: React.FC = () => {
     <Box sx={{
       minHeight: '100vh',
       bgcolor: theme.palette.background.default,
-      background: theme.palette.mode === 'light'
-        ? 'linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)'
-        : 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)',
-      pt: { xs: 2, md: 4 },
-      pb: 8,
+      pt: { xs: 1, md: 4 },
+      pb: { xs: 8, md: 8 },
       position: 'relative'
     }}>
-      {/* Стили для анимаций */}
-      <style>
-        {`
-          @keyframes shake {
-            0%, 100% { transform: rotate(0deg); }
-            25% { transform: rotate(10deg); }
-            75% { transform: rotate(-10deg); }
-          }
-          
-          @keyframes pulse {
-            0%, 100% { 
-              transform: scale(1);
-              opacity: 0.5;
-            }
-            50% { 
-              transform: scale(1.2);
-              opacity: 1;
-            }
-          }
-
-          @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-          }
-        `}
-      </style>
-
-      <Container maxWidth="xl">
-        {/* Анимированный фон */}
-        <Box sx={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          background: `radial-gradient(circle at 20% 80%, ${alpha(theme.palette.primary.main, 0.1)} 0%, transparent 50%),
-                      radial-gradient(circle at 80% 20%, ${alpha(theme.palette.secondary.main, 0.1)} 0%, transparent 50%)`,
-          pointerEvents: 'none',
-          zIndex: 0
-        }} />
-
-        <Box position="relative" zIndex={1}>
-          {/* Заголовок с анимацией */}
-          <Grow in={true} timeout={800}>
-            <Box sx={{ mb: { xs: 4, md: 6 } }}>
-              <Stack direction={{ xs: 'column', md: 'row' }} alignItems={{ md: 'flex-end' }} spacing={2} sx={{ mb: 2 }}>
+      <Container maxWidth="xl" sx={{ px: { xs: 1.5, sm: 2, md: 3 } }}>
+        {/* Заголовок */}
+        <Grow in={true} timeout={800}>
+          <Box sx={{ mb: { xs: 3, md: 6 } }}>
+            <Stack direction={{ xs: 'column', md: 'row' }} alignItems={{ xs: 'flex-start', md: 'flex-end' }} spacing={2}>
+              <Box sx={{ flex: 1 }}>
                 <Typography variant="h1" sx={{ 
                   color: theme.palette.text.primary,
                   fontWeight: 900,
-                  fontSize: { xs: '2.5rem', md: '3.5rem' },
+                  fontSize: { xs: '1.75rem', sm: '2.5rem', md: '3.5rem' },
                   background: `linear-gradient(135deg, ${theme.palette.primary.light} 0%, ${theme.palette.secondary.light} 100%)`,
                   WebkitBackgroundClip: 'text',
                   WebkitTextFillColor: 'transparent',
-                  lineHeight: 1.1
+                  lineHeight: 1.2,
+                  mb: 1
                 }}>
                   Отзывы сообщества
                 </Typography>
-                <Stack direction="row" spacing={1} alignItems="center">
-                  <Chip
-                    icon={<LocalFireDepartment />}
-                    label={`${stats?.totalReviews || 0} отзывов`}
-                    sx={{
-                      bgcolor: alpha(theme.palette.warning.main, 0.1),
-                      color: theme.palette.warning.light,
-                      border: `1px solid ${alpha(theme.palette.warning.main, 0.3)}`,
-                      height: 36,
-                      fontSize: '0.9rem',
-                      fontWeight: 600
-                    }}
-                  />
-                  <Tooltip title="Обновить данные">
-                    <IconButton
-                      onClick={handleRefresh}
-                      disabled={isRefreshing}
-                      sx={{
-                        color: theme.palette.text.secondary,
-                        '&:hover': {
-                          color: theme.palette.primary.main
-                        }
-                      }}
-                    >
-                      <Refresh sx={{
-                        animation: isRefreshing ? 'spin 1s linear infinite' : 'none'
-                      }} />
-                    </IconButton>
-                  </Tooltip>
-                </Stack>
+                {!isMobile && (
+                  <Typography sx={{ 
+                    color: theme.palette.text.secondary,
+                    maxWidth: 600,
+                    fontSize: '1rem'
+                  }}>
+                    Реальные впечатления пользователей о трансформации осанки и качестве жизни
+                  </Typography>
+                )}
+              </Box>
+              <Stack direction="row" spacing={1} alignItems="center">
+                <Chip
+                  icon={<LocalFireDepartment sx={{ fontSize: { xs: 16, md: 18 } }} />}
+                  label={`${stats?.totalReviews || 0} отзывов`}
+                  size={isMobile ? "small" : "medium"}
+                  sx={{
+                    bgcolor: alpha(theme.palette.warning.main, 0.1),
+                    color: theme.palette.warning.light,
+                    border: `1px solid ${alpha(theme.palette.warning.main, 0.3)}`,
+                    fontWeight: 600
+                  }}
+                />
+                <Tooltip title="Обновить данные">
+                  <IconButton
+                    onClick={handleRefresh}
+                    disabled={isRefreshing}
+                    size={isMobile ? "small" : "medium"}
+                    sx={{ color: theme.palette.text.secondary }}
+                  >
+                    <Refresh sx={{ animation: isRefreshing ? 'spin 1s linear infinite' : 'none' }} />
+                  </IconButton>
+                </Tooltip>
               </Stack>
+            </Stack>
+            {isMobile && (
               <Typography sx={{ 
                 color: theme.palette.text.secondary,
-                maxWidth: 600,
-                fontSize: '1.1rem',
-                lineHeight: 1.6
+                fontSize: '0.875rem',
+                mt: 1
               }}>
-                Реальные впечатления пользователей о трансформации осанки и качестве жизни
+                Реальные впечатления пользователей
               </Typography>
-            </Box>
-          </Grow>
+            )}
+          </Box>
+        </Grow>
 
-          <Grid container spacing={3}>
-            {/* Левая колонка */}
+        <Grid container spacing={{ xs: 2, md: 3 }}>
+          {/* Левая колонка - на десктопе видна всегда, на мобильных скрыта */}
+          {!isMobile ? (
             <Grid item xs={12} lg={4}>
               <Stack spacing={3}>
                 {/* Карточка статистики */}
                 <Slide in={true} direction="right" timeout={500}>
                   <Paper sx={{ 
-                    bgcolor: theme.palette.mode === 'light'
-                      ? alpha(theme.palette.background.paper, 0.7)
-                      : alpha(theme.palette.background.paper, 0.4),
+                    bgcolor: alpha(theme.palette.background.paper, 0.7),
                     backdropFilter: 'blur(20px)',
                     border: `1px solid ${theme.palette.divider}`,
                     borderRadius: 4,
@@ -561,58 +624,27 @@ const ReviewsPage: React.FC = () => {
                     <Stack alignItems="center" spacing={3}>
                       <Box sx={{ textAlign: 'center' }}>
                         <Typography variant="h2" sx={{ 
-                          color: theme.palette.text.primary,
                           fontWeight: 900,
-                          lineHeight: 1,
-                          fontSize: { xs: '3.5rem', md: '4rem' },
-                          mb: 1,
+                          fontSize: '4rem',
                           background: `linear-gradient(135deg, ${theme.palette.primary.light} 0%, ${theme.palette.secondary.light} 100%)`,
                           WebkitBackgroundClip: 'text',
                           WebkitTextFillColor: 'transparent'
                         }}>
                           {stats?.averageRating?.toFixed(1) || '0.0'}
                         </Typography>
-                        <Stack direction="row" alignItems="center" justifyContent="center" spacing={1}>
-                          <Rating
-                            value={stats?.averageRating || 0}
-                            readOnly
-                            precision={0.1}
-                            sx={{
-                              '& .MuiRating-iconFilled': {
-                                color: theme.palette.warning.main
-                              },
-                              '& .MuiRating-icon': {
-                                fontSize: '1.8rem'
-                              }
-                            }}
-                          />
-                        </Stack>
-                        <Typography sx={{ 
-                          color: theme.palette.text.secondary,
-                          mt: 2,
-                          fontSize: '0.9rem'
-                        }}>
+                        <Rating value={stats?.averageRating || 0} readOnly precision={0.1} sx={{ '& .MuiRating-icon': { fontSize: '1.8rem' } }} />
+                        <Typography sx={{ color: theme.palette.text.secondary, mt: 2, fontSize: '0.9rem' }}>
                           Средняя оценка на основе {stats?.totalReviews || 0} отзывов
                         </Typography>
                       </Box>
                     </Stack>
 
-                    {/* Распределение рейтингов */}
                     <Box sx={{ mt: 4 }}>
                       {getRatingDistribution().map((item, index) => (
                         <Fade in={true} timeout={600 + index * 100} key={item.stars}>
-                          <Stack 
-                            direction="row" 
-                            alignItems="center" 
-                            spacing={2}
-                            sx={{ mb: 2.5 }}
-                          >
+                          <Stack direction="row" alignItems="center" spacing={2} sx={{ mb: 2.5 }}>
                             <Stack direction="row" alignItems="center" spacing={1} sx={{ width: 80 }}>
-                              <Typography sx={{ 
-                                color: theme.palette.warning.main,
-                                fontSize: 14,
-                                fontWeight: 600 
-                              }}>
+                              <Typography sx={{ color: theme.palette.warning.main, fontSize: 14, fontWeight: 600 }}>
                                 {item.stars}
                               </Typography>
                               <Star sx={{ fontSize: 14, color: theme.palette.warning.main }} />
@@ -623,8 +655,7 @@ const ReviewsPage: React.FC = () => {
                                 width: '100%',
                                 bgcolor: alpha(theme.palette.divider, 0.5),
                                 borderRadius: 4,
-                                overflow: 'hidden',
-                                position: 'relative'
+                                overflow: 'hidden'
                               }}>
                                 <Box sx={{ 
                                   width: `${item.percentage}%`,
@@ -635,13 +666,7 @@ const ReviewsPage: React.FC = () => {
                                 }} />
                               </Box>
                             </Box>
-                            <Typography sx={{ 
-                              color: theme.palette.text.secondary,
-                              fontSize: 14,
-                              fontWeight: 600,
-                              width: 40,
-                              textAlign: 'right'
-                            }}>
+                            <Typography sx={{ color: theme.palette.text.secondary, fontSize: 14, fontWeight: 600, width: 40, textAlign: 'right' }}>
                               {item.count}
                             </Typography>
                           </Stack>
@@ -654,30 +679,20 @@ const ReviewsPage: React.FC = () => {
                 {/* Быстрые фильтры */}
                 <Slide in={true} direction="right" timeout={700}>
                   <Paper sx={{ 
-                    bgcolor: theme.palette.mode === 'light'
-                      ? alpha(theme.palette.background.paper, 0.7)
-                      : alpha(theme.palette.background.paper, 0.4),
+                    bgcolor: alpha(theme.palette.background.paper, 0.7),
                     backdropFilter: 'blur(20px)',
                     border: `1px solid ${theme.palette.divider}`,
                     borderRadius: 4,
                     p: 3
                   }}>
-                    <Typography variant="h6" sx={{ 
-                      color: theme.palette.text.primary,
-                      mb: 3,
-                      fontWeight: 600,
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 1.5
-                    }}>
+                    <Typography variant="h6" sx={{ mb: 3, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1.5 }}>
                       <Whatshot sx={{ color: theme.palette.warning.main }} /> Быстрые фильтры
                     </Typography>
 
                     <Stack spacing={1.5}>
                       {[
                         { id: 'all', label: 'Все отзывы', icon: <Forum />, count: stats?.totalReviews },
-                        { id: 'best', label: 'Только лучшие', icon: <EmojiEvents />, count: stats?.distribution ? 
-                          (stats.distribution[5] || 0) + (stats.distribution[4] || 0) : 0 },
+                        { id: 'best', label: 'Только лучшие', icon: <EmojiEvents />, count: stats?.distribution ? (stats.distribution[5] || 0) + (stats.distribution[4] || 0) : 0 },
                         { id: 'helpful', label: 'Самые полезные', icon: <TrendingUp /> },
                         { id: 'discussed', label: 'С обсуждением', icon: <Message /> }
                       ].map((filter) => (
@@ -696,31 +711,15 @@ const ReviewsPage: React.FC = () => {
                             ...(activeFilter === filter.id ? {
                               bgcolor: alpha(theme.palette.primary.main, 0.2),
                               color: theme.palette.primary.light,
-                              border: `1px solid ${alpha(theme.palette.primary.main, 0.3)}`,
-                              '&:hover': {
-                                bgcolor: alpha(theme.palette.primary.main, 0.3)
-                              }
+                              border: `1px solid ${alpha(theme.palette.primary.main, 0.3)}`
                             } : {
-                              color: theme.palette.text.secondary,
-                              '&:hover': {
-                                color: theme.palette.text.primary,
-                                bgcolor: alpha(theme.palette.primary.main, 0.05)
-                              }
+                              color: theme.palette.text.secondary
                             })
                           }}
                         >
                           <Box sx={{ flex: 1, textAlign: 'left' }}>{filter.label}</Box>
-                          {filter.count > 0 && (
-                            <Chip
-                              label={filter.count}
-                              size="small"
-                              sx={{
-                                bgcolor: alpha(theme.palette.common.white, 0.1),
-                                color: theme.palette.text.primary,
-                                fontSize: '0.75rem',
-                                height: 20
-                              }}
-                            />
+                          {filter.count && filter.count > 0 && (
+                            <Chip label={filter.count} size="small" sx={{ bgcolor: alpha(theme.palette.common.white, 0.1), height: 20 }} />
                           )}
                         </Button>
                       ))}
@@ -743,11 +742,6 @@ const ReviewsPage: React.FC = () => {
                         fontWeight: 600,
                         background: `linear-gradient(135deg, ${theme.palette.primary.main} 0%, ${theme.palette.secondary.main} 100%)`,
                         boxShadow: `0 4px 20px ${alpha(theme.palette.primary.main, 0.3)}`,
-                        '&:hover': {
-                          transform: 'translateY(-2px)',
-                          boxShadow: `0 8px 30px ${alpha(theme.palette.primary.main, 0.4)}`,
-                          background: `linear-gradient(135deg, ${theme.palette.primary.dark} 0%, ${theme.palette.secondary.dark} 100%)`
-                        },
                         transition: 'all 0.3s ease'
                       }}
                     >
@@ -757,87 +751,51 @@ const ReviewsPage: React.FC = () => {
                 )}
               </Stack>
             </Grid>
+          ) : null}
 
-            {/* Правая колонка */}
-            <Grid item xs={12} lg={8}>
-              <Stack spacing={4}>
-                {/* Поиск и сортировка */}
-                <Grow in={true} timeout={900}>
-                  <Paper sx={{ 
-                    bgcolor: theme.palette.mode === 'light'
-                      ? alpha(theme.palette.background.paper, 0.7)
-                      : alpha(theme.palette.background.paper, 0.4),
-                    backdropFilter: 'blur(20px)',
-                    border: `1px solid ${theme.palette.divider}`,
-                    borderRadius: 4,
-                    p: 3
-                  }}>
-                    <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} alignItems="center">
-                      <Box sx={{ flex: 1, position: 'relative' }}>
-                        <TextField
-                          fullWidth
-                          placeholder="Найти по ключевым словам..."
-                          value={searchInput}
-                          onChange={(e) => handleSearchChange(e.target.value)}
-                          sx={{
-                            '& .MuiOutlinedInput-root': {
-                              bgcolor: theme.palette.mode === 'light'
-                                ? alpha(theme.palette.background.paper, 0.8)
-                                : alpha(theme.palette.background.paper, 0.5),
-                              color: theme.palette.text.primary,
-                              borderRadius: 3,
-                              transition: 'all 0.3s',
-                              '&:hover': {
-                                bgcolor: theme.palette.mode === 'light'
-                                  ? theme.palette.background.paper
-                                  : alpha(theme.palette.background.paper, 0.7)
-                              },
-                              '&.Mui-focused': {
-                                bgcolor: theme.palette.mode === 'light'
-                                  ? theme.palette.background.paper
-                                  : alpha(theme.palette.background.paper, 0.8),
-                                borderColor: theme.palette.primary.main
-                              }
-                            }
-                          }}
-                          InputProps={{
-                            startAdornment: (
-                              <Search sx={{ 
-                                color: theme.palette.text.secondary,
-                                mr: 1 
-                              }} />
-                            ),
-                            endAdornment: searchInput && (
-                              <IconButton
-                                size="small"
-                                onClick={() => handleSearchChange('')}
-                                sx={{ color: theme.palette.text.secondary }}
-                              >
-                                <Clear />
-                              </IconButton>
-                            )
-                          }}
-                        />
-                      </Box>
-                      
-                      <Stack direction="row" spacing={2} sx={{ width: { xs: '100%', md: 'auto' } }}>
-                        <FormControl sx={{ minWidth: 150 }}>
+          {/* Правая колонка */}
+          <Grid item xs={12} lg={8}>
+            <Stack spacing={{ xs: 2, md: 4 }}>
+              {/* Поиск и фильтры - мобильная версия */}
+              <Grow in={true} timeout={900}>
+                <Paper sx={{ 
+                  bgcolor: alpha(theme.palette.background.paper, 0.7),
+                  backdropFilter: 'blur(20px)',
+                  border: `1px solid ${theme.palette.divider}`,
+                  borderRadius: { xs: 3, md: 4 },
+                  p: { xs: 2, md: 3 }
+                }}>
+                  <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
+                    <Box sx={{ flex: 1, position: 'relative' }}>
+                      <TextField
+                        fullWidth
+                        size={isMobile ? "small" : "medium"}
+                        placeholder="Поиск по отзывам..."
+                        value={searchInput}
+                        onChange={(e) => handleSearchChange(e.target.value)}
+                        sx={{
+                          '& .MuiOutlinedInput-root': {
+                            bgcolor: alpha(theme.palette.background.paper, 0.8),
+                            borderRadius: { xs: 2, md: 3 }
+                          }
+                        }}
+                        InputProps={{
+                          startAdornment: <Search sx={{ color: theme.palette.text.secondary, mr: 1, fontSize: 20 }} />,
+                          endAdornment: searchInput && (
+                            <IconButton size="small" onClick={() => handleSearchChange('')}>
+                              <Clear fontSize="small" />
+                            </IconButton>
+                          )
+                        }}
+                      />
+                    </Box>
+                    
+                    {!isMobile ? (
+                      <Stack direction="row" spacing={2}>
+                        <FormControl sx={{ minWidth: 150 }} size="small">
                           <Select
                             value={filters.sort}
                             onChange={(e) => handleFilterChange('sort', e.target.value)}
-                            sx={{
-                              color: theme.palette.text.primary,
-                              bgcolor: theme.palette.mode === 'light'
-                                ? alpha(theme.palette.background.paper, 0.8)
-                                : alpha(theme.palette.background.paper, 0.5),
-                              borderRadius: 3,
-                              '& .MuiOutlinedInput-notchedOutline': {
-                                borderColor: theme.palette.divider
-                              },
-                              '&:hover .MuiOutlinedInput-notchedOutline': {
-                                borderColor: theme.palette.text.secondary
-                              }
-                            }}
                             startAdornment={<Sort sx={{ color: theme.palette.text.secondary, mr: 1 }} />}
                           >
                             <MenuItem value="-createdAt">Сначала новые</MenuItem>
@@ -848,26 +806,30 @@ const ReviewsPage: React.FC = () => {
                           </Select>
                         </FormControl>
                       </Stack>
-                    </Stack>
+                    ) : (
+                      <Button
+                        fullWidth
+                        variant="outlined"
+                        startIcon={<FilterAlt />}
+                        onClick={() => setFilterDrawerOpen(true)}
+                        sx={{ borderRadius: 2 }}
+                      >
+                        Фильтры
+                        {(filters.type || filters.hasReply || filters.sort !== '-createdAt') && (
+                          <Badge variant="dot" color="primary" sx={{ ml: 1 }} />
+                        )}
+                      </Button>
+                    )}
+                  </Stack>
 
-                    {/* Дополнительные фильтры */}
+                  {/* Дополнительные фильтры для десктопа */}
+                  {!isMobile && (
                     <Stack direction="row" spacing={2} sx={{ mt: 2, flexWrap: 'wrap', gap: 1 }}>
-                      <FormControl sx={{ minWidth: 120 }}>
+                      <FormControl size="small" sx={{ minWidth: 120 }}>
                         <Select
                           value={filters.type}
                           onChange={(e) => handleFilterChange('type', e.target.value)}
                           displayEmpty
-                          size="small"
-                          sx={{
-                            color: theme.palette.text.primary,
-                            bgcolor: theme.palette.mode === 'light'
-                              ? alpha(theme.palette.background.paper, 0.8)
-                              : alpha(theme.palette.background.paper, 0.5),
-                            borderRadius: 2,
-                            '& .MuiSelect-select': {
-                              py: 1
-                            }
-                          }}
                         >
                           <MenuItem value="">Все типы</MenuItem>
                           <MenuItem value="service">О сервисе</MenuItem>
@@ -877,22 +839,11 @@ const ReviewsPage: React.FC = () => {
                         </Select>
                       </FormControl>
 
-                      <FormControl sx={{ minWidth: 120 }}>
+                      <FormControl size="small" sx={{ minWidth: 120 }}>
                         <Select
                           value={filters.hasReply}
                           onChange={(e) => handleFilterChange('hasReply', e.target.value)}
                           displayEmpty
-                          size="small"
-                          sx={{
-                            color: theme.palette.text.primary,
-                            bgcolor: theme.palette.mode === 'light'
-                              ? alpha(theme.palette.background.paper, 0.8)
-                              : alpha(theme.palette.background.paper, 0.5),
-                            borderRadius: 2,
-                            '& .MuiSelect-select': {
-                              py: 1
-                            }
-                          }}
                         >
                           <MenuItem value="">Все ответы</MenuItem>
                           <MenuItem value="true">С ответами</MenuItem>
@@ -900,600 +851,399 @@ const ReviewsPage: React.FC = () => {
                         </Select>
                       </FormControl>
                     </Stack>
-                  </Paper>
-                </Grow>
+                  )}
+                </Paper>
+              </Grow>
 
-                {/* Список отзывов */}
-                <Box>
-                  <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 3 }}>
-                    <Typography variant="h5" sx={{ 
-                      color: theme.palette.text.primary,
-                      fontWeight: 700,
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 1
+              {/* Список отзывов */}
+              <Box>
+                <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: { xs: 2, md: 3 } }}>
+                  <Typography variant={isMobile ? "h6" : "h5"} sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1 }}>
+                    Все отзывы
+                    <Chip label={stats?.totalReviews || 0} size="small" sx={{ fontWeight: 600 }} />
+                  </Typography>
+                </Stack>
+
+                {error && (
+                  <Fade in={true}>
+                    <Alert 
+                      severity="error" 
+                      sx={{ mb: 3, borderRadius: 3 }}
+                      action={
+                        <Button color="inherit" size="small" onClick={handleRefresh} startIcon={<Refresh />}>
+                          Повторить
+                        </Button>
+                      }
+                    >
+                      {error}
+                    </Alert>
+                  </Fade>
+                )}
+
+                {loading ? (
+                  <Stack spacing={2.5}>
+                    {[...Array(isMobile ? 2 : 3)].map((_, index) => (
+                      <Card key={index} sx={{ borderRadius: 4, p: { xs: 2, md: 3.5 } }}>
+                        <Stack spacing={2}>
+                          <Stack direction="row" justifyContent="space-between" alignItems="center">
+                            <Stack direction="row" alignItems="center" spacing={2}>
+                              <Skeleton variant="circular" width={40} height={40} />
+                              <Box>
+                                <Skeleton variant="text" width={120} height={20} />
+                                <Skeleton variant="text" width={80} height={16} />
+                              </Box>
+                            </Stack>
+                            <Skeleton variant="rectangular" width={60} height={32} sx={{ borderRadius: 2 }} />
+                          </Stack>
+                          <Skeleton variant="text" height={24} />
+                          <Skeleton variant="text" height={60} />
+                        </Stack>
+                      </Card>
+                    ))}
+                  </Stack>
+                ) : reviews.length === 0 ? (
+                  <Fade in={true}>
+                    <Paper sx={{ 
+                      p: { xs: 4, md: 6 }, 
+                      textAlign: 'center',
+                      borderRadius: 4
                     }}>
-                      Все отзывы
-                      <Chip
-                        label={stats?.totalReviews || 0}
-                        size="small"
-                        sx={{
-                          bgcolor: alpha(theme.palette.primary.main, 0.2),
-                          color: theme.palette.primary.light,
-                          fontWeight: 600
-                        }}
-                      />
-                    </Typography>
-                    
-                    {/* Кнопка Поделиться опытом для мобильных */}
-                    {isMobile && (
+                      <Box sx={{
+                        width: { xs: 60, md: 80 },
+                        height: { xs: 60, md: 80 },
+                        borderRadius: '50%',
+                        bgcolor: alpha(theme.palette.primary.main, 0.1),
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        mx: 'auto',
+                        mb: 3
+                      }}>
+                        <Star sx={{ fontSize: { xs: 30, md: 40 }, color: theme.palette.primary.main }} />
+                      </Box>
+                      <Typography variant={isMobile ? "subtitle1" : "h6"} sx={{ fontWeight: 600, mb: 1 }}>
+                        {filters.search || filters.type || filters.hasReply ? 'Отзывы не найдены' : 'Здесь пока тихо'}
+                      </Typography>
+                      <Typography sx={{ color: theme.palette.text.secondary, mb: 3, fontSize: { xs: '0.875rem', md: '1rem' } }}>
+                        {filters.search || filters.type || filters.hasReply 
+                          ? 'Попробуйте изменить параметры поиска'
+                          : 'Будьте первым, кто поделится своим опытом'}
+                      </Typography>
                       <Button
                         variant="contained"
-                        startIcon={<Edit />}
+                        startIcon={<RateReview />}
                         onClick={() => setShowReviewForm(true)}
-                        size="small"
-                        sx={{
-                          background: `linear-gradient(135deg, ${theme.palette.primary.main} 0%, ${theme.palette.secondary.main} 100%)`,
-                          borderRadius: 2,
-                          fontWeight: 600
-                        }}
+                        size={isMobile ? "small" : "medium"}
                       >
-                        Написать
+                        Поделиться опытом
                       </Button>
-                    )}
-                  </Stack>
-
-                  {error && (
-                    <Fade in={true}>
-                      <Alert 
-                        severity="error" 
-                        sx={{ 
-                          mb: 3,
-                          borderRadius: 3,
-                          bgcolor: alpha(theme.palette.error.main, 0.1),
-                          color: theme.palette.error.light,
-                          border: `1px solid ${alpha(theme.palette.error.main, 0.3)}`,
-                          '& .MuiAlert-action': {
-                            alignItems: 'center'
-                          }
-                        }}
-                        action={
-                          <Button
-                            color="inherit"
-                            size="small"
-                            onClick={handleRefresh}
-                            startIcon={<Refresh />}
-                          >
-                            Повторить
-                          </Button>
-                        }
-                      >
-                        {error}
-                      </Alert>
-                    </Fade>
-                  )}
-
-                  {loading ? (
-                    // Скелетоны при загрузке
+                    </Paper>
+                  </Fade>
+                ) : (
+                  <>
                     <Stack spacing={2.5}>
-                      {[...Array(3)].map((_, index) => (
-                        <Card key={index} sx={{ 
-                          bgcolor: theme.palette.mode === 'light'
-                            ? alpha(theme.palette.background.paper, 0.7)
-                            : alpha(theme.palette.background.paper, 0.4),
-                          border: `1px solid ${theme.palette.divider}`,
-                          borderRadius: 4,
-                          p: 3.5
-                        }}>
-                          <Stack spacing={2}>
-                            <Stack direction="row" justifyContent="space-between" alignItems="center">
-                              <Stack direction="row" alignItems="center" spacing={2}>
-                                <Skeleton variant="circular" width={48} height={48} />
-                                <Box>
-                                  <Skeleton variant="text" width={150} height={24} />
-                                  <Skeleton variant="text" width={100} height={16} />
-                                </Box>
-                              </Stack>
-                              <Skeleton variant="rectangular" width={80} height={32} sx={{ borderRadius: 2 }} />
-                            </Stack>
-                            <Skeleton variant="text" height={28} />
-                            <Skeleton variant="text" height={80} />
-                            <Stack direction="row" spacing={1}>
-                              <Skeleton variant="rectangular" width={80} height={24} sx={{ borderRadius: 1 }} />
-                              <Skeleton variant="rectangular" width={80} height={24} sx={{ borderRadius: 1 }} />
-                            </Stack>
-                          </Stack>
-                        </Card>
-                      ))}
-                    </Stack>
-                  ) : reviews.length === 0 ? (
-                    <Fade in={true}>
-                      <Paper sx={{ 
-                        p: 6, 
-                        textAlign: 'center',
-                        bgcolor: theme.palette.mode === 'light'
-                          ? alpha(theme.palette.background.paper, 0.7)
-                          : alpha(theme.palette.background.paper, 0.4),
-                        backdropFilter: 'blur(20px)',
-                        border: `1px solid ${theme.palette.divider}`,
-                        borderRadius: 4
-                      }}>
-                        <Box sx={{
-                          width: 80,
-                          height: 80,
-                          borderRadius: '50%',
-                          bgcolor: alpha(theme.palette.primary.main, 0.1),
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          mx: 'auto',
-                          mb: 3
-                        }}>
-                          <Star sx={{ 
-                            fontSize: 40, 
-                            color: theme.palette.primary.main
-                          }} />
-                        </Box>
-                        <Typography variant="h6" sx={{ 
-                          color: theme.palette.text.primary,
-                          mb: 1,
-                          fontWeight: 600
-                        }}>
-                          {filters.search || filters.type || filters.hasReply 
-                            ? 'Отзывы не найдены' 
-                            : 'Здесь пока тихо'}
-                        </Typography>
-                        <Typography sx={{ 
-                          color: theme.palette.text.secondary,
-                          mb: 3,
-                          maxWidth: 400,
-                          mx: 'auto'
-                        }}>
-                          {filters.search || filters.type || filters.hasReply 
-                            ? 'Попробуйте изменить параметры поиска'
-                            : 'Будьте первым, кто поделится своим опытом использования Posture Analyzer'}
-                        </Typography>
-                        <Button
-                          variant="contained"
-                          startIcon={<RateReview />}
-                          onClick={() => setShowReviewForm(true)}
-                          sx={{
-                            background: `linear-gradient(135deg, ${theme.palette.primary.main} 0%, ${theme.palette.secondary.main} 100%)`,
-                            fontWeight: 600,
-                            '&:hover': {
-                              transform: 'translateY(-2px)',
-                              boxShadow: `0 8px 30px ${alpha(theme.palette.primary.main, 0.4)}`
+                      {reviews.map((review, index) => (
+                        <Zoom in={true} timeout={500 + index * 100} key={review._id}>
+                          <Card sx={{ 
+                            bgcolor: alpha(theme.palette.background.paper, 0.7),
+                            backdropFilter: 'blur(20px)',
+                            border: `1px solid ${theme.palette.divider}`,
+                            borderRadius: { xs: 3, md: 4 },
+                            transition: 'all 0.3s',
+                            '&:hover': isMobile ? {} : {
+                              transform: 'translateY(-4px)',
+                              borderColor: alpha(theme.palette.primary.main, 0.5)
                             }
-                          }}
-                        >
-                          Поделиться опытом
-                        </Button>
-                      </Paper>
-                    </Fade>
-                  ) : (
-                    <>
-                      <Stack spacing={2.5}>
-                        {reviews.map((review, index) => (
-                          <Zoom 
-                            in={true} 
-                            timeout={500 + index * 100} 
-                            key={review._id}
-                            style={{ transitionDelay: `${index * 50}ms` }}
-                          >
-                            <Card 
-                              sx={{ 
-                                bgcolor: theme.palette.mode === 'light'
-                                  ? alpha(theme.palette.background.paper, 0.7)
-                                  : alpha(theme.palette.background.paper, 0.4),
-                                backdropFilter: 'blur(20px)',
-                                border: `1px solid ${theme.palette.divider}`,
-                                borderRadius: 4,
-                                transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-                                position: 'relative',
-                                overflow: 'hidden',
-                                '&:hover': {
-                                  transform: 'translateY(-4px)',
-                                  borderColor: alpha(theme.palette.primary.main, 0.5),
-                                  boxShadow: theme.shadows[10],
-                                  '& .review-actions': {
-                                    opacity: 1
-                                  }
-                                },
-                                '&:before': {
-                                  content: '""',
-                                  position: 'absolute',
-                                  top: 0,
-                                  left: 0,
-                                  right: 0,
-                                  height: '1px',
-                                  background: `linear-gradient(90deg, transparent, ${theme.palette.primary.main}, transparent)`,
-                                  opacity: 0,
-                                  transition: 'opacity 0.3s'
-                                },
-                                '&:hover:before': {
-                                  opacity: 1
-                                }
-                              }}
-                            >
-                              <CardContent sx={{ p: 3.5 }}>
-                                {/* Шапка отзыва */}
-                                <Stack 
-                                  direction={{ xs: 'column', sm: 'row' }} 
-                                  justifyContent="space-between" 
-                                  alignItems={{ xs: 'flex-start', sm: 'center' }}
-                                  spacing={2}
-                                  sx={{ mb: 3 }}
-                                >
-                                  <Stack direction="row" alignItems="center" spacing={2}>
-                                    <Avatar 
-                                      sx={{ 
-                                        width: 48,
-                                        height: 48,
-                                        bgcolor: alpha(theme.palette.primary.main, 0.2),
-                                        color: theme.palette.primary.light,
-                                        fontWeight: 600,
-                                        border: `2px solid ${alpha(theme.palette.primary.main, 0.3)}`
-                                      }}
-                                    >
-                                      {review.user?.firstName?.[0] || 'U'}
-                                    </Avatar>
-                                    <Box>
-                                      <Stack direction="row" alignItems="center" spacing={1}>
-                                        <Typography sx={{ 
-                                          color: theme.palette.text.primary,
-                                          fontWeight: 600,
-                                          fontSize: '1.1rem'
-                                        }}>
-                                          {review.user?.fullName || 'Анонимный пользователь'}
-                                        </Typography>
-                                        {review.isVerified && (
-                                          <Tooltip title="Проверенный отзыв">
-                                            <Verified sx={{ 
-                                              fontSize: 18, 
-                                              color: theme.palette.success.main
-                                            }} />
-                                          </Tooltip>
-                                        )}
-                                      </Stack>
-                                      <Stack direction="row" alignItems="center" spacing={2} sx={{ flexWrap: 'wrap', gap: 1 }}>
-                                        <Typography variant="body2" sx={{ 
-                                          color: theme.palette.text.secondary,
-                                          display: 'flex',
-                                          alignItems: 'center',
-                                          gap: 0.5
-                                        }}>
-                                          <AccessTime sx={{ fontSize: 14 }} />
-                                          {formatDate(review.createdAt)}
-                                        </Typography>
-                                        <Chip
-                                          icon={getTypeIcon(review.type)}
-                                          label={getTypeLabel(review.type)}
-                                          size="small"
-                                          sx={{
-                                            bgcolor: alpha(theme.palette.secondary.main, 0.1),
-                                            color: theme.palette.secondary.light,
-                                            fontSize: '0.75rem'
-                                          }}
-                                        />
-                                      </Stack>
-                                    </Box>
-                                  </Stack>
-                                  
-                                  <Box sx={{ 
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: 1
+                          }}>
+                            <CardContent sx={{ p: { xs: 2, md: 3.5 } }}>
+                              {/* Шапка отзыва */}
+                              <Stack 
+                                direction={{ xs: 'column', sm: 'row' }} 
+                                justifyContent="space-between" 
+                                alignItems={{ xs: 'flex-start', sm: 'center' }}
+                                spacing={2}
+                                sx={{ mb: 2 }}
+                              >
+                                <Stack direction="row" alignItems="center" spacing={2}>
+                                  <Avatar sx={{ 
+                                    width: { xs: 40, md: 48 },
+                                    height: { xs: 40, md: 48 },
+                                    bgcolor: alpha(theme.palette.primary.main, 0.2),
+                                    color: theme.palette.primary.light,
+                                    fontWeight: 600
                                   }}>
-                                    <Box sx={{
-                                      bgcolor: alpha(theme.palette.warning.main, 0.1),
-                                      borderRadius: 3,
-                                      px: 2,
-                                      py: 1,
-                                      minWidth: 60,
-                                      textAlign: 'center'
-                                    }}>
-                                      <Typography sx={{ 
-                                        color: theme.palette.warning.main,
-                                        fontWeight: 700,
-                                        fontSize: '1.5rem'
-                                      }}>
-                                        {review.rating}
+                                    {review.user?.firstName?.[0] || 'U'}
+                                  </Avatar>
+                                  <Box>
+                                    <Stack direction="row" alignItems="center" spacing={1}>
+                                      <Typography sx={{ fontWeight: 600, fontSize: { xs: '0.9rem', md: '1rem' } }}>
+                                        {review.user?.fullName || 'Анонимный пользователь'}
                                       </Typography>
-                                    </Box>
+                                      {review.isVerified && (
+                                        <Verified sx={{ fontSize: { xs: 14, md: 18 }, color: theme.palette.success.main }} />
+                                      )}
+                                    </Stack>
+                                    <Stack direction="row" alignItems="center" spacing={1} sx={{ flexWrap: 'wrap', gap: 0.5 }}>
+                                      <Typography variant="caption" sx={{ color: theme.palette.text.secondary, display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                                        <AccessTime sx={{ fontSize: 12 }} />
+                                        {formatDate(review.createdAt)}
+                                      </Typography>
+                                      <Chip
+                                        icon={getTypeIcon(review.type)}
+                                        label={getTypeLabel(review.type)}
+                                        size="small"
+                                        sx={{ height: 20, fontSize: '0.7rem' }}
+                                      />
+                                    </Stack>
                                   </Box>
                                 </Stack>
-
-                                {/* Заголовок и текст */}
-                                {review.title && (
-                                  <Typography variant="h6" sx={{ 
-                                    color: theme.palette.text.primary,
-                                    mb: 2,
-                                    fontWeight: 600,
-                                    fontSize: '1.25rem'
-                                  }}>
-                                    {review.title}
-                                  </Typography>
-                                )}
-
-                                <Typography sx={{ 
-                                  color: theme.palette.text.primary,
-                                  mb: 3,
-                                  lineHeight: 1.7,
-                                  fontSize: '1rem',
-                                  whiteSpace: 'pre-line'
+                                
+                                <Box sx={{ 
+                                  bgcolor: alpha(theme.palette.warning.main, 0.1),
+                                  borderRadius: 2,
+                                  px: { xs: 1.5, md: 2 },
+                                  py: 0.5,
+                                  minWidth: 50,
+                                  textAlign: 'center'
                                 }}>
-                                  {review.text}
+                                  <Typography sx={{ color: theme.palette.warning.main, fontWeight: 700, fontSize: { xs: '1.25rem', md: '1.5rem' } }}>
+                                    {review.rating}
+                                  </Typography>
+                                </Box>
+                              </Stack>
+
+                              {/* Заголовок и текст */}
+                              {review.title && (
+                                <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 1, fontSize: { xs: '1rem', md: '1.1rem' } }}>
+                                  {review.title}
                                 </Typography>
+                              )}
 
-                                {/* Теги */}
-                                {review.tags?.length > 0 && (
-                                  <Stack direction="row" spacing={1} sx={{ mb: 3, flexWrap: 'wrap', gap: 1 }}>
-                                    {review.tags.map(tag => (
-                                      <Chip
-                                        key={tag}
-                                        label={tag}
-                                        size="small"
-                                        sx={{
-                                          bgcolor: alpha(theme.palette.primary.main, 0.1),
-                                          color: theme.palette.primary.light,
-                                          border: `1px solid ${alpha(theme.palette.primary.main, 0.2)}`,
-                                          fontSize: '0.75rem',
-                                          '&:hover': {
-                                            bgcolor: alpha(theme.palette.primary.main, 0.2)
-                                          }
-                                        }}
-                                      />
-                                    ))}
-                                  </Stack>
-                                )}
+                              <Typography sx={{ 
+                                color: theme.palette.text.primary,
+                                mb: 2,
+                                lineHeight: 1.6,
+                                fontSize: { xs: '0.875rem', md: '1rem' },
+                                whiteSpace: 'pre-line'
+                              }}>
+                                {review.text.length > (isMobile ? 150 : 300) ? `${review.text.slice(0, isMobile ? 150 : 300)}...` : review.text}
+                              </Typography>
 
-                                {/* Действия */}
-                                <Stack 
-                                  className="review-actions"
-                                  direction="row" 
-                                  justifyContent="space-between" 
-                                  alignItems="center"
-                                  sx={{
-                                    opacity: 0.8,
-                                    transition: 'opacity 0.3s',
-                                    pt: 2,
-                                    borderTop: `1px solid ${theme.palette.divider}`
-                                  }}
+                              {/* Теги */}
+                              {review.tags?.length > 0 && (
+                                <Stack direction="row" spacing={1} sx={{ mb: 2, flexWrap: 'wrap', gap: 1 }}>
+                                  {review.tags.slice(0, isMobile ? 3 : 5).map(tag => (
+                                    <Chip key={tag} label={tag} size="small" sx={{ fontSize: '0.7rem', height: 24 }} />
+                                  ))}
+                                  {isMobile && review.tags.length > 3 && (
+                                    <Chip label={`+${review.tags.length - 3}`} size="small" variant="outlined" />
+                                  )}
+                                </Stack>
+                              )}
+
+                              {/* Действия */}
+                              <Stack 
+                                direction="row" 
+                                justifyContent="space-between" 
+                                alignItems="center"
+                                sx={{ pt: 1.5, borderTop: `1px solid ${theme.palette.divider}` }}
+                              >
+                                <Button
+                                  size="small"
+                                  startIcon={<ThumbUp sx={{ fontSize: { xs: 16, md: 20 } }} />}
+                                  onClick={() => handleHelpfulClick(review._id)}
+                                  disabled={!user}
+                                  sx={{ fontSize: { xs: '0.75rem', md: '0.875rem' } }}
                                 >
-                                  <Button
-                                    size="small"
-                                    startIcon={<ThumbUp />}
-                                    onClick={() => handleHelpfulClick(review._id)}
-                                    disabled={!user}
-                                    sx={{
-                                      color: review.helpfulUsers?.includes(user?._id || '') ? theme.palette.primary.main : theme.palette.text.secondary,
-                                      fontWeight: 500,
-                                      '&:hover': {
-                                        color: theme.palette.primary.main,
-                                        bgcolor: alpha(theme.palette.primary.main, 0.1)
-                                      }
-                                    }}
-                                  >
-                                    Полезно ({review.helpful || 0})
-                                  </Button>
+                                  {review.helpful || 0}
+                                </Button>
+                                
+                                <Stack direction="row" spacing={0.5}>
+                                  {user?.role === 'admin' && !review.reply && (
+                                    <Button
+                                      size="small"
+                                      startIcon={<Reply sx={{ fontSize: { xs: 16, md: 20 } }} />}
+                                      onClick={() => setReplyingTo(replyingTo === review._id ? null : review._id)}
+                                      sx={{ fontSize: { xs: '0.75rem', md: '0.875rem' } }}
+                                    >
+                                      Ответить
+                                    </Button>
+                                  )}
                                   
-                                  <Stack direction="row" spacing={1}>
-                                    {user?.role === 'admin' && !review.reply && (
-                                      <Button
-                                        size="small"
-                                        startIcon={<Reply />}
-                                        onClick={() => setReplyingTo(replyingTo === review._id ? null : review._id)}
-                                        sx={{
-                                          color: theme.palette.success.main,
-                                          '&:hover': {
-                                            bgcolor: alpha(theme.palette.success.main, 0.1)
-                                          }
-                                        }}
-                                      >
+                                  {(user?._id === review.userId || user?.role === 'admin') && (
+                                    <IconButton
+                                      size="small"
+                                      sx={{ color: theme.palette.error.main }}
+                                      onClick={() => openDeleteDialog(
+                                        review._id, 
+                                        review.title || '', 
+                                        review.user?.fullName || 'Анонимный пользователь',
+                                        review.rating
+                                      )}
+                                    >
+                                      <Delete sx={{ fontSize: { xs: 18, md: 20 } }} />
+                                    </IconButton>
+                                  )}
+                                </Stack>
+                              </Stack>
+
+                              {/* Форма ответа */}
+                              {replyingTo === review._id && (
+                                <Fade in={true}>
+                                  <Box sx={{ mt: 2, p: 2, bgcolor: alpha(theme.palette.background.paper, 0.8), borderRadius: 2 }}>
+                                    <TextField
+                                      fullWidth
+                                      multiline
+                                      rows={3}
+                                      size="small"
+                                      value={replyText}
+                                      onChange={(e) => setReplyText(e.target.value)}
+                                      placeholder="Напишите ответ..."
+                                    />
+                                    <Stack direction="row" spacing={1} justifyContent="flex-end" sx={{ mt: 1.5 }}>
+                                      <Button size="small" onClick={() => { setReplyingTo(null); setReplyText(''); }}>
+                                        Отмена
+                                      </Button>
+                                      <Button size="small" variant="contained" onClick={() => handleReply(review._id)} disabled={!replyText.trim()}>
                                         Ответить
                                       </Button>
-                                    )}
-                                    
-                                    {(user?._id === review.userId || user?.role === 'admin') && (
-                                      <IconButton
-                                        size="small"
-                                        sx={{ 
-                                          color: theme.palette.error.main,
-                                          '&:hover': {
-                                            bgcolor: alpha(theme.palette.error.main, 0.1),
-                                            transform: 'scale(1.1)'
-                                          },
-                                          transition: 'all 0.2s'
-                                        }}
-                                        onClick={() => openDeleteDialog(
-                                          review._id, 
-                                          review.title || '', 
-                                          review.user?.fullName || 'Анонимный пользователь',
-                                          review.rating
-                                        )}
-                                      >
-                                        <Delete />
-                                      </IconButton>
-                                    )}
-                                  </Stack>
-                                </Stack>
+                                    </Stack>
+                                  </Box>
+                                </Fade>
+                              )}
 
-                                {/* Форма ответа */}
-                                {replyingTo === review._id && (
-                                  <Fade in={true}>
-                                    <Box sx={{ 
-                                      mt: 3,
-                                      p: 2.5,
-                                      bgcolor: theme.palette.mode === 'light'
-                                        ? alpha(theme.palette.background.paper, 0.8)
-                                        : alpha(theme.palette.background.paper, 0.5),
-                                      borderRadius: 3,
-                                      border: `1px solid ${alpha(theme.palette.success.main, 0.2)}`
-                                    }}>
-                                      <TextField
-                                        fullWidth
-                                        multiline
-                                        rows={3}
-                                        value={replyText}
-                                        onChange={(e) => setReplyText(e.target.value)}
-                                        placeholder="Напишите профессиональный и вежливый ответ..."
-                                        sx={{
-                                          '& .MuiOutlinedInput-root': {
-                                            bgcolor: theme.palette.mode === 'light'
-                                              ? alpha(theme.palette.background.paper, 0.9)
-                                              : alpha(theme.palette.background.paper, 0.6),
-                                            color: theme.palette.text.primary
-                                          }
-                                        }}
-                                      />
-                                      <Stack direction="row" spacing={1} justifyContent="flex-end" sx={{ mt: 2 }}>
-                                        <Button
-                                          size="small"
-                                          onClick={() => {
-                                            setReplyingTo(null);
-                                            setReplyText('');
-                                          }}
-                                          sx={{ 
-                                            color: theme.palette.text.secondary,
-                                            '&:hover': {
-                                              color: theme.palette.text.primary
-                                            }
-                                          }}
-                                        >
-                                          Отмена
-                                        </Button>
-                                        <Button
-                                          size="small"
-                                          variant="contained"
-                                          onClick={() => handleReply(review._id)}
-                                          disabled={!replyText.trim()}
-                                          sx={{
-                                            bgcolor: theme.palette.success.main,
-                                            fontWeight: 600,
-                                            '&:hover': { 
-                                              bgcolor: theme.palette.success.dark
-                                            }
-                                          }}
-                                        >
-                                          Отправить ответ
-                                        </Button>
-                                      </Stack>
-                                    </Box>
-                                  </Fade>
-                                )}
-
-                                {/* Ответ администратора */}
-                                {review.reply && (
-                                  <Fade in={true}>
-                                    <Box sx={{ 
-                                      mt: 3,
-                                      p: 3,
-                                      bgcolor: alpha(theme.palette.success.dark, 0.1),
-                                      borderRadius: 3,
-                                      borderLeft: `3px solid ${theme.palette.success.main}`,
-                                      position: 'relative'
-                                    }}>
-                                      <Box sx={{
-                                        position: 'absolute',
-                                        top: -10,
-                                        right: -10,
-                                        bgcolor: theme.palette.success.main,
-                                        borderRadius: '50%',
-                                        width: 24,
-                                        height: 24,
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        justifyContent: 'center'
-                                      }}>
-                                        <CheckCircle sx={{ 
-                                          fontSize: 16, 
-                                          color: theme.palette.success.contrastText
-                                        }} />
+                              {/* Ответ администратора */}
+                              {review.reply && (
+                                <Fade in={true}>
+                                  <Box sx={{ 
+                                    mt: 2,
+                                    p: 2,
+                                    bgcolor: alpha(theme.palette.success.dark, 0.1),
+                                    borderRadius: 2,
+                                    borderLeft: `3px solid ${theme.palette.success.main}`
+                                  }}>
+                                    <Stack direction="row" alignItems="center" spacing={1.5} sx={{ mb: 1 }}>
+                                      <Avatar sx={{ width: 28, height: 28, bgcolor: alpha(theme.palette.success.main, 0.2), color: theme.palette.success.main }}>
+                                        {review.replier?.firstName?.[0] || 'A'}
+                                      </Avatar>
+                                      <Box>
+                                        <Typography variant="caption" sx={{ fontWeight: 600, color: theme.palette.success.light }}>
+                                          {review.replier?.fullName || 'Администратор'}
+                                        </Typography>
+                                        <Typography variant="caption" sx={{ color: theme.palette.text.secondary }}>
+                                          • {formatDate(review.reply.repliedAt)}
+                                        </Typography>
                                       </Box>
-                                      <Stack direction="row" alignItems="center" spacing={2} sx={{ mb: 1.5 }}>
-                                        <Avatar sx={{ 
-                                          width: 32, 
-                                          height: 32,
-                                          bgcolor: alpha(theme.palette.success.main, 0.2),
-                                          color: theme.palette.success.main
-                                        }}>
-                                          {review.replier?.firstName?.[0] || 'A'}
-                                        </Avatar>
-                                        <Box>
-                                          <Typography variant="body2" sx={{ 
-                                            color: theme.palette.success.light,
-                                            fontWeight: 600,
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            gap: 1
-                                          }}>
-                                            {review.replier?.fullName || 'Администратор Posture Analyzer'}
-                                            <Verified sx={{ fontSize: 16 }} />
-                                          </Typography>
-                                          <Typography variant="caption" sx={{ color: theme.palette.text.secondary }}>
-                                            Ответил {formatDate(review.reply.repliedAt)}
-                                          </Typography>
-                                        </Box>
-                                      </Stack>
-                                      <Typography sx={{ 
-                                        color: theme.palette.text.primary,
-                                        lineHeight: 1.6,
-                                        whiteSpace: 'pre-line'
-                                      }}>
-                                        {review.reply.text}
-                                      </Typography>
-                                    </Box>
-                                  </Fade>
-                                )}
-                              </CardContent>
-                            </Card>
-                          </Zoom>
-                        ))}
-                      </Stack>
+                                    </Stack>
+                                    <Typography variant="body2" sx={{ lineHeight: 1.5 }}>
+                                      {review.reply.text}
+                                    </Typography>
+                                  </Box>
+                                </Fade>
+                              )}
+                            </CardContent>
+                          </Card>
+                        </Zoom>
+                      ))}
+                    </Stack>
 
-                      {/* Пагинация */}
-                      {pagination.pages > 1 && (
-                        <Fade in={true}>
-                          <Stack alignItems="center" sx={{ mt: 4 }}>
-                            <Pagination
-                              count={pagination.pages}
-                              page={pagination.page}
-                              onChange={handlePageChange}
-                              shape="rounded"
-                              sx={{
-                                '& .MuiPaginationItem-root': {
-                                  color: theme.palette.text.secondary,
-                                  borderColor: theme.palette.divider,
-                                  fontSize: '0.95rem',
-                                  '&:hover': {
-                                    bgcolor: alpha(theme.palette.primary.main, 0.1),
-                                    borderColor: theme.palette.primary.main
-                                  }
-                                },
-                                '& .Mui-selected': {
-                                  bgcolor: alpha(theme.palette.primary.main, 0.2),
-                                  color: theme.palette.primary.light,
-                                  borderColor: theme.palette.primary.main,
-                                  fontWeight: 600,
-                                  '&:hover': {
-                                    bgcolor: alpha(theme.palette.primary.main, 0.3)
-                                  }
-                                }
-                              }}
-                            />
-                          </Stack>
-                        </Fade>
-                      )}
-                    </>
-                  )}
-                </Box>
-              </Stack>
-            </Grid>
+                    {/* Пагинация */}
+                    {pagination.pages > 1 && (
+                      <Fade in={true}>
+                        <Stack alignItems="center" sx={{ mt: 4 }}>
+                          <Pagination
+                            count={pagination.pages}
+                            page={pagination.page}
+                            onChange={handlePageChange}
+                            shape="rounded"
+                            size={isMobile ? "small" : "medium"}
+                            siblingCount={isMobile ? 0 : 1}
+                            sx={{
+                              '& .MuiPaginationItem-root': {
+                                fontSize: { xs: '0.75rem', md: '0.875rem' }
+                              }
+                            }}
+                          />
+                        </Stack>
+                      </Fade>
+                    )}
+                  </>
+                )}
+              </Box>
+            </Stack>
           </Grid>
-        </Box>
+        </Grid>
       </Container>
 
-      {/* Красивый диалог подтверждения удаления */}
+      {/* Мобильный drawer для фильтров */}
+      <SwipeableDrawer
+        anchor="bottom"
+        open={filterDrawerOpen}
+        onClose={() => setFilterDrawerOpen(false)}
+        onOpen={() => {}}
+        swipeAreaWidth={56}
+        disableSwipeToOpen={false}
+        PaperProps={{
+          sx: {
+            borderTopLeftRadius: 20,
+            borderTopRightRadius: 20,
+            maxHeight: '90vh',
+            bgcolor: theme.palette.background.paper
+          }
+        }}
+      >
+        <FilterDrawerContent />
+      </SwipeableDrawer>
+
+      {/* Мобильная FAB кнопка для написания отзыва - ИСПРАВЛЕНО: теперь только для открытия формы */}
+      {isMobile && (
+        <Fab
+          color="primary"
+          aria-label="add"
+          onClick={(e) => {
+            e.stopPropagation(); // Останавливаем всплытие события
+            setShowReviewForm(true);
+          }}
+          sx={{
+            position: 'fixed',
+            bottom: 16,
+            right: 16,
+            background: `linear-gradient(135deg, ${theme.palette.primary.main} 0%, ${theme.palette.secondary.main} 100%)`,
+            boxShadow: `0 4px 20px ${alpha(theme.palette.primary.main, 0.4)}`,
+            '&:hover': {
+              transform: 'scale(1.05)',
+              boxShadow: `0 8px 30px ${alpha(theme.palette.primary.main, 0.5)}`
+            },
+            transition: 'all 0.3s ease',
+            zIndex: 1000
+          }}
+        >
+          <RateReview />
+        </Fab>
+      )}
+
+      {/* Кнопка прокрутки наверх */}
+      <Fade in={showScrollTop}>
+        <Fab
+          size={isMobile ? "small" : "medium"}
+          onClick={scrollToTop}
+          sx={{
+            position: 'fixed',
+            bottom: isMobile ? 80 : 16,
+            right: 16,
+            bgcolor: alpha(theme.palette.primary.main, 0.9),
+            backdropFilter: 'blur(10px)',
+            '&:hover': {
+              bgcolor: theme.palette.primary.main
+            },
+            zIndex: 1000
+          }}
+        >
+          <KeyboardArrowUp />
+        </Fab>
+      </Fade>
+
+      {/* Диалог подтверждения удаления */}
       <Dialog
         open={deleteDialog.open}
         onClose={closeDeleteDialog}
@@ -1504,287 +1254,101 @@ const ReviewsPage: React.FC = () => {
         PaperProps={{
           sx: {
             bgcolor: theme.palette.background.paper,
-            backgroundImage: `linear-gradient(135deg, ${alpha(theme.palette.error.main, 0.1)} 0%, ${alpha(theme.palette.warning.main, 0.1)} 100%)`,
-            backdropFilter: 'blur(20px)',
-            border: `1px solid ${alpha(theme.palette.error.main, 0.2)}`,
-            borderRadius: 4,
-            boxShadow: `0 20px 60px ${alpha(theme.palette.common.black, 0.5)}, 0 0 0 1px ${alpha(theme.palette.error.main, 0.2)}`,
-            overflow: 'hidden',
-            position: 'relative',
-            '&:before': {
-              content: '""',
-              position: 'absolute',
-              top: 0,
-              left: 0,
-              right: 0,
-              height: '4px',
-              background: `linear-gradient(90deg, ${theme.palette.error.main}, ${theme.palette.warning.main})`
-            }
+            borderRadius: { xs: 3, md: 4 },
+            m: { xs: 2, md: 0 }
           }
         }}
       >
-        {/* Анимированный фон */}
-        <Box sx={{
-          position: 'absolute',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          background: `radial-gradient(circle at 30% 50%, ${alpha(theme.palette.error.main, 0.15)} 0%, transparent 50%),
-                      radial-gradient(circle at 70% 50%, ${alpha(theme.palette.warning.main, 0.15)} 0%, transparent 50%)`,
-          pointerEvents: 'none'
-        }} />
-
-        <DialogTitle sx={{ 
-          pb: 1, 
-          position: 'relative',
-          display: 'flex',
-          alignItems: 'center',
-          gap: 1.5
-        }}>
+        <DialogTitle sx={{ pb: 1, display: 'flex', alignItems: 'center', gap: 1.5 }}>
           <Box sx={{
-            width: 48,
-            height: 48,
+            width: { xs: 40, md: 48 },
+            height: { xs: 40, md: 48 },
             borderRadius: '50%',
             bgcolor: alpha(theme.palette.error.main, 0.2),
             display: 'flex',
             alignItems: 'center',
-            justifyContent: 'center',
-            animation: 'pulse 2s infinite'
+            justifyContent: 'center'
           }}>
-            <WarningAmber sx={{ 
-              fontSize: 28, 
-              color: theme.palette.error.main,
-              animation: 'shake 0.5s ease-in-out infinite'
-            }} />
+            <WarningAmber sx={{ fontSize: { xs: 24, md: 28 }, color: theme.palette.error.main }} />
           </Box>
           <Box>
-            <Typography variant="h5" sx={{ 
-              color: theme.palette.text.primary,
-              fontWeight: 700,
-              letterSpacing: '-0.02em'
-            }}>
+            <Typography variant={isMobile ? "subtitle1" : "h5"} sx={{ fontWeight: 700 }}>
               Подтверждение удаления
             </Typography>
-            <Typography sx={{ 
-              color: theme.palette.text.secondary,
-              fontSize: '0.9rem',
-              mt: 0.5
-            }}>
+            <Typography variant="caption" sx={{ color: theme.palette.text.secondary }}>
               Это действие нельзя будет отменить
             </Typography>
           </Box>
-          <IconButton
-            onClick={closeDeleteDialog}
-            sx={{
-              position: 'absolute',
-              right: 16,
-              top: 16,
-              color: theme.palette.text.secondary,
-              '&:hover': {
-                color: theme.palette.text.primary,
-                bgcolor: alpha(theme.palette.common.white, 0.1)
-              }
-            }}
-          >
-            <Close />
-          </IconButton>
         </DialogTitle>
 
-        <DialogContent sx={{ position: 'relative', py: 3 }}>
-          <Fade in={true} timeout={500}>
-            <Box>
-              {/* Предупреждение */}
-              <Paper sx={{ 
-                p: 2.5,
-                mb: 3,
-                bgcolor: alpha(theme.palette.error.main, 0.1),
-                border: `1px solid ${alpha(theme.palette.error.main, 0.3)}`,
-                borderRadius: 3
-              }}>
-                <Stack direction="row" spacing={2} alignItems="flex-start">
-                  <ErrorOutline sx={{ 
-                    color: theme.palette.error.main,
-                    fontSize: 24,
-                    flexShrink: 0
-                  }} />
-                  <Box>
-                    <Typography sx={{ 
-                      color: theme.palette.error.light,
-                      fontWeight: 600,
-                      mb: 0.5
-                    }}>
-                      Внимание!
-                    </Typography>
-                    <Typography sx={{ 
-                      color: theme.palette.error.light,
-                      fontSize: '0.95rem'
-                    }}>
-                      Вы собираетесь удалить отзыв. Это действие необратимо, и все связанные данные (лайки, ответы) будут безвозвратно потеряны.
-                    </Typography>
-                  </Box>
-                </Stack>
-              </Paper>
+        <DialogContent sx={{ py: { xs: 2, md: 3 } }}>
+          <Paper sx={{ 
+            p: { xs: 2, md: 2.5 },
+            mb: 2,
+            bgcolor: alpha(theme.palette.error.main, 0.1),
+            borderRadius: 2
+          }}>
+            <Stack direction="row" spacing={1.5} alignItems="flex-start">
+              <ErrorOutline sx={{ color: theme.palette.error.main, fontSize: { xs: 20, md: 24 } }} />
+              <Typography variant="body2" sx={{ color: theme.palette.error.light }}>
+                Вы собираетесь удалить отзыв. Это действие необратимо.
+              </Typography>
+            </Stack>
+          </Paper>
 
-              {/* Информация об отзыве */}
-              <Box sx={{ 
-                p: 3,
-                bgcolor: alpha(theme.palette.background.paper, 0.6),
-                borderRadius: 3,
-                border: `1px solid ${theme.palette.divider}`
-              }}>
-                <Typography sx={{ 
-                  color: theme.palette.text.secondary,
-                  fontSize: '0.9rem',
-                  mb: 1,
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.05em'
-                }}>
-                  Удаляемый отзыв
-                </Typography>
-                
-                <Typography sx={{ 
-                  color: theme.palette.text.primary,
-                  fontWeight: 600,
-                  fontSize: '1.1rem',
-                  mb: 1,
-                  wordBreak: 'break-word'
-                }}>
-                  "{deleteDialog.reviewTitle}"
-                </Typography>
-                
-                <Stack direction="row" spacing={3} sx={{ mb: 2 }}>
-                  <Stack direction="row" alignItems="center" spacing={1}>
-                    <Avatar sx={{ 
-                      width: 24, 
-                      height: 24,
-                      fontSize: '0.8rem',
-                      bgcolor: alpha(theme.palette.primary.main, 0.2),
-                      color: theme.palette.primary.light
-                    }}>
-                      {deleteDialog.reviewAuthor[0]}
-                    </Avatar>
-                    <Typography sx={{ color: theme.palette.text.secondary, fontSize: '0.9rem' }}>
-                      {deleteDialog.reviewAuthor}
-                    </Typography>
-                  </Stack>
-                  
-                  <Stack direction="row" alignItems="center" spacing={0.5}>
-                    <Star sx={{ fontSize: 16, color: theme.palette.warning.main }} />
-                    <Typography sx={{ color: theme.palette.warning.main, fontWeight: 600 }}>
-                      {deleteDialog.reviewRating}
-                    </Typography>
-                  </Stack>
-                </Stack>
-                
-                <Typography sx={{ 
-                  color: theme.palette.text.secondary,
-                  fontSize: '0.9rem',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 0.5
-                }}>
-                  <Dangerous sx={{ fontSize: 16, color: theme.palette.error.main }} />
-                  После удаления восстановить отзыв будет невозможно
-                </Typography>
-              </Box>
-
-              {/* Анимация предупреждения */}
-              <Box sx={{
-                mt: 3,
-                display: 'flex',
-                justifyContent: 'center'
-              }}>
-                <Zoom in={true} timeout={1000}>
-                  <Box sx={{
-                    display: 'flex',
-                    gap: 1
-                  }}>
-                    {[...Array(3)].map((_, i) => (
-                      <Box
-                        key={i}
-                        sx={{
-                          width: 8,
-                          height: 8,
-                          borderRadius: '50%',
-                          bgcolor: alpha(theme.palette.error.main, 0.5 - i * 0.1),
-                          animation: `pulse 1.5s ease-in-out ${i * 0.2}s infinite`
-                        }}
-                      />
-                    ))}
-                  </Box>
-                </Zoom>
-              </Box>
-            </Box>
-          </Fade>
+          <Box sx={{ p: { xs: 2, md: 3 }, bgcolor: alpha(theme.palette.background.paper, 0.6), borderRadius: 2 }}>
+            <Typography variant="caption" sx={{ color: theme.palette.text.secondary, textTransform: 'uppercase' }}>
+              Удаляемый отзыв
+            </Typography>
+            <Typography variant="body1" sx={{ fontWeight: 600, mb: 1, mt: 0.5 }}>
+              "{deleteDialog.reviewTitle}"
+            </Typography>
+            <Stack direction="row" spacing={2} alignItems="center">
+              <Stack direction="row" alignItems="center" spacing={0.5}>
+                <Avatar sx={{ width: 20, height: 20, fontSize: '0.75rem' }}>
+                  {deleteDialog.reviewAuthor[0]}
+                </Avatar>
+                <Typography variant="caption">{deleteDialog.reviewAuthor}</Typography>
+              </Stack>
+              <Stack direction="row" alignItems="center" spacing={0.5}>
+                <Star sx={{ fontSize: 14, color: theme.palette.warning.main }} />
+                <Typography variant="caption" sx={{ fontWeight: 600 }}>{deleteDialog.reviewRating}</Typography>
+              </Stack>
+            </Stack>
+          </Box>
         </DialogContent>
 
-        <DialogActions sx={{ 
-          p: 3, 
-          pt: 0,
-          gap: 2,
-          position: 'relative'
-        }}>
+        <DialogActions sx={{ p: { xs: 2, md: 3 }, pt: 0, gap: 1.5 }}>
           <Button
             fullWidth
             variant="outlined"
             onClick={closeDeleteDialog}
             disabled={deleteDialog.deleting}
-            sx={{
-              py: 1.5,
-              borderRadius: 3,
-              borderColor: alpha(theme.palette.text.secondary, 0.5),
-              color: theme.palette.text.secondary,
-              fontWeight: 600,
-              fontSize: '1rem',
-              '&:hover': {
-                borderColor: theme.palette.text.primary,
-                bgcolor: alpha(theme.palette.common.white, 0.05)
-              }
-            }}
+            size={isMobile ? "small" : "medium"}
+            sx={{ borderRadius: 2 }}
           >
             Отмена
           </Button>
-          
           <Button
             fullWidth
             variant="contained"
             onClick={handleDeleteReview}
             disabled={deleteDialog.deleting}
+            size={isMobile ? "small" : "medium"}
             sx={{
-              py: 1.5,
-              borderRadius: 3,
+              borderRadius: 2,
               background: `linear-gradient(135deg, ${theme.palette.error.main} 0%, ${theme.palette.error.dark} 100%)`,
-              color: theme.palette.error.contrastText,
-              fontWeight: 700,
-              fontSize: '1rem',
-              position: 'relative',
-              overflow: 'hidden',
               '&:hover': {
-                background: `linear-gradient(135deg, ${theme.palette.error.dark} 0%, ${theme.palette.error.main} 100%)`,
-                transform: 'scale(1.02)'
-              },
-              '&:active': {
-                transform: 'scale(0.98)'
-              },
-              '&.Mui-disabled': {
-                background: alpha(theme.palette.error.main, 0.3)
+                background: `linear-gradient(135deg, ${theme.palette.error.dark} 0%, ${theme.palette.error.main} 100%)`
               }
             }}
           >
-            {deleteDialog.deleting ? (
-              <Stack direction="row" alignItems="center" spacing={1}>
-                <CircularProgress size={20} sx={{ color: theme.palette.error.contrastText }} />
-                <Typography>Удаление...</Typography>
-              </Stack>
-            ) : (
-              'Удалить навсегда'
-            )}
+            {deleteDialog.deleting ? <CircularProgress size={20} /> : 'Удалить'}
           </Button>
         </DialogActions>
       </Dialog>
 
-      {/* Форма отзыва в модальном окне */}
+      {/* Форма отзыва */}
       <ReviewForm
         open={showReviewForm}
         onClose={() => setShowReviewForm(false)}
@@ -1793,6 +1357,15 @@ const ReviewsPage: React.FC = () => {
           setShowReviewForm(false);
         }}
       />
+
+      <style>
+        {`
+          @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+          }
+        `}
+      </style>
     </Box>
   );
 };

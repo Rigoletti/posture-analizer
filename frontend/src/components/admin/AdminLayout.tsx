@@ -57,19 +57,20 @@ interface AdminLayoutProps {
 }
 
 const drawerWidth = 260;
+const collapsedDrawerWidth = 72;
 
 const AdminLayout: React.FC<AdminLayoutProps> = ({ children, title }) => {
   const location = useLocation();
   const navigate = useNavigate();
   const theme = useTheme();
-  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+  const isTablet = useMediaQuery(theme.breakpoints.down('md'));
   const { user, logout } = useAuthStore();
   const { mode, toggleTheme } = useThemeMode();
   
   const [mobileOpen, setMobileOpen] = React.useState(false);
   const [collapsed, setCollapsed] = React.useState(false);
   const [anchorEl, setAnchorEl] = React.useState<null | HTMLElement>(null);
-  const [notificationsEl, setNotificationsEl] = React.useState<null | HTMLElement>(null);
 
   const open = Boolean(anchorEl);
   const isLight = theme.palette.mode === 'light';
@@ -88,14 +89,6 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children, title }) => {
 
   const handleMenuClose = () => {
     setAnchorEl(null);
-  };
-
-  const handleNotificationsOpen = (event: React.MouseEvent<HTMLElement>) => {
-    setNotificationsEl(event.currentTarget);
-  };
-
-  const handleNotificationsClose = () => {
-    setNotificationsEl(null);
   };
 
   const handleLogout = async () => {
@@ -130,14 +123,6 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children, title }) => {
     return undefined;
   };
 
-  const notifications = [
-    { id: 1, text: 'Новый пользователь зарегистрировался', time: '5 минут назад', read: false },
-    { id: 2, text: 'Обновление системы запланировано', time: '1 час назад', read: false },
-    { id: 3, text: 'Отчет готов к просмотру', time: '2 часа назад', read: true }
-  ];
-
-  const unreadCount = notifications.filter(n => !n.read).length;
-
   const menuItems = [
     {
       text: 'Дашборд',
@@ -165,160 +150,163 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children, title }) => {
     }
   ];
 
-  const drawer = (
+  // Десктопный Drawer
+  const desktopDrawer = (
     <Box sx={{ 
       height: '100%',
-      bgcolor: isLight ? alpha(theme.palette.background.paper, 0.95) : '#0f172a',
-      color: isLight ? theme.palette.text.primary : '#ffffff',
+      bgcolor: isLight ? '#ffffff' : '#0f172a',
       display: 'flex',
       flexDirection: 'column'
     }}>
-      {/* Логотип и кнопка сворачивания */}
+      {/* Логотип */}
       <Box sx={{ 
         display: 'flex', 
         alignItems: 'center', 
         justifyContent: collapsed ? 'center' : 'space-between',
         py: 2,
         px: collapsed ? 1 : 2,
-        borderBottom: `1px solid ${isLight ? alpha(theme.palette.divider, 0.1) : 'rgba(100, 116, 139, 0.2)'}`
+        borderBottom: `1px solid ${theme.palette.divider}`
       }}>
         {!collapsed ? (
           <>
             <Stack direction="row" alignItems="center" spacing={1}>
-              <AdminPanelSettingsIcon sx={{ 
-                color: theme.palette.primary.main,
-                fontSize: 32
-              }} />
-              <Typography 
-                variant="h6" 
-                noWrap 
-                component="div"
-                sx={{ 
-                  fontWeight: 700,
-                  background: `linear-gradient(90deg, ${theme.palette.primary.main}, ${theme.palette.secondary.main})`,
-                  WebkitBackgroundClip: 'text',
-                  WebkitTextFillColor: 'transparent'
-                }}
-              >
+              <AdminPanelSettingsIcon sx={{ color: theme.palette.primary.main, fontSize: 28 }} />
+              <Typography variant="subtitle1" fontWeight={700} noWrap>
                 Админ Панель
               </Typography>
             </Stack>
             <Tooltip title="Свернуть">
-              <IconButton 
-                size="small"
-                onClick={() => setCollapsed(true)}
-                sx={{
-                  color: isLight ? theme.palette.text.secondary : '#94a3b8',
-                  '&:hover': {
-                    color: theme.palette.primary.main
-                  }
-                }}
-              >
-                <ChevronLeftIcon />
+              <IconButton size="small" onClick={() => setCollapsed(true)}>
+                <ChevronLeftIcon fontSize="small" />
               </IconButton>
             </Tooltip>
           </>
         ) : (
           <Tooltip title="Развернуть">
-            <IconButton 
-              onClick={() => setCollapsed(false)}
-              sx={{
-                color: isLight ? theme.palette.text.secondary : '#94a3b8',
-                '&:hover': {
-                  color: theme.palette.primary.main
-                }
-              }}
-            >
+            <IconButton onClick={() => setCollapsed(false)}>
               <ChevronRightIcon />
             </IconButton>
           </Tooltip>
         )}
       </Box>
       
-      <Divider sx={{ borderColor: isLight ? alpha(theme.palette.divider, 0.1) : 'rgba(100, 116, 139, 0.2)' }} />
-      
       {/* Меню */}
-      <List sx={{ p: 2, flex: 1 }}>
+      <List sx={{ p: 1, flex: 1 }}>
         {menuItems.map((item) => (
-          <ListItem 
-            key={item.text} 
-            disablePadding
-            sx={{ 
-              mb: 1,
-              borderRadius: 2,
-              overflow: 'hidden'
-            }}
-          >
+          <ListItem key={item.text} disablePadding sx={{ mb: 0.5 }}>
             <ListItemButton
               component={Link}
               to={item.path}
               selected={item.active}
               sx={{
-                py: 1.5,
-                px: collapsed ? 2 : 2,
-                borderRadius: 2,
+                py: 1,
+                px: collapsed ? 1 : 2,
+                borderRadius: 1,
                 justifyContent: collapsed ? 'center' : 'flex-start',
                 '&.Mui-selected': {
-                  bgcolor: alpha(theme.palette.primary.main, 0.15),
+                  bgcolor: alpha(theme.palette.primary.main, 0.1),
                   color: theme.palette.primary.main,
                   '&:hover': {
-                    bgcolor: alpha(theme.palette.primary.main, 0.2)
+                    bgcolor: alpha(theme.palette.primary.main, 0.15)
                   }
-                },
-                '&:hover': {
-                  bgcolor: isLight 
-                    ? alpha(theme.palette.text.primary, 0.05)
-                    : alpha(theme.palette.text.primary, 0.1)
                 }
               }}
             >
               <ListItemIcon sx={{ 
-                color: item.active ? theme.palette.primary.main : (isLight ? theme.palette.text.secondary : '#94a3b8'),
+                color: item.active ? theme.palette.primary.main : theme.palette.text.secondary,
                 minWidth: collapsed ? 'auto' : 40,
-                mr: collapsed ? 0 : 2
+                mr: collapsed ? 0 : 1
               }}>
                 {item.icon}
               </ListItemIcon>
-              {!collapsed && (
-                <ListItemText 
-                  primary={item.text}
-                  primaryTypographyProps={{
-                    fontSize: '0.875rem',
-                    fontWeight: item.active ? 600 : 500
-                  }}
-                />
-              )}
+              {!collapsed && <ListItemText primary={item.text} />}
             </ListItemButton>
           </ListItem>
         ))}
       </List>
       
-      {/* Кнопка возврата */}
-      <Box sx={{ 
-        p: collapsed ? 1 : 2,
-        borderTop: `1px solid ${isLight ? alpha(theme.palette.divider, 0.1) : 'rgba(100, 116, 139, 0.2)'}`
-      }}>
+      {/* Кнопка на главную */}
+      <Box sx={{ p: collapsed ? 1 : 2, borderTop: `1px solid ${theme.palette.divider}` }}>
         <Tooltip title="На главную" placement={collapsed ? 'right' : 'top'}>
           <Button
             fullWidth={!collapsed}
-            sx={{
-              minWidth: collapsed ? 48 : 'auto',
-              height: 48,
-              borderRadius: 2,
-              color: isLight ? theme.palette.text.secondary : '#94a3b8',
-              borderColor: isLight ? alpha(theme.palette.divider, 0.2) : 'rgba(100, 116, 139, 0.3)',
-              '&:hover': {
-                borderColor: theme.palette.primary.main,
-                color: theme.palette.primary.main,
-                bgcolor: alpha(theme.palette.primary.main, 0.1)
-              }
-            }}
-            variant="outlined"
             onClick={handleBackToApp}
+            variant="outlined"
+            size="small"
+            sx={{
+              minWidth: collapsed ? 'auto' : '100%',
+              borderRadius: 1,
+              textTransform: 'none'
+            }}
           >
-            {collapsed ? <ArrowBackIcon /> : 'На главную'}
+            {collapsed ? <ArrowBackIcon fontSize="small" /> : 'На главную'}
           </Button>
         </Tooltip>
+      </Box>
+    </Box>
+  );
+
+  // Мобильный Drawer
+  const mobileDrawer = (
+    <Box sx={{ 
+      width: 280,
+      height: '100%',
+      bgcolor: isLight ? '#ffffff' : '#0f172a',
+      display: 'flex',
+      flexDirection: 'column'
+    }}>
+      {/* Шапка мобильного меню */}
+      <Box sx={{ p: 2, borderBottom: `1px solid ${theme.palette.divider}` }}>
+        <Stack direction="row" alignItems="center" spacing={1}>
+          <AdminPanelSettingsIcon sx={{ color: theme.palette.primary.main }} />
+          <Typography variant="h6" fontWeight={700}>
+            Админ Панель
+          </Typography>
+        </Stack>
+      </Box>
+      
+      {/* Мобильное меню */}
+      <List sx={{ p: 1, flex: 1 }}>
+        {menuItems.map((item) => (
+          <ListItem key={item.text} disablePadding sx={{ mb: 0.5 }}>
+            <ListItemButton
+              component={Link}
+              to={item.path}
+              selected={item.active}
+              onClick={() => setMobileOpen(false)}
+              sx={{
+                py: 1.5,
+                px: 2,
+                borderRadius: 1,
+                '&.Mui-selected': {
+                  bgcolor: alpha(theme.palette.primary.main, 0.1),
+                  color: theme.palette.primary.main
+                }
+              }}
+            >
+              <ListItemIcon sx={{ 
+                color: item.active ? theme.palette.primary.main : theme.palette.text.secondary,
+                minWidth: 40
+              }}>
+                {item.icon}
+              </ListItemIcon>
+              <ListItemText primary={item.text} />
+            </ListItemButton>
+          </ListItem>
+        ))}
+      </List>
+      
+      {/* Кнопка на главную в мобильном меню */}
+      <Box sx={{ p: 2, borderTop: `1px solid ${theme.palette.divider}` }}>
+        <Button
+          fullWidth
+          onClick={handleBackToApp}
+          variant="outlined"
+          startIcon={<ArrowBackIcon />}
+          sx={{ borderRadius: 1, textTransform: 'none' }}
+        >
+          На главную
+        </Button>
       </Box>
     </Box>
   );
@@ -330,49 +318,28 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children, title }) => {
         justifyContent: 'center', 
         alignItems: 'center', 
         minHeight: '100vh',
-        bgcolor: theme.palette.background.default
+        p: 2
       }}>
         <Container maxWidth="sm">
           <Fade in={true}>
             <Box sx={{ 
               textAlign: 'center',
-              p: 6,
-              borderRadius: 4,
-              bgcolor: isLight ? alpha(theme.palette.background.paper, 0.8) : alpha('#1e293b', 0.7),
-              border: `1px solid ${alpha(theme.palette.error.main, 0.3)}`,
-              backdropFilter: 'blur(10px)',
-              boxShadow: theme.shadows[5]
+              p: 4,
+              borderRadius: 3,
+              bgcolor: alpha(theme.palette.background.paper, 0.8),
+              border: `1px solid ${alpha(theme.palette.error.main, 0.3)}`
             }}>
-              <AdminPanelSettingsIcon sx={{ 
-                fontSize: 64, 
-                color: theme.palette.error.main,
-                mb: 3
-              }} />
-              <Typography variant="h4" sx={{ 
-                color: theme.palette.text.primary, 
-                mb: 2,
-                fontWeight: 700
-              }}>
+              <AdminPanelSettingsIcon sx={{ fontSize: 64, color: theme.palette.error.main, mb: 2 }} />
+              <Typography variant="h5" fontWeight={700} gutterBottom>
                 Доступ запрещен
               </Typography>
-              <Typography variant="body1" sx={{ 
-                color: theme.palette.text.secondary,
-                mb: 4
-              }}>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
                 У вас нет прав для доступа к админ-панели.
               </Typography>
               <Button
                 component={Link}
                 to="/"
                 variant="contained"
-                sx={{
-                  background: `linear-gradient(135deg, ${theme.palette.primary.main} 0%, ${theme.palette.secondary.main} 100%)`,
-                  px: 4,
-                  py: 1.5,
-                  '&:hover': {
-                    background: `linear-gradient(135deg, ${theme.palette.primary.dark} 0%, ${theme.palette.secondary.dark} 100%)`
-                  }
-                }}
               >
                 Вернуться на главную
               </Button>
@@ -384,357 +351,177 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children, title }) => {
   }
 
   return (
-    <Box sx={{ 
-      display: 'flex', 
-      flexDirection: 'column',
-      minHeight: '100vh', 
-      bgcolor: theme.palette.background.default
-    }}>
-      {/* Фиксированный Header - всегда сверху, только один */}
-      <AppBar 
-        position="fixed" 
-        color="default" 
-        elevation={0}
-        sx={{
-          backdropFilter: 'blur(10px)',
-          backgroundColor: isLight 
-            ? 'rgba(255, 255, 255, 0.9)' 
-            : 'rgba(17, 24, 39, 0.9)',
-          borderBottom: `1px solid ${theme.palette.divider}`,
-          zIndex: theme.zIndex.drawer + 1
-        }}
-      >
-        <Container maxWidth="xl">
-          <Toolbar disableGutters sx={{ minHeight: { xs: 60, sm: 64 } }}>
-            {/* Логотип */}
-            <Box
-              component={Link}
-              to="/"
-              sx={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 1.5,
-                textDecoration: 'none',
-                color: 'text.primary',
-                fontWeight: 700,
-                fontSize: 20,
-                letterSpacing: '-0.5px',
-                transition: 'opacity 0.2s',
-                '&:hover': { opacity: 0.8 },
-                mr: 4
-              }}
-            >
-              <Box
-                sx={{
-                  width: 32,
-                  height: 32,
-                  borderRadius: 1,
-                  background: `linear-gradient(135deg, ${theme.palette.primary.main} 0%, ${theme.palette.secondary.main} 100%)`,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  color: 'white',
-                  fontSize: 18,
-                  fontWeight: 'bold'
-                }}
-              >
-                P
-              </Box>
-              <Typography
-                variant="h6"
-                sx={{
-                  background: `linear-gradient(135deg, ${theme.palette.primary.main} 0%, ${theme.palette.secondary.main} 100%)`,
-                  WebkitBackgroundClip: 'text',
-                  WebkitTextFillColor: 'transparent',
-                  backgroundClip: 'text',
-                  display: { xs: 'none', sm: 'block' }
-                }}
-              >
-                POSTURE
-              </Typography>
-            </Box>
-
-            {/* Пустое пространство для баланса */}
-            <Box sx={{ flexGrow: 1 }} />
-
-            {/* Правая секция */}
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              {/* Переключатель тем */}
-              <IconButton 
-                onClick={toggleTheme}
-                sx={{ 
-                  color: 'text.secondary',
-                  '&:hover': { color: 'primary.main' }
-                }}
-              >
-                {mode === 'light' ? <DarkIcon /> : <LightIcon />}
-              </IconButton>
-
-
-              {/* Меню пользователя */}
-              <Tooltip title="Меню пользователя">
-                <Button
-                  onClick={handleMenuClick}
-                  sx={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 1,
-                    py: 0.5,
-                    px: 1,
-                    borderRadius: 2,
-                    border: `1px solid ${theme.palette.divider}`,
-                    color: 'text.primary',
-                    '&:hover': {
-                      bgcolor: alpha(theme.palette.primary.main, 0.04),
-                      borderColor: 'text.secondary'
-                    }
-                  }}
-                >
-                  <Avatar
-                    src={getAvatarSrc()}
-                    sx={{
-                      width: 32,
-                      height: 32,
-                      bgcolor: 'primary.main',
-                      fontSize: '0.875rem',
-                      fontWeight: 600
-                    }}
-                  >
-                    {!getAvatarSrc() && getUserInitials()}
-                  </Avatar>
-                  <Typography 
-                    variant="body2" 
-                    sx={{ 
-                      fontWeight: 500,
-                      display: { xs: 'none', md: 'block' }
-                    }}
-                  >
-                    {getUserName()}
-                  </Typography>
-                  <ArrowDownIcon 
-                    sx={{ 
-                      fontSize: 20,
-                      color: 'text.secondary',
-                      transform: open ? 'rotate(180deg)' : 'none',
-                      transition: 'transform 0.2s'
-                    }} 
-                  />
-                </Button>
-              </Tooltip>
-            </Box>
-
-            {/* Меню пользователя (popup) */}
-            <Menu
-              anchorEl={anchorEl}
-              open={open}
-              onClose={handleMenuClose}
-              onClick={handleMenuClose}
-              transformOrigin={{ horizontal: 'right', vertical: 'top' }}
-              anchorOrigin={{ horizontal: 'right', vertical: 'bottom' }}
-              PaperProps={{
-                sx: {
-                  mt: 1,
-                  minWidth: 280,
-                  borderRadius: 2,
-                  boxShadow: theme.shadows[10]
-                }
-              }}
-            >
-              <Box sx={{ p: 2, bgcolor: alpha(theme.palette.primary.main, 0.04) }}>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                  <Avatar
-                    src={getAvatarSrc()}
-                    sx={{ 
-                      width: 48, 
-                      height: 48,
-                      bgcolor: 'primary.main',
-                      fontSize: '1.125rem',
-                      fontWeight: 600
-                    }}
-                  >
-                    {!getAvatarSrc() && getUserInitials()}
-                  </Avatar>
-                  <Box>
-                    <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
-                      {user?.firstName && user?.lastName 
-                        ? `${user.firstName} ${user.lastName}`
-                        : user?.fullName || 'Пользователь'}
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary">
-                      {user?.email}
-                    </Typography>
-                  </Box>
-                </Box>
-              </Box>
-
-              <Divider />
-
-              <MenuItem component={Link} to="/profile" sx={{ py: 1.5 }}>
-                <MuiListItemIcon>
-                  <PersonIcon fontSize="small" />
-                </MuiListItemIcon>
-                <Typography variant="body2">Мой профиль</Typography>
-              </MenuItem>
-
-              <Divider />
-
-              <MenuItem onClick={handleLogout} sx={{ py: 1.5, color: 'error.main' }}>
-                <MuiListItemIcon>
-                  <LogoutIcon fontSize="small" color="error" />
-                </MuiListItemIcon>
-                <Typography variant="body2">Выйти</Typography>
-              </MenuItem>
-            </Menu>
-
-            {/* Меню уведомлений */}
-            <Menu
-              anchorEl={notificationsEl}
-              open={Boolean(notificationsEl)}
-              onClose={handleNotificationsClose}
-              PaperProps={{
-                sx: {
-                  mt: 1.5,
-                  minWidth: 300,
-                  maxWidth: 350,
-                  borderRadius: 2,
-                  border: `1px solid ${theme.palette.divider}`,
-                  boxShadow: theme.shadows[5]
-                }
-              }}
-            >
-              <Box sx={{ p: 2, borderBottom: `1px solid ${theme.palette.divider}` }}>
-                <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
-                  Уведомления
-                </Typography>
-              </Box>
-              {notifications.map((notification) => (
-                <MenuItem 
-                  key={notification.id}
-                  onClick={handleNotificationsClose}
-                  sx={{
-                    whiteSpace: 'normal',
-                    py: 1.5,
-                    bgcolor: notification.read ? 'transparent' : alpha(theme.palette.primary.main, 0.05),
-                    '&:hover': {
-                      bgcolor: alpha(theme.palette.primary.main, 0.1)
-                    }
-                  }}
-                >
-                  <Box>
-                    <Typography variant="body2" sx={{ fontWeight: notification.read ? 400 : 600 }}>
-                      {notification.text}
-                    </Typography>
-                    <Typography variant="caption" sx={{ color: theme.palette.text.secondary }}>
-                      {notification.time}
-                    </Typography>
-                  </Box>
-                </MenuItem>
-              ))}
-            </Menu>
-          </Toolbar>
-        </Container>
-      </AppBar>
-
-      {/* Отступ для фиксированного Header */}
-      <Toolbar sx={{ minHeight: { xs: 60, sm: 64 } }} />
-
-      {/* Основной контент с Drawer */}
-      <Box sx={{ display: 'flex', flex: 1 }}>
-        {/* Drawer */}
-        <Box
-          component="nav"
-          sx={{ 
-            width: { md: collapsed ? 80 : drawerWidth }, 
-            flexShrink: { md: 0 },
-            transition: theme.transitions.create('width', {
-              easing: theme.transitions.easing.sharp,
-              duration: theme.transitions.duration.leavingScreen,
-            })
-          }}
-        >
-          {isMobile ? (
-            <Drawer
-              variant="temporary"
-              open={mobileOpen}
-              onClose={handleDrawerToggle}
-              ModalProps={{ keepMounted: true }}
-              sx={{
-                '& .MuiDrawer-paper': {
-                  boxSizing: 'border-box',
-                  width: drawerWidth,
-                  bgcolor: isLight ? alpha(theme.palette.background.paper, 0.95) : '#0f172a',
-                  borderRight: `1px solid ${theme.palette.divider}`,
-                  backdropFilter: isLight ? 'blur(10px)' : 'none',
-                  mt: '64px',
-                  height: 'calc(100% - 64px)'
-                }
-              }}
-            >
-              {drawer}
-            </Drawer>
-          ) : (
-            <Drawer
-              variant="permanent"
-              sx={{
-                '& .MuiDrawer-paper': {
-                  boxSizing: 'border-box',
-                  width: collapsed ? 80 : drawerWidth,
-                  bgcolor: isLight ? alpha(theme.palette.background.paper, 0.95) : '#0f172a',
-                  borderRight: `1px solid ${theme.palette.divider}`,
-                  backdropFilter: isLight ? 'blur(10px)' : 'none',
-                  overflowX: 'hidden',
-                  mt: '64px',
-                  height: 'calc(100% - 64px)',
-                  transition: theme.transitions.create('width', {
-                    easing: theme.transitions.easing.sharp,
-                    duration: theme.transitions.duration.leavingScreen,
-                  })
-                }
-              }}
-              open
-            >
-              {drawer}
-            </Drawer>
-          )}
-        </Box>
-        
-        {/* Main content */}
-        <Box
-          component="main"
+    <Box sx={{ display: 'flex', minHeight: '100vh' }}>
+      {/* AppBar - только для мобильных */}
+      {isMobile && (
+        <AppBar 
+          position="fixed" 
+          color="default" 
+          elevation={0}
           sx={{
-            flexGrow: 1,
-            p: 3,
-            width: { md: `calc(100% - ${collapsed ? 80 : drawerWidth}px)` },
-            minHeight: 'calc(100vh - 64px)',
-            transition: theme.transitions.create(['width'], {
-              easing: theme.transitions.easing.sharp,
-              duration: theme.transitions.duration.leavingScreen,
-            })
+            bgcolor: isLight ? '#ffffff' : '#0f172a',
+            borderBottom: `1px solid ${theme.palette.divider}`,
+            zIndex: theme.zIndex.drawer + 1
           }}
         >
-          {/* Заголовок страницы и кнопка меню для мобильных */}
-          <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
-            {isMobile && (
-              <IconButton
-                onClick={handleDrawerToggle}
-                sx={{ mr: 2 }}
-              >
-                <MenuIcon />
-              </IconButton>
-            )}
-            <Typography variant="h5" sx={{ fontWeight: 600 }}>
+          <Toolbar sx={{ minHeight: 56, px: 2 }}>
+            <IconButton edge="start" onClick={handleDrawerToggle} sx={{ mr: 1 }}>
+              <MenuIcon />
+            </IconButton>
+            
+            <Typography variant="h6" sx={{ flex: 1, fontWeight: 600, fontSize: '1rem' }}>
               {title}
             </Typography>
-          </Box>
+            
+            <IconButton onClick={toggleTheme} size="small">
+              {mode === 'light' ? <DarkIcon /> : <LightIcon />}
+            </IconButton>
+            
+            <IconButton onClick={handleMenuClick} size="small" sx={{ ml: 0.5 }}>
+              <Avatar
+                src={getAvatarSrc()}
+                sx={{ width: 32, height: 32, bgcolor: theme.palette.primary.main, fontSize: '0.875rem' }}
+              >
+                {!getAvatarSrc() && getUserInitials()}
+              </Avatar>
+            </IconButton>
+          </Toolbar>
+        </AppBar>
+      )}
 
-          {/* Контент */}
-          <Fade in={true} timeout={500}>
-            <Box>
-              {children}
-            </Box>
-          </Fade>
-        </Box>
+      {/* Drawer - десктопный вариант */}
+      {!isMobile && (
+        <Drawer
+          variant="permanent"
+          sx={{
+            width: collapsed ? collapsedDrawerWidth : drawerWidth,
+            flexShrink: 0,
+            '& .MuiDrawer-paper': {
+              width: collapsed ? collapsedDrawerWidth : drawerWidth,
+              boxSizing: 'border-box',
+              borderRight: `1px solid ${theme.palette.divider}`,
+              position: 'relative',
+              height: '100vh'
+            }
+          }}
+        >
+          {desktopDrawer}
+        </Drawer>
+      )}
+
+      {/* Drawer - мобильный вариант */}
+      {isMobile && (
+        <Drawer
+          variant="temporary"
+          open={mobileOpen}
+          onClose={handleDrawerToggle}
+          ModalProps={{ keepMounted: true }}
+          sx={{
+            '& .MuiDrawer-paper': {
+              width: 280,
+              boxSizing: 'border-box',
+              borderRight: `1px solid ${theme.palette.divider}`
+            }
+          }}
+        >
+          {mobileDrawer}
+        </Drawer>
+      )}
+
+      {/* Основной контент */}
+      <Box
+        component="main"
+        sx={{
+          flexGrow: 1,
+          p: { xs: 2, sm: 2, md: 3 },
+          width: { md: `calc(100% - ${collapsed ? collapsedDrawerWidth : drawerWidth}px)` },
+          mt: { xs: '56px', md: 0 },
+          minHeight: { xs: 'calc(100vh - 56px)', md: '100vh' },
+          bgcolor: theme.palette.background.default,
+          overflowX: 'hidden'
+        }}
+      >
+        {/* Десктопный заголовок страницы */}
+        {!isMobile && (
+          <Typography variant="h5" fontWeight={600} sx={{ mb: 3 }}>
+            {title}
+          </Typography>
+        )}
+        
+        <Fade in={true} timeout={300}>
+          <Box sx={{ width: '100%' }}>
+            {children}
+          </Box>
+        </Fade>
       </Box>
+
+      {/* Меню пользователя (общее для всех) */}
+      <Menu
+        anchorEl={anchorEl}
+        open={open}
+        onClose={handleMenuClose}
+        transformOrigin={{ horizontal: 'right', vertical: 'top' }}
+        anchorOrigin={{ horizontal: 'right', vertical: 'bottom' }}
+        PaperProps={{
+          sx: {
+            mt: 1,
+            minWidth: 200,
+            borderRadius: 2,
+            ...(isMobile && {
+              position: 'fixed',
+              top: 'auto !important',
+              bottom: 0,
+              left: 0,
+              right: 0,
+              width: '100%',
+              maxWidth: '100%',
+              borderRadius: '16px 16px 0 0',
+              transform: 'none !important',
+              '& .MuiList-root': {
+                pb: 2
+              }
+            })
+          }
+        }}
+      >
+        <Box sx={{ p: 2, borderBottom: `1px solid ${theme.palette.divider}` }}>
+          <Stack direction="row" alignItems="center" spacing={1.5}>
+            <Avatar
+              src={getAvatarSrc()}
+              sx={{ width: 40, height: 40, bgcolor: theme.palette.primary.main }}
+            >
+              {!getAvatarSrc() && getUserInitials()}
+            </Avatar>
+            <Box>
+              <Typography variant="body2" fontWeight={600}>
+                {user?.firstName && user?.lastName 
+                  ? `${user.firstName} ${user.lastName}`
+                  : user?.fullName || 'Пользователь'}
+              </Typography>
+              <Typography variant="caption" color="text.secondary">
+                {user?.email}
+              </Typography>
+            </Box>
+          </Stack>
+        </Box>
+        
+        <MenuItem onClick={() => { navigate('/profile'); handleMenuClose(); }} sx={{ py: 1.5 }}>
+          <MuiListItemIcon><PersonIcon fontSize="small" /></MuiListItemIcon>
+          <Typography variant="body2">Мой профиль</Typography>
+        </MenuItem>
+        
+        <MenuItem onClick={toggleTheme} sx={{ py: 1.5 }}>
+          <MuiListItemIcon>{mode === 'light' ? <DarkIcon fontSize="small" /> : <LightIcon fontSize="small" />}</MuiListItemIcon>
+          <Typography variant="body2">{mode === 'light' ? 'Темная тема' : 'Светлая тема'}</Typography>
+        </MenuItem>
+        
+        <Divider />
+        
+        <MenuItem onClick={handleLogout} sx={{ py: 1.5, color: 'error.main' }}>
+          <MuiListItemIcon><LogoutIcon fontSize="small" color="error" /></MuiListItemIcon>
+          <Typography variant="body2">Выйти</Typography>
+        </MenuItem>
+      </Menu>
     </Box>
   );
 };

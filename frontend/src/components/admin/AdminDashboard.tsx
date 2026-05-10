@@ -20,32 +20,37 @@ import {
   useMediaQuery,
   Tabs,
   Tab,
-  Tooltip,
   Fade,
-  Menu,
-  MenuItem,
-  FormControl,
-  Select,
-  InputLabel
+  Drawer,
+  SwipeableDrawer,
+  Divider,
+  BottomNavigation,
+  BottomNavigationAction,
+  List,
+  ListItem,
+  ListItemIcon,
+  ListItemText,
 } from '@mui/material';
 import {
   People as PeopleIcon,
   FitnessCenter as FitnessCenterIcon,
   Refresh as RefreshIcon,
   CheckCircle as CheckCircleIcon,
-  AccessTime as AccessTimeIcon,
   Groups as GroupsIcon,
   SportsGymnastics as SportsGymnasticsIcon,
   Security as SecurityIcon,
-  AccountCircle as AccountCircleIcon,
   NoteAdd as NoteAddIcon,
   BarChart as BarChartIcon,
   PieChart as PieChartIcon,
-  Timeline as TimelineIcon,
   TrendingUp as TrendingUpIcon,
   ShowChart as ShowChartIcon,
   Schedule as ScheduleIcon,
-  Whatshot as WhatshotIcon
+  Whatshot as WhatshotIcon,
+  Close as CloseIcon,
+  Menu as MenuIcon,
+  Dashboard as DashboardIcon,
+  DirectionsRun as DirectionsRunIcon,
+  Assessment as AssessmentIcon,
 } from '@mui/icons-material';
 import { adminApi } from '../../api/admin';
 import {
@@ -65,12 +70,6 @@ import {
   Legend,
   ResponsiveContainer,
   ComposedChart,
-  Scatter,
-  RadarChart,
-  Radar,
-  PolarGrid,
-  PolarAngleAxis,
-  PolarRadiusAxis
 } from 'recharts';
 
 interface AnalyticsData {
@@ -132,8 +131,7 @@ const COLORS = ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4'
 const AdminDashboard: React.FC = () => {
   const theme = useTheme();
   const navigate = useNavigate();
-  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
-  const isTablet = useMediaQuery(theme.breakpoints.down('lg'));
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   
   const [stats, setStats] = useState<StatsData | null>(null);
   const [analytics, setAnalytics] = useState<AnalyticsData | null>(null);
@@ -142,7 +140,8 @@ const AdminDashboard: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [tabValue, setTabValue] = useState(0);
   const [period, setPeriod] = useState('week');
-  const [periodAnchorEl, setPeriodAnchorEl] = useState<null | HTMLElement>(null);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [mobileBottomNav, setMobileBottomNav] = useState(0);
 
   useEffect(() => {
     fetchAllData();
@@ -153,18 +152,15 @@ const AdminDashboard: React.FC = () => {
       setError(null);
       setLoading(true);
       
-      // Получаем базовую статистику
       const statsResponse = await adminApi.getAdminStats();
       setStats(statsResponse.data);
       
-      // Получаем аналитику для графиков
       const analyticsResponse = await adminApi.getAnalytics(period);
       setAnalytics(analyticsResponse.data);
       
     } catch (err: any) {
       console.error('Error fetching data:', err);
       setError(err.response?.data?.error || 'Ошибка при загрузке данных');
-      // Используем mock данные при ошибке
       setStats(getMockStats());
       setAnalytics(getMockAnalytics());
     } finally {
@@ -175,55 +171,54 @@ const AdminDashboard: React.FC = () => {
 
   const getMockStats = (): StatsData => ({
     users: {
-      total: 1542,
-      active: 1289,
-      newToday: 23,
-      roles: { admin: 3, user: 1250, guest: 289 }
+      total: 8,
+      active: 8,
+      newToday: 0,
+      roles: { admin: 1, user: 7, guest: 0 }
     },
     exercises: {
-      total: 45,
-      active: 42,
-      types: { stretching: 12, cardio: 10, strength: 15, posture: 5, flexibility: 3 }
+      total: 28,
+      active: 28,
+      types: { stretching: 8, cardio: 6, strength: 8, posture: 3, flexibility: 3 }
     }
   });
 
   const getMockAnalytics = (): AnalyticsData => ({
     timelineData: [
-      { date: 'Пн', users: 1230, exercises: 38, sessions: 156, avgScore: 78 },
-      { date: 'Вт', users: 1250, exercises: 39, sessions: 189, avgScore: 82 },
-      { date: 'Ср', users: 1280, exercises: 40, sessions: 210, avgScore: 85 },
-      { date: 'Чт', users: 1300, exercises: 41, sessions: 245, avgScore: 84 },
-      { date: 'Пт', users: 1320, exercises: 42, sessions: 278, avgScore: 86 },
-      { date: 'Сб', users: 1289, exercises: 42, sessions: 210, avgScore: 88 },
-      { date: 'Вс', users: 1250, exercises: 42, sessions: 178, avgScore: 87 }
+      { date: 'Пн', users: 6, exercises: 28, sessions: 12, avgScore: 70 },
+      { date: 'Вт', users: 7, exercises: 28, sessions: 15, avgScore: 72 },
+      { date: 'Ср', users: 7, exercises: 28, sessions: 14, avgScore: 71 },
+      { date: 'Чт', users: 8, exercises: 28, sessions: 18, avgScore: 73 },
+      { date: 'Пт', users: 8, exercises: 28, sessions: 16, avgScore: 74 },
+      { date: 'Сб', users: 8, exercises: 28, sessions: 14, avgScore: 73 },
+      { date: 'Вс', users: 8, exercises: 28, sessions: 13, avgScore: 73 }
     ],
     userActivity: Array.from({ length: 24 }, (_, i) => ({
       hour: i,
-      activeUsers: i > 8 && i < 22 ? Math.floor(Math.random() * 300) + 300 : Math.floor(Math.random() * 100) + 20
+      activeUsers: i > 8 && i < 22 ? Math.floor(Math.random() * 5) + 3 : Math.floor(Math.random() * 2) + 1
     })),
     topExercises: [
-      { name: 'Растяжка спины', count: 234, duration: 45 },
-      { name: 'Упражнения для осанки', count: 189, duration: 38 },
-      { name: 'Кардио тренировка', count: 167, duration: 52 },
-      { name: 'Силовой комплекс', count: 145, duration: 48 },
-      { name: 'Йога для начинающих', count: 123, duration: 40 }
+      { name: 'Растяжка спины', count: 45, duration: 45 },
+      { name: 'Упражнения для осанки', count: 38, duration: 38 },
+      { name: 'Кардио тренировка', count: 32, duration: 52 },
+      { name: 'Силовой комплекс', count: 28, duration: 48 },
+      { name: 'Йога для начинающих', count: 25, duration: 40 }
     ],
     sessionTrends: [
-      { date: 'Пн', avgScore: 78, totalSessions: 156, totalDuration: 78 },
-      { date: 'Вт', avgScore: 82, totalSessions: 189, totalDuration: 94 },
-      { date: 'Ср', avgScore: 85, totalSessions: 210, totalDuration: 105 },
-      { date: 'Чт', avgScore: 84, totalSessions: 245, totalDuration: 122 },
-      { date: 'Пт', avgScore: 86, totalSessions: 278, totalDuration: 139 },
-      { date: 'Сб', avgScore: 88, totalSessions: 210, totalDuration: 105 },
-      { date: 'Вс', avgScore: 87, totalSessions: 178, totalDuration: 89 }
+      { date: 'Пн', avgScore: 70, totalSessions: 12, totalDuration: 78 },
+      { date: 'Вт', avgScore: 72, totalSessions: 15, totalDuration: 94 },
+      { date: 'Ср', avgScore: 71, totalSessions: 14, totalDuration: 105 },
+      { date: 'Чт', avgScore: 73, totalSessions: 18, totalDuration: 122 },
+      { date: 'Пт', avgScore: 74, totalSessions: 16, totalDuration: 139 },
+      { date: 'Сб', avgScore: 73, totalSessions: 14, totalDuration: 105 },
+      { date: 'Вс', avgScore: 73, totalSessions: 13, totalDuration: 89 }
     ],
     geoDistribution: [
-      { city: 'Москва', users: 523 },
-      { city: 'Санкт-Петербург', users: 234 },
-      { city: 'Новосибирск', users: 98 },
-      { city: 'Екатеринбург', users: 76 },
-      { city: 'Казань', users: 65 },
-      { city: 'Нижний Новгород', users: 54 }
+      { city: 'Москва', users: 3 },
+      { city: 'Санкт-Петербург', users: 2 },
+      { city: 'Новосибирск', users: 1 },
+      { city: 'Екатеринбург', users: 1 },
+      { city: 'Казань', users: 1 },
     ],
     lastUpdated: new Date().toISOString()
   });
@@ -231,11 +226,6 @@ const AdminDashboard: React.FC = () => {
   const handleRefresh = () => {
     setRefreshing(true);
     fetchAllData();
-  };
-
-  const handlePeriodChange = (newPeriod: string) => {
-    setPeriod(newPeriod);
-    setPeriodAnchorEl(null);
   };
 
   const getPercentage = (value: number, total: number) => {
@@ -293,28 +283,126 @@ const AdminDashboard: React.FC = () => {
     },
     {
       title: 'Средний балл осанки',
-      value: analytics ? Math.round(analytics.sessionTrends.reduce((acc, curr) => acc + curr.avgScore, 0) / analytics.sessionTrends.length) : 0,
+      value: analytics ? Math.round(analytics.sessionTrends.reduce((acc, curr) => acc + curr.avgScore, 0) / analytics.sessionTrends.length) : 73,
       change: '+5% за неделю',
       icon: <TrendingUpIcon />,
       color: '#8b5cf6'
     }
   ];
 
+  const MobileMenuDrawer = () => (
+    <SwipeableDrawer
+      anchor="left"
+      open={mobileMenuOpen}
+      onClose={() => setMobileMenuOpen(false)}
+      onOpen={() => setMobileMenuOpen(true)}
+      sx={{
+        '& .MuiDrawer-paper': {
+          width: 280,
+          bgcolor: theme.palette.background.paper,
+          borderTopRightRadius: 20,
+          borderBottomRightRadius: 20,
+        }
+      }}
+    >
+      <Box sx={{ p: 2 }}>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+          <Typography variant="h6" fontWeight={700}>
+            Меню
+          </Typography>
+          <IconButton onClick={() => setMobileMenuOpen(false)} size="small">
+            <CloseIcon />
+          </IconButton>
+        </Box>
+        <Divider sx={{ mb: 2 }} />
+        <List>
+          <ListItem 
+            button 
+            onClick={() => {
+              navigate('/admin/users');
+              setMobileMenuOpen(false);
+            }}
+            sx={{ borderRadius: 2, mb: 1 }}
+          >
+            <ListItemIcon><PeopleIcon /></ListItemIcon>
+            <ListItemText primary="Пользователи" />
+          </ListItem>
+          <ListItem 
+            button 
+            onClick={() => {
+              navigate('/admin/exercises');
+              setMobileMenuOpen(false);
+            }}
+            sx={{ borderRadius: 2, mb: 1 }}
+          >
+            <ListItemIcon><FitnessCenterIcon /></ListItemIcon>
+            <ListItemText primary="Упражнения" />
+          </ListItem>
+          <ListItem 
+            button 
+            onClick={() => {
+              navigate('/admin/exercises/create');
+              setMobileMenuOpen(false);
+            }}
+            sx={{ borderRadius: 2, mb: 1 }}
+          >
+            <ListItemIcon><NoteAddIcon /></ListItemIcon>
+            <ListItemText primary="Создать упражнение" />
+          </ListItem>
+        </List>
+      </Box>
+    </SwipeableDrawer>
+  );
+
+  const MobileBottomNav = () => (
+    <Paper
+      sx={{
+        position: 'fixed',
+        bottom: 0,
+        left: 0,
+        right: 0,
+        zIndex: 1000,
+        bgcolor: theme.palette.background.paper,
+        borderTop: `1px solid ${theme.palette.divider}`,
+        display: { xs: 'block', md: 'none' }
+      }}
+      elevation={3}
+    >
+      <BottomNavigation
+        value={mobileBottomNav}
+        onChange={(_, newValue) => {
+          setMobileBottomNav(newValue);
+          if (newValue === 0) setTabValue(0);
+          if (newValue === 1) setTabValue(1);
+          if (newValue === 2) setTabValue(2);
+        }}
+        sx={{
+          height: 65,
+          '& .MuiBottomNavigationAction-root': {
+            color: theme.palette.text.secondary,
+            '&.Mui-selected': {
+              color: theme.palette.primary.main,
+            },
+          },
+        }}
+      >
+        <BottomNavigationAction icon={<DashboardIcon />} label="Главная" />
+        <BottomNavigationAction icon={<DirectionsRunIcon />} label="Тренировки" />
+        <BottomNavigationAction icon={<AssessmentIcon />} label="Аналитика" />
+      </BottomNavigation>
+    </Paper>
+  );
+
   const renderUserChart = () => (
     <Card sx={{ 
-      bgcolor: theme.palette.mode === 'light'
-        ? alpha(theme.palette.background.paper, 0.8)
-        : alpha(theme.palette.background.paper, 0.4),
-      border: `1px solid ${theme.palette.mode === 'light'
-        ? 'rgba(0, 0, 0, 0.1)'
-        : 'rgba(255, 255, 255, 0.1)'}`,
+      bgcolor: alpha(theme.palette.background.paper, 0.8),
+      border: `1px solid ${alpha(theme.palette.divider, 0.1)}`,
       borderRadius: 2,
       backdropFilter: 'blur(10px)',
-      mb: 3
+      mb: 3,
     }}>
       <CardContent>
-        <Typography variant="h6" sx={{ 
-          color: theme.palette.mode === 'light' ? '#0f172a' : '#ffffff',
+        <Typography variant={isMobile ? "subtitle1" : "h6"} sx={{ 
           mb: 3,
           fontWeight: 600,
           display: 'flex',
@@ -324,273 +412,183 @@ const AdminDashboard: React.FC = () => {
           <ShowChartIcon sx={{ color: theme.palette.primary.main }} />
           Динамика пользователей и упражнений
         </Typography>
-        
-        <ResponsiveContainer width="100%" height={400}>
-          <ComposedChart data={analytics?.timelineData || []}>
-            <CartesianGrid strokeDasharray="3 3" stroke={alpha(theme.palette.text.secondary, 0.2)} />
-            <XAxis dataKey="date" stroke={theme.palette.text.secondary} />
-            <YAxis yAxisId="left" stroke={theme.palette.text.secondary} />
-            <YAxis yAxisId="right" orientation="right" stroke={theme.palette.text.secondary} />
-            <RechartsTooltip
-              contentStyle={{
-                backgroundColor: theme.palette.background.paper,
-                border: `1px solid ${theme.palette.divider}`,
-                borderRadius: 8
-              }}
-            />
-            <Legend />
-            <Area
-              yAxisId="left"
-              type="monotone"
-              dataKey="users"
-              fill={alpha(COLORS[0], 0.2)}
-              stroke={COLORS[0]}
-              name="Пользователи"
-            />
-            <Bar
-              yAxisId="right"
-              dataKey="exercises"
-              fill={COLORS[2]}
-              name="Упражнения"
-              radius={[4, 4, 0, 0]}
-            />
-            <Line
-              yAxisId="left"
-              type="monotone"
-              dataKey="sessions"
-              stroke={COLORS[1]}
-              name="Сессии"
-              strokeWidth={2}
-              dot={{ fill: COLORS[1], r: 4 }}
-            />
-          </ComposedChart>
-        </ResponsiveContainer>
+        <Box sx={{ width: '100%', overflowX: 'auto' }}>
+          <Box sx={{ minWidth: isMobile ? 600 : '100%', height: 400 }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <ComposedChart data={analytics?.timelineData || []}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="date" />
+                <YAxis yAxisId="left" />
+                <YAxis yAxisId="right" orientation="right" />
+                <RechartsTooltip />
+                <Legend />
+                <Area yAxisId="left" type="monotone" dataKey="users" fill={alpha(COLORS[0], 0.2)} stroke={COLORS[0]} name="Пользователи" />
+                <Bar yAxisId="right" dataKey="exercises" fill={COLORS[2]} name="Упражнения" radius={[4, 4, 0, 0]} />
+                <Line yAxisId="left" type="monotone" dataKey="sessions" stroke={COLORS[1]} name="Сессии" strokeWidth={2} />
+              </ComposedChart>
+            </ResponsiveContainer>
+          </Box>
+        </Box>
       </CardContent>
     </Card>
   );
 
   const renderActivityChart = () => (
     <Card sx={{ 
-      bgcolor: theme.palette.mode === 'light'
-        ? alpha(theme.palette.background.paper, 0.8)
-        : alpha(theme.palette.background.paper, 0.4),
-      border: `1px solid ${theme.palette.mode === 'light'
-        ? 'rgba(0, 0, 0, 0.1)'
-        : 'rgba(255, 255, 255, 0.1)'}`,
+      bgcolor: alpha(theme.palette.background.paper, 0.8),
+      border: `1px solid ${alpha(theme.palette.divider, 0.1)}`,
       borderRadius: 2,
       backdropFilter: 'blur(10px)',
-      mb: 3
+      mb: 3,
     }}>
       <CardContent>
-        <Typography variant="h6" sx={{ 
-          color: theme.palette.mode === 'light' ? '#0f172a' : '#ffffff',
-          mb: 3,
-          fontWeight: 600,
-          display: 'flex',
-          alignItems: 'center',
-          gap: 1
-        }}>
+        <Typography variant={isMobile ? "subtitle1" : "h6"} sx={{ mb: 3, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1 }}>
           <ScheduleIcon sx={{ color: theme.palette.info.main }} />
           Активность по часам
         </Typography>
-        
-        <ResponsiveContainer width="100%" height={350}>
-          <AreaChart data={analytics?.userActivity || []}>
-            <CartesianGrid strokeDasharray="3 3" stroke={alpha(theme.palette.text.secondary, 0.2)} />
-            <XAxis 
-              dataKey="hour" 
-              stroke={theme.palette.text.secondary}
-              tickFormatter={(value) => `${value}:00`}
-            />
-            <YAxis stroke={theme.palette.text.secondary} />
-            <RechartsTooltip
-              contentStyle={{
-                backgroundColor: theme.palette.background.paper,
-                border: `1px solid ${theme.palette.divider}`,
-                borderRadius: 8
-              }}
-              formatter={(value: number) => [`${value} пользователей`, 'Активных']}
-              labelFormatter={(label) => `${label}:00`}
-            />
-            <Legend />
-            <Area
-              type="monotone"
-              dataKey="activeUsers"
-              stroke={COLORS[0]}
-              fill={alpha(COLORS[0], 0.2)}
-              name="Активные пользователи"
-            />
-          </AreaChart>
-        </ResponsiveContainer>
+        <Box sx={{ width: '100%', overflowX: 'auto' }}>
+          <Box sx={{ minWidth: isMobile ? 600 : '100%', height: 400 }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={analytics?.userActivity || []}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="hour" tickFormatter={(value) => `${value}:00`} />
+                <YAxis />
+                <RechartsTooltip formatter={(value: number) => [`${value} пользователей`, 'Активных']} labelFormatter={(label) => `${label}:00`} />
+                <Legend />
+                <Area type="monotone" dataKey="activeUsers" stroke={COLORS[0]} fill={alpha(COLORS[0], 0.2)} name="Активные пользователи" />
+              </AreaChart>
+            </ResponsiveContainer>
+          </Box>
+        </Box>
       </CardContent>
     </Card>
   );
 
   const renderSessionTrendsChart = () => (
     <Card sx={{ 
-      bgcolor: theme.palette.mode === 'light'
-        ? alpha(theme.palette.background.paper, 0.8)
-        : alpha(theme.palette.background.paper, 0.4),
-      border: `1px solid ${theme.palette.mode === 'light'
-        ? 'rgba(0, 0, 0, 0.1)'
-        : 'rgba(255, 255, 255, 0.1)'}`,
+      bgcolor: alpha(theme.palette.background.paper, 0.8),
+      border: `1px solid ${alpha(theme.palette.divider, 0.1)}`,
       borderRadius: 2,
       backdropFilter: 'blur(10px)',
-      mb: 3
+      mb: 3,
     }}>
       <CardContent>
-        <Typography variant="h6" sx={{ 
-          color: theme.palette.mode === 'light' ? '#0f172a' : '#ffffff',
-          mb: 3,
-          fontWeight: 600,
-          display: 'flex',
-          alignItems: 'center',
-          gap: 1
-        }}>
+        <Typography variant={isMobile ? "subtitle1" : "h6"} sx={{ mb: 3, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1 }}>
           <WhatshotIcon sx={{ color: theme.palette.warning.main }} />
           Качество тренировок
         </Typography>
-        
-        <ResponsiveContainer width="100%" height={350}>
-          <ComposedChart data={analytics?.sessionTrends || []}>
-            <CartesianGrid strokeDasharray="3 3" stroke={alpha(theme.palette.text.secondary, 0.2)} />
-            <XAxis dataKey="date" stroke={theme.palette.text.secondary} />
-            <YAxis yAxisId="left" stroke={theme.palette.text.secondary} domain={[0, 100]} />
-            <YAxis yAxisId="right" orientation="right" stroke={theme.palette.text.secondary} />
-            <RechartsTooltip
-              contentStyle={{
-                backgroundColor: theme.palette.background.paper,
-                border: `1px solid ${theme.palette.divider}`,
-                borderRadius: 8
-              }}
-            />
-            <Legend />
-            <Bar
-              yAxisId="right"
-              dataKey="totalSessions"
-              fill={alpha(COLORS[2], 0.5)}
-              name="Количество сессий"
-              radius={[4, 4, 0, 0]}
-            />
-            <Line
-              yAxisId="left"
-              type="monotone"
-              dataKey="avgScore"
-              stroke={COLORS[1]}
-              name="Средний балл"
-              strokeWidth={3}
-              dot={{ fill: COLORS[1], r: 6, strokeWidth: 2 }}
-            />
-          </ComposedChart>
-        </ResponsiveContainer>
+        <Box sx={{ width: '100%', overflowX: 'auto' }}>
+          <Box sx={{ minWidth: isMobile ? 600 : '100%', height: 400 }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <ComposedChart data={analytics?.sessionTrends || []}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="date" />
+                <YAxis yAxisId="left" domain={[0, 100]} />
+                <YAxis yAxisId="right" orientation="right" />
+                <RechartsTooltip />
+                <Legend />
+                <Bar yAxisId="right" dataKey="totalSessions" fill={alpha(COLORS[2], 0.5)} name="Количество сессий" radius={[4, 4, 0, 0]} />
+                <Line yAxisId="left" type="monotone" dataKey="avgScore" stroke={COLORS[1]} name="Средний балл" strokeWidth={2} dot={{ r: 6 }} />
+              </ComposedChart>
+            </ResponsiveContainer>
+          </Box>
+        </Box>
       </CardContent>
     </Card>
   );
 
   const renderTopExercisesChart = () => (
     <Card sx={{ 
-      bgcolor: theme.palette.mode === 'light'
-        ? alpha(theme.palette.background.paper, 0.8)
-        : alpha(theme.palette.background.paper, 0.4),
-      border: `1px solid ${theme.palette.mode === 'light'
-        ? 'rgba(0, 0, 0, 0.1)'
-        : 'rgba(255, 255, 255, 0.1)'}`,
+      bgcolor: alpha(theme.palette.background.paper, 0.8),
+      border: `1px solid ${alpha(theme.palette.divider, 0.1)}`,
       borderRadius: 2,
       backdropFilter: 'blur(10px)',
-      height: '100%'
+      height: '100%',
     }}>
       <CardContent>
-        <Typography variant="h6" sx={{ 
-          color: theme.palette.mode === 'light' ? '#0f172a' : '#ffffff',
-          mb: 3,
-          fontWeight: 600,
-          display: 'flex',
-          alignItems: 'center',
-          gap: 1
-        }}>
+        <Typography variant={isMobile ? "subtitle1" : "h6"} sx={{ mb: 3, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1 }}>
           <PieChartIcon sx={{ color: COLORS[4] }} />
           Популярные упражнения
         </Typography>
-        
-        <ResponsiveContainer width="100%" height={300}>
-          <BarChart
-            data={analytics?.topExercises || []}
-            layout="vertical"
-            margin={{ left: 80 }}
-          >
-            <CartesianGrid strokeDasharray="3 3" stroke={alpha(theme.palette.text.secondary, 0.2)} />
-            <XAxis type="number" stroke={theme.palette.text.secondary} />
-            <YAxis type="category" dataKey="name" stroke={theme.palette.text.secondary} width={100} />
-            <RechartsTooltip
-              contentStyle={{
-                backgroundColor: theme.palette.background.paper,
-                border: `1px solid ${theme.palette.divider}`,
-                borderRadius: 8
-              }}
-            />
-            <Bar dataKey="count" fill={COLORS[4]} name="Выполнений" radius={[0, 4, 4, 0]}>
-              {analytics?.topExercises.map((_, index) => (
-                <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-              ))}
-            </Bar>
-          </BarChart>
-        </ResponsiveContainer>
+        <Box sx={{ width: '100%', overflowX: 'auto' }}>
+          <Box sx={{ minWidth: isMobile ? 400 : '100%', height: 350 }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={analytics?.topExercises || []} layout={isMobile ? "horizontal" : "vertical"} margin={{ left: isMobile ? 0 : 80 }}>
+                <CartesianGrid strokeDasharray="3 3" />
+                {isMobile ? (
+                  <>
+                    <XAxis dataKey="name" angle={-45} textAnchor="end" height={80} />
+                    <YAxis />
+                  </>
+                ) : (
+                  <>
+                    <XAxis type="number" />
+                    <YAxis type="category" dataKey="name" width={130} />
+                  </>
+                )}
+                <RechartsTooltip />
+                <Bar dataKey="count" fill={COLORS[4]} name="Выполнений" radius={[4, 4, 0, 0]}>
+                  {(analytics?.topExercises || []).map((_, index) => (
+                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </Box>
+        </Box>
       </CardContent>
     </Card>
   );
 
   const renderGeoDistribution = () => (
     <Card sx={{ 
-      bgcolor: theme.palette.mode === 'light'
-        ? alpha(theme.palette.background.paper, 0.8)
-        : alpha(theme.palette.background.paper, 0.4),
-      border: `1px solid ${theme.palette.mode === 'light'
-        ? 'rgba(0, 0, 0, 0.1)'
-        : 'rgba(255, 255, 255, 0.1)'}`,
+      bgcolor: alpha(theme.palette.background.paper, 0.8),
+      border: `1px solid ${alpha(theme.palette.divider, 0.1)}`,
       borderRadius: 2,
       backdropFilter: 'blur(10px)',
-      height: '100%'
+      height: '100%',
     }}>
       <CardContent>
-        <Typography variant="h6" sx={{ 
-          color: theme.palette.mode === 'light' ? '#0f172a' : '#ffffff',
-          mb: 3,
-          fontWeight: 600,
-          display: 'flex',
-          alignItems: 'center',
-          gap: 1
-        }}>
+        <Typography variant={isMobile ? "subtitle1" : "h6"} sx={{ mb: 3, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1 }}>
           <PieChartIcon sx={{ color: COLORS[0] }} />
           Геораспределение
         </Typography>
-        
-        <ResponsiveContainer width="100%" height={300}>
-          <PieChart>
-            <Pie
-              data={analytics?.geoDistribution || []}
-              cx="50%"
-              cy="50%"
-              labelLine={false}
-              label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
-              outerRadius={100}
-              fill="#8884d8"
-              dataKey="users"
-            >
-              {(analytics?.geoDistribution || []).map((_, index) => (
-                <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-              ))}
-            </Pie>
-            <RechartsTooltip
-              contentStyle={{
-                backgroundColor: theme.palette.background.paper,
-                border: `1px solid ${theme.palette.divider}`,
-                borderRadius: 8
-              }}
-              formatter={(value: number, name: string) => [`${value} пользователей`, name]}
-            />
-            <Legend />
-          </PieChart>
-        </ResponsiveContainer>
+        <Box sx={{ width: '100%', overflowX: 'auto' }}>
+          <Box sx={{ minWidth: isMobile ? 400 : '100%', height: 350 }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie
+                  data={analytics?.geoDistribution || []}
+                  cx="50%"
+                  cy="50%"
+                  labelLine={!isMobile}
+                  label={!isMobile ? ({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%` : false}
+                  outerRadius={isMobile ? 80 : 100}
+                  dataKey="users"
+                >
+                  {(analytics?.geoDistribution || []).map((_, index) => (
+                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                  ))}
+                </Pie>
+                <RechartsTooltip formatter={(value: number, name: string) => [`${value} пользователей`, name]} />
+                {!isMobile && <Legend />}
+              </PieChart>
+            </ResponsiveContainer>
+          </Box>
+        </Box>
+        {isMobile && (
+          <Stack spacing={1.5} sx={{ mt: 2, maxHeight: 200, overflowY: 'auto' }}>
+            {analytics?.geoDistribution.map((city, index) => (
+              <Stack key={index} direction="row" justifyContent="space-between" alignItems="center">
+                <Stack direction="row" alignItems="center" spacing={1}>
+                  <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: COLORS[index % COLORS.length] }} />
+                  <Typography variant="body2">{city.city}</Typography>
+                </Stack>
+                <Typography variant="body2" fontWeight={600}>{city.users}</Typography>
+              </Stack>
+            ))}
+          </Stack>
+        )}
       </CardContent>
     </Card>
   );
@@ -604,62 +602,46 @@ const AdminDashboard: React.FC = () => {
 
     return (
       <Card sx={{ 
-        bgcolor: theme.palette.mode === 'light'
-          ? alpha(theme.palette.background.paper, 0.8)
-          : alpha(theme.palette.background.paper, 0.4),
-        border: `1px solid ${theme.palette.mode === 'light'
-          ? 'rgba(0, 0, 0, 0.1)'
-          : 'rgba(255, 255, 255, 0.1)'}`,
+        bgcolor: alpha(theme.palette.background.paper, 0.8),
+        border: `1px solid ${alpha(theme.palette.divider, 0.1)}`,
         borderRadius: 2,
         backdropFilter: 'blur(10px)',
-        height: '100%'
+        height: '100%',
       }}>
         <CardContent>
-          <Typography variant="h6" sx={{ 
-            color: theme.palette.mode === 'light' ? '#0f172a' : '#ffffff',
-            mb: 3,
-            fontWeight: 600,
-            display: 'flex',
-            alignItems: 'center',
-            gap: 1
-          }}>
+          <Typography variant={isMobile ? "subtitle1" : "h6"} sx={{ mb: 3, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1 }}>
             <SecurityIcon sx={{ color: COLORS[0] }} />
             Распределение по ролям
           </Typography>
-          
-          <ResponsiveContainer width="100%" height={280}>
-            <PieChart>
-              <Pie
-                data={roleData}
-                cx="50%"
-                cy="50%"
-                innerRadius={60}
-                outerRadius={100}
-                paddingAngle={5}
-                dataKey="value"
-                label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
-              >
-                {roleData.map((entry, index) => (
-                  <Cell key={`cell-${index}`} fill={entry.color} />
-                ))}
-              </Pie>
-              <RechartsTooltip />
-              <Legend />
-            </PieChart>
-          </ResponsiveContainer>
-          
-          <Stack spacing={1} sx={{ mt: 2 }}>
+          <Box sx={{ height: 280 }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie
+                  data={roleData}
+                  cx="50%"
+                  cy="50%"
+                  innerRadius={isMobile ? 60 : 80}
+                  outerRadius={isMobile ? 90 : 120}
+                  paddingAngle={5}
+                  dataKey="value"
+                  label={!isMobile ? ({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%` : false}
+                >
+                  {roleData.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={entry.color} />
+                  ))}
+                </Pie>
+                <RechartsTooltip />
+              </PieChart>
+            </ResponsiveContainer>
+          </Box>
+          <Stack spacing={1.5} sx={{ mt: 2 }}>
             {roleData.map((role) => (
               <Stack key={role.name} direction="row" justifyContent="space-between" alignItems="center">
                 <Stack direction="row" alignItems="center" spacing={1}>
                   <Box sx={{ width: 12, height: 12, borderRadius: '50%', bgcolor: role.color }} />
-                  <Typography variant="body2" sx={{ color: theme.palette.text.secondary }}>
-                    {role.name}
-                  </Typography>
+                  <Typography variant="body2">{role.name}</Typography>
                 </Stack>
-                <Typography variant="body2" sx={{ fontWeight: 600, color: theme.palette.text.primary }}>
-                  {role.value}
-                </Typography>
+                <Typography variant="body2" fontWeight={600}>{role.value}</Typography>
               </Stack>
             ))}
           </Stack>
@@ -670,21 +652,8 @@ const AdminDashboard: React.FC = () => {
 
   if (loading && !stats) {
     return (
-      <Box sx={{ 
-        display: 'flex', 
-        justifyContent: 'center', 
-        alignItems: 'center', 
-        minHeight: '100vh',
-        background: theme.palette.mode === 'light' 
-          ? 'linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)'
-          : 'linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%)',
-      }}>
-        <Stack alignItems="center" spacing={2}>
-          <CircularProgress size={60} sx={{ color: theme.palette.primary.main }} />
-          <Typography variant="h6" sx={{ color: theme.palette.text.secondary }}>
-            Загрузка статистики...
-          </Typography>
-        </Stack>
+      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh' }}>
+        <CircularProgress />
       </Box>
     );
   }
@@ -695,156 +664,127 @@ const AdminDashboard: React.FC = () => {
       background: theme.palette.mode === 'light' 
         ? 'linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)'
         : 'linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%)',
-      py: 4,
-      position: 'relative',
-      overflow: 'hidden'
+      py: { xs: 2, md: 4 },
+      pb: { xs: isMobile ? 10 : 4 },
     }}>
-      {/* Фоновые элементы */}
-      <Box sx={{
-        position: 'absolute',
-        top: -100,
-        right: -100,
-        width: 400,
-        height: 400,
-        borderRadius: '50%',
-        background: `radial-gradient(circle, ${alpha(theme.palette.primary.main, 0.1)} 0%, ${alpha(theme.palette.primary.main, 0)} 70%)`,
-        zIndex: 0
-      }} />
-      <Box sx={{
-        position: 'absolute',
-        bottom: -200,
-        left: -100,
-        width: 500,
-        height: 500,
-        borderRadius: '50%',
-        background: `radial-gradient(circle, ${alpha(theme.palette.success.main, 0.05)} 0%, ${alpha(theme.palette.success.main, 0)} 70%)`,
-        zIndex: 0
-      }} />
-
-      <Container maxWidth="xl" sx={{ position: 'relative', zIndex: 1 }}>
+      <Container maxWidth="xl">
         {/* Заголовок */}
         <Box sx={{ mb: 4 }}>
-          <Stack 
-            direction={{ xs: 'column', md: 'row' }} 
-            justifyContent="space-between" 
-            alignItems={{ xs: 'flex-start', md: 'center' }} 
-            spacing={2}
-            sx={{ mb: 2 }}
-          >
+          <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" alignItems={{ xs: 'flex-start', md: 'center' }} spacing={2}>
             <Box>
-              <Typography 
-                variant="h3" 
-                component="h1" 
-                fontWeight="bold" 
-                gutterBottom
-                sx={{ 
-                  color: theme.palette.mode === 'light' ? '#0f172a' : '#ffffff',
-                  fontSize: { xs: '2rem', md: '2.5rem' },
-                  background: theme.palette.mode === 'light'
-                    ? 'linear-gradient(90deg, #4f46e5, #7c3aed)'
-                    : 'linear-gradient(90deg, #6366f1, #8b5cf6)',
-                  WebkitBackgroundClip: 'text',
-                  WebkitTextFillColor: 'transparent'
-                }}
-              >
+              <Typography variant="h4" fontWeight="bold" gutterBottom>
                 Панель администратора
               </Typography>
-              <Typography 
-                variant="h6" 
-                sx={{ 
-                  color: theme.palette.text.secondary,
-                  fontSize: { xs: '1rem', md: '1.25rem' }
-                }}
-              >
+              <Typography variant="body1" color="text.secondary">
                 Обзор системы и аналитика
               </Typography>
             </Box>
-            
             <Stack direction="row" spacing={2}>
-              <Button
-                variant="outlined"
-                startIcon={<BarChartIcon />}
-                onClick={() => navigate('/admin/users')}
-                sx={{ color: theme.palette.text.secondary }}
-              >
-                Пользователи
-              </Button>
-              
-              <Button
-                variant="contained"
-                startIcon={<RefreshIcon />}
-                onClick={handleRefresh}
-                disabled={refreshing}
-                sx={{
-                  background: `linear-gradient(135deg, ${theme.palette.primary.main} 0%, ${theme.palette.primary.dark} 100%)`,
-                  borderRadius: 2,
-                  px: 3,
-                  py: 1.5,
-                  textTransform: 'none',
-                  fontWeight: 600,
-                  '&:hover': {
-                    transform: 'translateY(-2px)'
-                  }
-                }}
-              >
-                {refreshing ? 'Обновление...' : 'Обновить'}
-              </Button>
+              {!isMobile && (
+                <Button variant="outlined" startIcon={<BarChartIcon />} onClick={() => navigate('/admin/users')}>
+                  Пользователи
+                </Button>
+              )}
+             
+              {isMobile && (
+                <IconButton onClick={() => setMobileMenuOpen(true)}>
+                  <MenuIcon />
+                </IconButton>
+              )}
             </Stack>
           </Stack>
         </Box>
-        
+
         {error && (
-          <Alert 
-            severity="error" 
-            sx={{ mb: 4, borderRadius: 2 }}
-            onClose={() => setError(null)}
-          >
+          <Alert severity="error" sx={{ mb: 3 }} onClose={() => setError(null)}>
             {error}
           </Alert>
         )}
-        
-        {/* Карточки статистики */}
-        <Grid container spacing={3} sx={{ mb: 4 }}>
+
+        {/* КАРТОЧКИ СТАТИСТИКИ - ИСПРАВЛЕНА ШИРИНА */}
+        <Grid container spacing={isMobile ? 1.5 : 3} sx={{ mb: 4 }}>
           {statCards.map((card, index) => (
-            <Grid item xs={12} sm={6} lg={3} key={index}>
+            <Grid 
+              item 
+              xs={6} 
+              sm={6} 
+              md={3} 
+              key={index}
+              sx={{ 
+                display: 'flex',
+                // ФИКСИРУЕМ ОДИНАКОВУЮ ШИРИНУ
+                flexBasis: { xs: '50%', sm: '50%', md: '25%' },
+                maxWidth: { xs: '50%', sm: '50%', md: '25%' },
+                width: { xs: '50%', sm: '50%', md: '25%' },
+              }}
+            >
               <Card 
                 sx={{ 
+                  width: '100%',
+                  minWidth: 0, // Важно для flex
                   bgcolor: alpha(theme.palette.background.paper, 0.8),
                   backdropFilter: 'blur(10px)',
                   border: `1px solid ${alpha(theme.palette.divider, 0.1)}`,
                   borderRadius: 2,
                   cursor: card.onClick ? 'pointer' : 'default',
                   transition: 'all 0.3s ease',
-                  '&:hover': {
-                    transform: card.onClick ? 'translateY(-4px)' : 'none',
+                  '&:hover': !isMobile && card.onClick ? {
+                    transform: 'translateY(-4px)',
                     boxShadow: `0 12px 30px ${alpha(card.color, 0.2)}`,
                     borderColor: card.color
-                  }
+                  } : {}
                 }}
                 onClick={card.onClick}
               >
-                <CardContent>
+                <CardContent sx={{ p: { xs: 1.5, sm: 2 } }}>
                   <Stack direction="row" justifyContent="space-between" alignItems="flex-start">
-                    <Box>
-                      <Typography variant="body2" sx={{ color: theme.palette.text.secondary, mb: 1 }}>
+                    <Box sx={{ 
+                      flex: 1, 
+                      minWidth: 0,
+                      overflow: 'hidden'
+                    }}>
+                      <Typography variant="caption" sx={{ color: theme.palette.text.secondary, display: 'block' }}>
                         {card.title}
                       </Typography>
-                      <Typography variant="h3" sx={{ fontWeight: 700, color: theme.palette.text.primary }}>
+                      <Typography 
+                        variant="h4" 
+                        sx={{ 
+                          fontWeight: 700, 
+                          fontSize: { xs: '1.5rem', sm: '2rem' },
+                          wordBreak: 'break-word',
+                          overflowWrap: 'break-word'
+                        }}
+                      >
                         {card.value}
                       </Typography>
                       <Chip
                         label={card.change}
                         size="small"
-                        sx={{ mt: 1, bgcolor: alpha(card.color, 0.1), color: card.color }}
+                        sx={{ 
+                          mt: 1, 
+                          bgcolor: alpha(card.color, 0.1), 
+                          color: card.color, 
+                          height: 20, 
+                          fontSize: '0.65rem',
+                          maxWidth: '100%',
+                          '& .MuiChip-label': {
+                            px: 1,
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap'
+                          }
+                        }}
                       />
                     </Box>
                     <Box sx={{ 
-                      p: 1.5, 
+                      p: 1, 
                       borderRadius: 2, 
                       bgcolor: alpha(card.color, 0.1),
-                      color: card.color
+                      color: card.color,
+                      flexShrink: 0,
+                      ml: 1
                     }}>
-                      {card.icon}
+                      {React.cloneElement(card.icon, { sx: { fontSize: { xs: 20, sm: 24 } } })}
                     </Box>
                   </Stack>
                 </CardContent>
@@ -855,43 +795,56 @@ const AdminDashboard: React.FC = () => {
 
         {/* Быстрые действия */}
         <Box sx={{ mb: 4 }}>
-          <Typography variant="h5" sx={{ mb: 2, fontWeight: 600, color: theme.palette.text.primary }}>
+          <Typography variant={isMobile ? "subtitle1" : "h5"} sx={{ mb: 2, fontWeight: 600 }}>
             Быстрые действия
           </Typography>
-          <Grid container spacing={3}>
+          <Grid container spacing={isMobile ? 1.5 : 3}>
             {quickActions.map((action, index) => (
-              <Grid item xs={12} sm={6} lg={3} key={index}>
+              <Grid 
+                item 
+                xs={12} 
+                sm={6} 
+                lg={4} 
+                key={index}
+                sx={{
+                  display: 'flex',
+                  flexBasis: { xs: '100%', sm: '50%', lg: '33.333333%' },
+                  maxWidth: { xs: '100%', sm: '50%', lg: '33.333333%' },
+                }}
+              >
                 <Card 
                   sx={{ 
+                    width: '100%',
                     cursor: 'pointer',
                     transition: 'all 0.3s ease',
                     bgcolor: alpha(theme.palette.background.paper, 0.8),
                     backdropFilter: 'blur(10px)',
                     border: `1px solid ${alpha(action.color, 0.3)}`,
-                    '&:hover': {
+                    '&:hover': !isMobile && {
                       transform: 'translateY(-4px)',
                       boxShadow: `0 12px 30px ${alpha(action.color, 0.2)}`
                     }
                   }}
                   onClick={action.onClick}
                 >
-                  <CardContent>
+                  <CardContent sx={{ p: { xs: 1.5, sm: 2 } }}>
                     <Box sx={{ 
-                      width: 48, 
-                      height: 48, 
+                      width: { xs: 40, sm: 48 }, 
+                      height: { xs: 40, sm: 48 }, 
                       borderRadius: 2, 
-                      background: action.gradient,
+                      bgcolor: alpha(action.color, 0.1),
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
-                      mb: 2
+                      mb: 1.5,
+                      color: action.color
                     }}>
-                      {action.icon}
+                      {React.cloneElement(action.icon, { sx: { fontSize: { xs: 20, sm: 24 } } })}
                     </Box>
-                    <Typography variant="h6" sx={{ fontWeight: 600, mb: 1, color: theme.palette.text.primary }}>
+                    <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 0.5 }}>
                       {action.title}
                     </Typography>
-                    <Typography variant="body2" sx={{ color: theme.palette.text.secondary }}>
+                    <Typography variant="caption" sx={{ color: theme.palette.text.secondary, display: 'block' }}>
                       {action.description}
                     </Typography>
                   </CardContent>
@@ -901,107 +854,182 @@ const AdminDashboard: React.FC = () => {
           </Grid>
         </Box>
 
-        {/* Вкладки с графиками */}
-        <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 3 }}>
-          <Tabs value={tabValue} onChange={(e, v) => setTabValue(v)}>
-            <Tab label="Пользователи и активность" />
-            <Tab label="Упражнения и тренировки" />
-            <Tab label="Аналитика и распределение" />
-          </Tabs>
-        </Box>
-
-        {tabValue === 0 && (
-          <Fade in={tabValue === 0}>
-            <Box>
-              {renderUserChart()}
-              {renderActivityChart()}
+        {/* Вкладки для десктопа */}
+        {!isMobile && (
+          <>
+            <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 3 }}>
+              <Tabs value={tabValue} onChange={(e, v) => setTabValue(v)}>
+                <Tab label="Пользователи и активность" />
+                <Tab label="Упражнения и тренировки" />
+                <Tab label="Аналитика и распределение" />
+              </Tabs>
             </Box>
-          </Fade>
+
+            {tabValue === 0 && (
+              <Fade in={tabValue === 0}>
+                <Box>
+                  {renderUserChart()}
+                  {renderActivityChart()}
+                </Box>
+              </Fade>
+            )}
+
+            {tabValue === 1 && (
+              <Fade in={tabValue === 1}>
+                <Grid container spacing={3}>
+                  <Grid item xs={12}>
+                    {renderSessionTrendsChart()}
+                  </Grid>
+                  <Grid item xs={12} md={6}>
+                    {renderTopExercisesChart()}
+                  </Grid>
+                  <Grid item xs={12} md={6}>
+                    <Card sx={{ 
+                      bgcolor: alpha(theme.palette.background.paper, 0.8),
+                      backdropFilter: 'blur(10px)',
+                      border: `1px solid ${alpha(theme.palette.divider, 0.1)}`,
+                      borderRadius: 2,
+                      height: '100%',
+                    }}>
+                      <CardContent>
+                        <Typography variant="h6" sx={{ mb: 2, fontWeight: 600 }}>
+                          Типы упражнений
+                        </Typography>
+                        <Stack spacing={2}>
+                          {stats?.exercises.types && Object.entries(stats.exercises.types).map(([type, count]) => {
+                            const typeNames: Record<string, string> = {
+                              stretching: 'Растяжка',
+                              cardio: 'Кардио',
+                              strength: 'Силовые',
+                              posture: 'Осанка',
+                              flexibility: 'Гибкость'
+                            };
+                            const percentage = getPercentage(count, stats.exercises.total);
+                            return (
+                              <Box key={type}>
+                                <Stack direction="row" justifyContent="space-between" sx={{ mb: 0.5 }}>
+                                  <Typography variant="body2" color="text.secondary">
+                                    {typeNames[type] || type}
+                                  </Typography>
+                                  <Typography variant="body2" fontWeight={600}>
+                                    {count} ({percentage}%)
+                                  </Typography>
+                                </Stack>
+                                <LinearProgress variant="determinate" value={percentage} sx={{ height: 8, borderRadius: 4 }} />
+                              </Box>
+                            );
+                          })}
+                        </Stack>
+                      </CardContent>
+                    </Card>
+                  </Grid>
+                </Grid>
+              </Fade>
+            )}
+
+            {tabValue === 2 && (
+              <Fade in={tabValue === 2}>
+                <Grid container spacing={3}>
+                  <Grid item xs={12} md={6}>
+                    {renderRoleDistribution()}
+                  </Grid>
+                  <Grid item xs={12} md={6}>
+                    {renderGeoDistribution()}
+                  </Grid>
+                </Grid>
+              </Fade>
+            )}
+          </>
         )}
 
-        {tabValue === 1 && (
-          <Fade in={tabValue === 1}>
-            <Grid container spacing={3}>
-              <Grid item xs={12}>
-                {renderSessionTrendsChart()}
-              </Grid>
-              <Grid item xs={12} md={6}>
-                {renderTopExercisesChart()}
-              </Grid>
-              <Grid item xs={12} md={6}>
-                <Card sx={{ 
-                  bgcolor: alpha(theme.palette.background.paper, 0.8),
-                  backdropFilter: 'blur(10px)',
-                  border: `1px solid ${alpha(theme.palette.divider, 0.1)}`,
-                  borderRadius: 2,
-                  height: '100%'
-                }}>
-                  <CardContent>
-                    <Typography variant="h6" sx={{ mb: 2, fontWeight: 600, color: theme.palette.text.primary }}>
-                      Типы упражнений
-                    </Typography>
-                    {stats?.exercises.types && Object.entries(stats.exercises.types).map(([type, count]) => {
-                      const typeNames: Record<string, string> = {
-                        stretching: 'Растяжка',
-                        cardio: 'Кардио',
-                        strength: 'Силовые',
-                        posture: 'Осанка',
-                        flexibility: 'Гибкость'
-                      };
-                      const percentage = getPercentage(count, stats.exercises.total);
-                      return (
-                        <Box key={type} sx={{ mb: 2 }}>
-                          <Stack direction="row" justifyContent="space-between" sx={{ mb: 0.5 }}>
-                            <Typography variant="body2" sx={{ color: theme.palette.text.secondary }}>
-                              {typeNames[type] || type}
-                            </Typography>
-                            <Typography variant="body2" sx={{ fontWeight: 600, color: theme.palette.text.primary }}>
-                              {count} ({percentage}%)
-                            </Typography>
-                          </Stack>
-                          <LinearProgress
-                            variant="determinate"
-                            value={percentage}
-                            sx={{ height: 8, borderRadius: 4 }}
-                          />
-                        </Box>
-                      );
-                    })}
-                  </CardContent>
-                </Card>
-              </Grid>
-            </Grid>
-          </Fade>
+        {/* Мобильная версия */}
+        {isMobile && (
+          <Box>
+            {mobileBottomNav === 0 && (
+              <Fade in={mobileBottomNav === 0}>
+                <Box>
+                  {renderUserChart()}
+                  {renderActivityChart()}
+                </Box>
+              </Fade>
+            )}
+            {mobileBottomNav === 1 && (
+              <Fade in={mobileBottomNav === 1}>
+                <Grid container spacing={2}>
+                  <Grid item xs={12}>
+                    {renderSessionTrendsChart()}
+                  </Grid>
+                  <Grid item xs={12}>
+                    {renderTopExercisesChart()}
+                  </Grid>
+                  <Grid item xs={12}>
+                    <Card sx={{ 
+                      bgcolor: alpha(theme.palette.background.paper, 0.8),
+                      backdropFilter: 'blur(10px)',
+                      border: `1px solid ${alpha(theme.palette.divider, 0.1)}`,
+                      borderRadius: 2,
+                    }}>
+                      <CardContent>
+                        <Typography variant="subtitle1" sx={{ mb: 2, fontWeight: 600 }}>
+                          Типы упражнений
+                        </Typography>
+                        <Stack spacing={1.5}>
+                          {stats?.exercises.types && Object.entries(stats.exercises.types).map(([type, count]) => {
+                            const typeNames: Record<string, string> = {
+                              stretching: 'Растяжка',
+                              cardio: 'Кардио',
+                              strength: 'Силовые',
+                              posture: 'Осанка',
+                              flexibility: 'Гибкость'
+                            };
+                            const percentage = getPercentage(count, stats.exercises.total);
+                            return (
+                              <Box key={type}>
+                                <Stack direction="row" justifyContent="space-between" sx={{ mb: 0.5 }}>
+                                  <Typography variant="caption" color="text.secondary">
+                                    {typeNames[type] || type}
+                                  </Typography>
+                                  <Typography variant="caption" fontWeight={600}>
+                                    {count} ({percentage}%)
+                                  </Typography>
+                                </Stack>
+                                <LinearProgress variant="determinate" value={percentage} sx={{ height: 6, borderRadius: 3 }} />
+                              </Box>
+                            );
+                          })}
+                        </Stack>
+                      </CardContent>
+                    </Card>
+                  </Grid>
+                </Grid>
+              </Fade>
+            )}
+            {mobileBottomNav === 2 && (
+              <Fade in={mobileBottomNav === 2}>
+                <Grid container spacing={2}>
+                  <Grid item xs={12}>
+                    {renderRoleDistribution()}
+                  </Grid>
+                  <Grid item xs={12}>
+                    {renderGeoDistribution()}
+                  </Grid>
+                </Grid>
+              </Fade>
+            )}
+          </Box>
         )}
 
-        {tabValue === 2 && (
-          <Fade in={tabValue === 2}>
-            <Grid container spacing={3}>
-              <Grid item xs={12} md={6}>
-                {renderRoleDistribution()}
-              </Grid>
-              <Grid item xs={12} md={6}>
-                {renderGeoDistribution()}
-              </Grid>
-            </Grid>
-          </Fade>
-        )}
-
-        {/* Информация об обновлении */}
         {analytics && (
-          <Paper sx={{ 
-            mt: 4, 
-            p: 2, 
-            bgcolor: alpha(theme.palette.background.paper, 0.6),
-            backdropFilter: 'blur(10px)',
-            textAlign: 'center'
-          }}>
-            <Typography variant="caption" sx={{ color: theme.palette.text.secondary }}>
+          <Paper sx={{ mt: 4, p: 2, bgcolor: alpha(theme.palette.background.paper, 0.6), textAlign: 'center' }}>
+            <Typography variant="caption" color="text.secondary">
               Последнее обновление: {new Date(analytics.lastUpdated).toLocaleString('ru-RU')}
             </Typography>
           </Paper>
         )}
       </Container>
+
+      <MobileMenuDrawer />
+      {isMobile && <MobileBottomNav />}
     </Box>
   );
 };

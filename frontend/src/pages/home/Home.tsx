@@ -213,7 +213,7 @@ const Home: React.FC = () => {
                       },
                     }}
                   >
-                    {isMobile ? 'Начать анализ' : <><PlayIcon sx={{ mr: 1 }} /> Начать анализ</>}
+                    {isMobile ? 'Начать анализ' : <>Начать анализ</>}
                   </Button>
                 </motion.div>
               </Box>

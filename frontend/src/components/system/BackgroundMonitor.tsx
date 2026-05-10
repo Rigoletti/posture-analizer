@@ -1,15 +1,3 @@
-/**
- * BackgroundMonitor — постоянный компонент, живущий вне <Routes>.
- *
- * Отвечает за:
- * 1. Звуковой сигнал при нарушениях (когда вкладка неактивна)
- * 2. Запрос разрешения на уведомления
- *
- * Системные уведомления (Notification API) отправляются напрямую из
- * PostureAnalysisService.sendNotification(), чтобы гарантировать
- * доставку даже когда React не рендерит компоненты.
- */
-
 import { useEffect, useRef } from 'react';
 import { usePostureAnalysis } from '../../contexts/PostureAnalysisContext';
 

@@ -1,16 +1,3 @@
-/**
- * Electron Main Process
- *
- * Отвечает за:
- * - Управление окном приложения
- * - Системный трей (иконка в трее)
- * - Нативные уведомления
- * - IPC-мост между main и renderer
- * - Фоновый режим (окно скрыто, но процесс живёт)
- * - Загрузку моделей TensorFlow.js (разрешение внешних запросов)
- * - Доступ к веб-камере (permissionHandler)
- */
-
 const { app, BrowserWindow, Tray, Menu, Notification, ipcMain, nativeImage, session } = require('electron');
 const path = require('path');
 
@@ -108,11 +95,10 @@ function createWindow() {
     mainWindow = null;
   });
 
-  // Отключаем троттлинг фоновых вкладок — критично для фонового анализа осанки
+ // Отключаем ограничение производительности фоновых вкладок — критично для фонового ана-лиза
   mainWindow.webContents.setBackgroundThrottling(false);
 }
 
-// ─── Системный трей ─────────────────────────────────────────────────────────
 
 function createTray() {
   // Создаём иконку для трея (16x16)

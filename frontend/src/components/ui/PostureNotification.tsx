@@ -1,5 +1,28 @@
 import React, { memo, useCallback, useMemo } from 'react';
-import '../../assets/styles/ui/PostureNotification.css';
+import {
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Button,
+  Box,
+  Typography,
+  List,
+  ListItem,
+  ListItemText,
+  Alert,
+  AlertTitle,
+  IconButton,
+  Slide,
+  useMediaQuery,
+  useTheme,
+  Chip,
+} from '@mui/material';
+import CloseIcon from '@mui/icons-material/Close';
+import WarningIcon from '@mui/icons-material/Warning';
+import AccessibilityNewIcon from '@mui/icons-material/AccessibilityNew';
+import HeadsetIcon from '@mui/icons-material/Headset';
+import FitnessCenterIcon from '@mui/icons-material/FitnessCenter';
 
 interface PostureNotificationProps {
   isVisible: boolean;
@@ -12,47 +35,59 @@ interface PostureNotificationProps {
 // Константы вынесены за пределы компонента
 const TIPS_MAP = {
   shoulders: [
-    '🔺 Опустите плечи вниз',
-    '💪 Сведите лопатки вместе',
-    '📏 Выпрямите спину'
+    'Опустите плечи вниз',
+    'Сведите лопатки вместе',
+    'Выпрямите спину'
   ],
   head: [
-    '📱 Поднимите подбородок',
-    '👀 Смотрите прямо перед собой',
-    '📐 Уши должны быть над плечами'
+    'Поднимите подбородок',
+    'Смотрите прямо перед собой',
+    'Уши должны быть над плечами'
   ],
   hips: [
-    '🔄 Выпрямите таз',
-    '🦵 Напрягите мышцы живота',
-    '⚖️ Равномерно распределите вес'
+    'Выпрямите таз',
+    'Напрягите мышцы живота',
+    'Равномерно распределите вес'
   ]
 } as const;
 
 const ICON_MAP = {
-  shoulders: '🔺',
-  head: '📱',
-  hips: '🔄',
-  default: '⚠️'
+  shoulders: <AccessibilityNewIcon />,
+  head: <HeadsetIcon />,
+  hips: <FitnessCenterIcon />,
+  default: <WarningIcon />
 } as const;
 
 const SEVERITY_CONFIG = {
-  warning: { color: '#f59e0b', label: 'Предупреждение' },
-  critical: { color: '#ef4444', label: 'Критично' }
+  warning: { color: 'warning', severity: 'warning' as const, label: 'Предупреждение' },
+  critical: { color: 'error', severity: 'error' as const, label: 'Критично' }
 } as const;
+
+// Анимация появления - без использования TransitionProps
+const Transition = React.forwardRef((props: any, ref) => {
+  return <Slide direction="up" ref={ref} {...props} />;
+});
 
 // Мемоизированный компонент списка рекомендаций
 const TipsList = memo(({ postureType }: { postureType: string }) => {
   const tips = TIPS_MAP[postureType as keyof typeof TIPS_MAP] || TIPS_MAP.shoulders;
   
   return (
-    <div className="posture-tips">
-      <div className="tips-title">Рекомендации:</div>
-      <ul>
+    <Box sx={{ mt: 2 }}>
+      <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+        Рекомендации:
+      </Typography>
+      <List dense disablePadding>
         {tips.map((tip, index) => (
-          <li key={index}>{tip}</li>
+          <ListItem key={index} disablePadding sx={{ py: 0.5 }}>
+            <ListItemText 
+              primary={tip} 
+              primaryTypographyProps={{ variant: 'body2' }}
+            />
+          </ListItem>
         ))}
-      </ul>
-    </div>
+      </List>
+    </Box>
   );
 });
 
@@ -65,6 +100,9 @@ export const PostureNotification = memo<PostureNotificationProps>(({
   severity,
   onClose
 }) => {
+  const theme = useTheme();
+  const fullScreen = useMediaQuery(theme.breakpoints.down('sm'));
+  
   // Мемоизированные значения
   const icon = useMemo(() => 
     ICON_MAP[postureType as keyof typeof ICON_MAP] || ICON_MAP.default, 
@@ -72,81 +110,96 @@ export const PostureNotification = memo<PostureNotificationProps>(({
   );
   
   const config = useMemo(() => 
-    SEVERITY_CONFIG[severity as keyof typeof SEVERITY_CONFIG] || SEVERITY_CONFIG.warning,
+    SEVERITY_CONFIG[severity] || SEVERITY_CONFIG.warning,
     [severity]
   );
   
-  const borderStyle = useMemo(() => ({
-    borderLeft: `4px solid ${config.color}`,
-    boxShadow: `0 0 30px ${config.color}40`
-  }), [config.color]);
-  
-  const severityStyle = useMemo(() => ({
-    color: config.color
-  }), [config.color]);
-  
-  const buttonStyle = useMemo(() => ({
-    backgroundColor: config.color
-  }), [config.color]);
+  const alertSeverity = useMemo(() => config.severity, [config]);
+  const alertColor = useMemo(() => config.color, [config]);
   
   // Мемоизированный обработчик
-  const handleClose = useCallback((e: React.MouseEvent) => {
-    e.stopPropagation();
+  const handleClose = useCallback(() => {
     onClose();
-  }, [onClose]);
-  
-  const handleBackdropClick = useCallback((e: React.MouseEvent) => {
-    if (e.target === e.currentTarget) {
-      onClose();
-    }
   }, [onClose]);
   
   if (!isVisible) return null;
   
   return (
-    <div className="posture-notification">
-      <div className="notification-backdrop" onClick={handleBackdropClick} />
+    <Dialog
+      open={isVisible}
+      onClose={handleClose}
+      TransitionComponent={Transition}
+      fullScreen={fullScreen}
+      maxWidth="sm"
+      fullWidth
+      PaperProps={{
+        sx: {
+          borderRadius: { xs: 0, sm: 3 },
+          m: { xs: 0, sm: 2 },
+          overflow: 'hidden',
+        }
+      }}
+    >
+      <DialogTitle sx={{ p: 0 }}>
+        <Alert
+          severity={alertSeverity}
+          icon={icon}
+          action={
+            <IconButton
+              aria-label="close"
+              color="inherit"
+              size="small"
+              onClick={handleClose}
+              sx={{ ml: 1 }}
+            >
+              <CloseIcon fontSize="inherit" />
+            </IconButton>
+          }
+          sx={{
+            borderRadius: 0,
+            '& .MuiAlert-message': {
+              flex: 1,
+            },
+            '& .MuiAlert-icon': {
+              alignItems: 'center',
+            }
+          }}
+        >
+          <AlertTitle sx={{ fontWeight: 700, mb: 0.5 }}>
+            Нарушение осанки
+          </AlertTitle>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+            <Chip 
+              label={config.label} 
+              size="small" 
+              color={alertColor}
+              variant="outlined"
+              sx={{ height: 20, fontSize: '0.7rem' }}
+            />
+          </Box>
+        </Alert>
+      </DialogTitle>
       
-      <div className="notification-card" style={borderStyle}>
-        <div className="notification-header">
-          <div className="notification-title">
-            <span className="notification-icon">{icon}</span>
-            <div>
-              <div className="notification-main-title">Нарушение осанки</div>
-              <div className="notification-severity" style={severityStyle}>
-                {config.label}
-              </div>
-            </div>
-          </div>
-          
-          <button className="close-button" onClick={handleClose} aria-label="Закрыть">
-            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-              <path 
-                d="M13 1L1 13M1 1L13 13" 
-                stroke="currentColor" 
-                strokeWidth="2" 
-                strokeLinecap="round"
-              />
-            </svg>
-          </button>
-        </div>
-
-        <div className="notification-body">
-          <p className="notification-message">{message}</p>
-          <TipsList postureType={postureType} />
-        </div>
-
-        <div className="notification-footer">
-          <button 
-            className="action-button"
-            style={buttonStyle}
-            onClick={handleClose}
-          >
-            Понятно
-          </button>
-        </div>
-      </div>
-    </div>
+      <DialogContent sx={{ p: 3 }}>
+        <Typography variant="body1" gutterBottom fontWeight={500}>
+          {message}
+        </Typography>
+        <TipsList postureType={postureType} />
+      </DialogContent>
+      
+      <DialogActions sx={{ p: 3, pt: 0 }}>
+        <Button 
+          onClick={handleClose} 
+          variant="contained" 
+          color={alertColor}
+          fullWidth
+          size="large"
+          sx={{ textTransform: 'none', fontWeight: 600 }}
+        >
+          Понятно
+        </Button>
+      </DialogActions>
+    </Dialog>
   );
 });
 
