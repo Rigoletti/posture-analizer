@@ -89,10 +89,8 @@ export const authApi = {
       });
       
       console.log('Login response status:', response.status);
-      console.log('Login response headers:', [...response.headers.entries()]);
       
       const responseData = await response.json();
-      console.log('Login response data:', responseData);
       
       if (!response.ok) {
         if (responseData.requiresVerification) {
@@ -104,7 +102,10 @@ export const authApi = {
         throw new Error(responseData.error || 'Ошибка при авторизации');
       }
       
-      return responseData;
+      return {
+        user: responseData.user,
+        token: responseData.token
+      };
     } catch (error: any) {
       console.error('Error logging in:', error);
       throw error;
@@ -193,7 +194,6 @@ export const authApi = {
     }
   },
 
-  // Загрузка аватара
   uploadAvatar: async (file: File) => {
     try {
       const formData = new FormData();
@@ -218,7 +218,6 @@ export const authApi = {
     }
   },
 
-  // Удаление аватара
   deleteAvatar: async () => {
     try {
       const response = await fetch('http://localhost:5000/api/auth/avatar', {

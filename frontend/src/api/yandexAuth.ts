@@ -3,7 +3,6 @@ const API_URL = process.env.NODE_ENV === 'production'
   : 'http://localhost:5000/api';
 
 export const yandexAuthApi = {
-  // Получение URL для авторизации через Яндекс
   getYandexAuthUrl: async (): Promise<string> => {
     try {
       const response = await fetch(`${API_URL}/auth/yandex`, {
@@ -27,10 +26,10 @@ export const yandexAuthApi = {
     }
   },
 
-  // Перенаправление на Яндекс для авторизации
   redirectToYandex: async (): Promise<void> => {
     try {
       const authUrl = await yandexAuthApi.getYandexAuthUrl();
+      console.log('Redirecting to Yandex:', authUrl);
       window.location.href = authUrl;
     } catch (error) {
       console.error('Error redirecting to Yandex:', error);
@@ -38,10 +37,9 @@ export const yandexAuthApi = {
     }
   },
 
-  // Проверка статуса Яндекс авторизации
   getYandexAuthStatus: async () => {
     try {
-      const response = await fetch('http://localhost:5000/api/auth/yandex/status', {
+      const response = await fetch(`${API_URL}/auth/yandex/status`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json'
@@ -62,7 +60,6 @@ export const yandexAuthApi = {
     }
   },
 
-  // Отключение Яндекс аккаунта
   disconnectYandex: async (): Promise<any> => {
     try {
       const response = await fetch(`${API_URL}/auth/yandex/disconnect`, {
@@ -86,21 +83,21 @@ export const yandexAuthApi = {
     }
   },
 
-  // Обработка данных после редиректа с Яндекса
-  handleYandexCallback: (): { user: any; token: string } | null => {
+  handleYandexCallback: (): { user: any } | null => {
     const urlParams = new URLSearchParams(window.location.search);
     const userData = urlParams.get('user');
-    const token = urlParams.get('token');
     const error = urlParams.get('error');
     
     if (error) {
+      console.error('Yandex callback error:', decodeURIComponent(error));
       throw new Error(decodeURIComponent(error));
     }
     
-    if (userData && token) {
+    if (userData) {
       try {
         const user = JSON.parse(decodeURIComponent(userData));
-        return { user, token };
+        console.log('Yandex callback success, user:', user.email);
+        return { user };
       } catch (e) {
         console.error('Error parsing user data:', e);
         return null;

@@ -45,7 +45,7 @@ interface AuthStore {
   yandexLogin: () => Promise<void>;
   checkYandexStatus: () => Promise<void>;
   disconnectYandex: (password?: string) => Promise<any>;
-  handleYandexCallback: () => { user: any; token: string } | null;
+  handleYandexCallback: () => { user: any } | null;
   
   clearError: () => void;
   clearUser: () => void;
@@ -73,7 +73,8 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
     set({ 
       user, 
       isAuthenticated: true,
-      error: null
+      error: null,
+      isLoading: false
     });
   },
 
@@ -90,7 +91,6 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
         error: null
       });
       
-      // Проверяем статус Яндекса без ожидания, чтобы не блокировать
       get().checkYandexStatus().catch(e => console.log('Yandex status check error:', e));
       
       return result;
@@ -150,7 +150,6 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
       const { user } = result;
       
       console.log('✅ Auth check received user:', user);
-      console.log('Avatar URL from server:', user?.avatarUrl);
       
       if (user) {
         set({ 
@@ -160,7 +159,6 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
           error: null
         });
         
-        // Проверяем статус Яндекса без ожидания
         get().checkYandexStatus().catch(e => console.log('Yandex status check error:', e));
       } else {
         set({ 
@@ -188,7 +186,7 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
       const { user } = result;
       
       if (user) {
-        console.log('🔄 Refreshing user data, received avatarUrl:', user?.avatarUrl);
+        console.log('🔄 Refreshing user data');
         
         const updatedUser = {
           ...user,
@@ -198,14 +196,11 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
           avatarThumbnailUrl: user.avatarThumbnailUrl || currentUser?.avatarThumbnailUrl,
         };
         
-        console.log('Updated user with avatarUrl:', updatedUser.avatarUrl);
-        
         set({ 
           user: updatedUser, 
           isAuthenticated: true 
         });
         
-        // Проверяем статус Яндекса без ожидания
         get().checkYandexStatus().catch(e => console.log('Yandex status check error:', e));
       }
     } catch (error) {
@@ -228,7 +223,6 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
   },
 
   checkYandexStatus: async () => {
-    // Проверяем статус только если пользователь авторизован
     if (!get().isAuthenticated || !get().user) {
       return;
     }
@@ -241,7 +235,6 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
         
         console.log('📱 Yandex status check - keeping uploaded avatar:', currentUser.avatarUrl);
         
-        // ВАЖНО: Сохраняем все поля загруженного аватара
         set({
           user: {
             ...currentUser,
@@ -296,19 +289,24 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
       const result = yandexAuthApi.handleYandexCallback();
       
       if (result) {
-        const { user, token } = result;
+        const { user } = result;
+        
+        console.log('✅ Yandex auth: user set in store (token in httpOnly cookie)', user.email);
+        
         set({
           user,
           isAuthenticated: true,
           isLoading: false,
           error: null
         });
-        return { user, token };
+        
+        return { user };
       }
       
+      console.error('❌ Yandex callback: no result from handleYandexCallback');
       return null;
     } catch (error: any) {
-      console.error('Error handling Yandex callback:', error);
+      console.error('❌ Error handling Yandex callback:', error);
       set({ 
         error: error.message || 'Ошибка при обработке данных от Яндекса', 
         isLoading: false 
