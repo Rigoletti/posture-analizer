@@ -16,8 +16,6 @@ import {
   Alert,
   CircularProgress,
   Paper,
-  FormControlLabel,
-  Checkbox,
   alpha,
   InputAdornment,
   Chip,
@@ -32,9 +30,6 @@ import {
   Person as PersonIcon,
   Email as EmailIcon,
   AdminPanelSettings as AdminPanelSettingsIcon,
-  PersonOutline as PersonOutlineIcon,
-  CheckCircle as CheckCircleIcon,
-  Cancel as CancelIcon2,
   Key as KeyIcon
 } from '@mui/icons-material';
 import { adminApi } from '../../api/admin';
@@ -47,7 +42,6 @@ interface UserFormData {
   password: string;
   confirmPassword: string;
   role: string;
-  isActive: boolean;
 }
 
 interface User {
@@ -57,7 +51,7 @@ interface User {
   middleName: string;
   fullName: string;
   email: string;
-  role: 'guest' | 'user' | 'admin';
+  role: 'user' | 'admin';
   isActive: boolean;
   emailVerified: boolean;
   createdAt: string;
@@ -79,8 +73,7 @@ const UserForm: React.FC = () => {
     email: '',
     password: '',
     confirmPassword: '',
-    role: 'user',
-    isActive: true
+    role: 'user'
   });
   
   const [loading, setLoading] = useState(false);
@@ -111,8 +104,7 @@ const UserForm: React.FC = () => {
         email: userData.email || '',
         password: '',
         confirmPassword: '',
-        role: userData.role || 'user',
-        isActive: userData.isActive !== undefined ? userData.isActive : true
+        role: userData.role || 'user'
       });
       
     } catch (err: any) {
@@ -124,13 +116,8 @@ const UserForm: React.FC = () => {
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, value, type, checked } = e.target;
-    
-    if (type === 'checkbox') {
-      setFormData(prev => ({ ...prev, [name]: checked }));
-    } else {
-      setFormData(prev => ({ ...prev, [name]: value }));
-    }
+    const { name, value } = e.target;
+    setFormData(prev => ({ ...prev, [name]: value }));
     
     if (error) setError(null);
     if (success) setSuccess(null);
@@ -193,17 +180,14 @@ const UserForm: React.FC = () => {
       setError(null);
       setSuccess(null);
       
-      // Подготавливаем данные для отправки
       const userData: any = {
         lastName: formData.lastName.trim(),
         firstName: formData.firstName.trim(),
         middleName: formData.middleName.trim(),
         email: formData.email.toLowerCase().trim(),
-        role: formData.role,
-        isActive: formData.isActive
+        role: formData.role
       };
       
-      // Добавляем пароль только если он был изменен
       if (showPasswordFields && formData.password) {
         userData.password = formData.password;
       }
@@ -241,7 +225,6 @@ const UserForm: React.FC = () => {
   const togglePasswordFields = () => {
     setShowPasswordFields(!showPasswordFields);
     if (!showPasswordFields) {
-      // Очищаем поля пароля при скрытии
       setFormData(prev => ({
         ...prev,
         password: '',
@@ -264,27 +247,13 @@ const UserForm: React.FC = () => {
           color: '#3b82f6',
           icon: <PersonIcon sx={{ fontSize: 16 }} />
         };
-      case 'guest':
-        return {
-          label: 'Гость',
-          color: '#6b7280',
-          icon: <PersonOutlineIcon sx={{ fontSize: 16 }} />
-        };
       default:
         return {
           label: role,
           color: '#6b7280',
-          icon: <PersonOutlineIcon sx={{ fontSize: 16 }} />
+          icon: <PersonIcon sx={{ fontSize: 16 }} />
         };
     }
-  };
-
-  const getStatusInfo = (isActive: boolean) => {
-    return {
-      label: isActive ? 'Активен' : 'Неактивен',
-      color: isActive ? '#10b981' : '#ef4444',
-      icon: isActive ? <CheckCircleIcon sx={{ fontSize: 16 }} /> : <CancelIcon2 sx={{ fontSize: 16 }} />
-    };
   };
 
   const formatDate = (dateString: string) => {
@@ -334,7 +303,6 @@ const UserForm: React.FC = () => {
       position: 'relative',
       overflow: 'hidden'
     }}>
-      {/* Фоновые элементы */}
       <Box sx={{
         position: 'absolute',
         top: -100,
@@ -357,7 +325,6 @@ const UserForm: React.FC = () => {
       }} />
 
       <Container maxWidth="md" sx={{ position: 'relative', zIndex: 1 }}>
-        {/* Заголовок */}
         <Box sx={{ mb: 4 }}>
           <Stack direction="row" alignItems="center" spacing={2} sx={{ mb: 2 }}>
             <IconButton
@@ -422,34 +389,21 @@ const UserForm: React.FC = () => {
                     Email подтвержден: {user.emailVerified ? 'Да' : 'Нет'}
                   </Typography>
                 </Stack>
-                <Stack direction="row" spacing={1}>
-                  <Chip
-                    icon={getRoleInfo(user.role).icon}
-                    label={getRoleInfo(user.role).label}
-                    size="small"
-                    sx={{
-                      bgcolor: alpha(getRoleInfo(user.role).color, 0.1),
-                      color: getRoleInfo(user.role).color,
-                      border: `1px solid ${alpha(getRoleInfo(user.role).color, 0.3)}`
-                    }}
-                  />
-                  <Chip
-                    icon={getStatusInfo(user.isActive).icon}
-                    label={getStatusInfo(user.isActive).label}
-                    size="small"
-                    sx={{
-                      bgcolor: alpha(getStatusInfo(user.isActive).color, 0.1),
-                      color: getStatusInfo(user.isActive).color,
-                      border: `1px solid ${alpha(getStatusInfo(user.isActive).color, 0.3)}`
-                    }}
-                  />
-                </Stack>
+                <Chip
+                  icon={getRoleInfo(user.role).icon}
+                  label={getRoleInfo(user.role).label}
+                  size="small"
+                  sx={{
+                    bgcolor: alpha(getRoleInfo(user.role).color, 0.1),
+                    color: getRoleInfo(user.role).color,
+                    border: `1px solid ${alpha(getRoleInfo(user.role).color, 0.3)}`
+                  }}
+                />
               </Stack>
             </Paper>
           )}
         </Box>
 
-        {/* Сообщения об ошибках/успехе */}
         {error && (
           <Alert 
             severity="error" 
@@ -663,149 +617,96 @@ const UserForm: React.FC = () => {
                   fontWeight: 600
                 }}
               >
-                Роль и статус
+                Роль пользователя
               </Typography>
               
-              <Stack spacing={3}>
-                <FormControl fullWidth>
-                  <InputLabel sx={{ color: theme.palette.mode === 'light' ? '#475569' : '#94a3b8' }}>
-                    Роль пользователя *
-                  </InputLabel>
-                  <Select
-                    name="role"
-                    value={formData.role}
-                    onChange={handleSelectChange}
-                    label="Роль пользователя *"
-                    sx={{
-                      bgcolor: theme.palette.mode === 'light'
-                        ? alpha('#ffffff', 0.8)
-                        : 'rgba(15, 23, 42, 0.8)',
-                      '& .MuiOutlinedInput-notchedOutline': {
-                        borderColor: theme.palette.mode === 'light'
-                          ? 'rgba(0, 0, 0, 0.1)'
-                          : 'rgba(255, 255, 255, 0.1)'
-                      },
-                      '&:hover .MuiOutlinedInput-notchedOutline': {
-                        borderColor: theme.palette.primary.main
-                      },
-                      '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
-                        borderColor: theme.palette.primary.main
-                      },
-                      '& .MuiSelect-select': {
-                        color: theme.palette.mode === 'light' ? '#0f172a' : '#ffffff'
-                      },
-                      '& .MuiSvgIcon-root': {
-                        color: theme.palette.mode === 'light' ? '#64748b' : '#94a3b8'
-                      }
-                    }}
-                    MenuProps={{
-                      PaperProps: {
-                        sx: {
-                          bgcolor: theme.palette.mode === 'light' ? '#ffffff' : '#1e293b',
-                          '& .MuiMenuItem-root': {
-                            color: theme.palette.mode === 'light' ? '#0f172a' : '#ffffff',
-                            '&:hover': {
-                              bgcolor: alpha(theme.palette.primary.main, 0.1)
-                            },
-                            '&.Mui-selected': {
-                              bgcolor: alpha(theme.palette.primary.main, 0.2)
-                            }
+              <FormControl fullWidth>
+                <InputLabel sx={{ color: theme.palette.mode === 'light' ? '#475569' : '#94a3b8' }}>
+                  Роль *
+                </InputLabel>
+                <Select
+                  name="role"
+                  value={formData.role}
+                  onChange={handleSelectChange}
+                  label="Роль *"
+                  sx={{
+                    bgcolor: theme.palette.mode === 'light'
+                      ? alpha('#ffffff', 0.8)
+                      : 'rgba(15, 23, 42, 0.8)',
+                    '& .MuiOutlinedInput-notchedOutline': {
+                      borderColor: theme.palette.mode === 'light'
+                        ? 'rgba(0, 0, 0, 0.1)'
+                        : 'rgba(255, 255, 255, 0.1)'
+                    },
+                    '&:hover .MuiOutlinedInput-notchedOutline': {
+                      borderColor: theme.palette.primary.main
+                    },
+                    '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
+                      borderColor: theme.palette.primary.main
+                    },
+                    '& .MuiSelect-select': {
+                      color: theme.palette.mode === 'light' ? '#0f172a' : '#ffffff'
+                    },
+                    '& .MuiSvgIcon-root': {
+                      color: theme.palette.mode === 'light' ? '#64748b' : '#94a3b8'
+                    }
+                  }}
+                  MenuProps={{
+                    PaperProps: {
+                      sx: {
+                        bgcolor: theme.palette.mode === 'light' ? '#ffffff' : '#1e293b',
+                        '& .MuiMenuItem-root': {
+                          color: theme.palette.mode === 'light' ? '#0f172a' : '#ffffff',
+                          '&:hover': {
+                            bgcolor: alpha(theme.palette.primary.main, 0.1)
+                          },
+                          '&.Mui-selected': {
+                            bgcolor: alpha(theme.palette.primary.main, 0.2)
                           }
                         }
                       }
-                    }}
-                  >
-                    <MenuItem value="user">
-                      <Stack direction="row" alignItems="center" spacing={1.5}>
-                        <PersonIcon sx={{ color: '#3b82f6' }} />
-                        <Box>
-                          <Typography sx={{ 
-                            color: theme.palette.mode === 'light' ? '#0f172a' : '#ffffff'
-                          }}>
-                            Пользователь
-                          </Typography>
-                          <Typography variant="caption" sx={{ 
-                            color: theme.palette.mode === 'light' ? '#64748b' : '#94a3b8'
-                          }}>
-                            Стандартные права
-                          </Typography>
-                        </Box>
-                      </Stack>
-                    </MenuItem>
-                    <MenuItem value="admin">
-                      <Stack direction="row" alignItems="center" spacing={1.5}>
-                        <AdminPanelSettingsIcon sx={{ color: '#ef4444' }} />
-                        <Box>
-                          <Typography sx={{ 
-                            color: theme.palette.mode === 'light' ? '#0f172a' : '#ffffff'
-                          }}>
-                            Администратор
-                          </Typography>
-                          <Typography variant="caption" sx={{ 
-                            color: theme.palette.mode === 'light' ? '#64748b' : '#94a3b8'
-                          }}>
-                            Полный доступ к системе
-                          </Typography>
-                        </Box>
-                      </Stack>
-                    </MenuItem>
-                    <MenuItem value="guest">
-                      <Stack direction="row" alignItems="center" spacing={1.5}>
-                        <PersonOutlineIcon sx={{ color: '#6b7280' }} />
-                        <Box>
-                          <Typography sx={{ 
-                            color: theme.palette.mode === 'light' ? '#0f172a' : '#ffffff'
-                          }}>
-                            Гость
-                          </Typography>
-                          <Typography variant="caption" sx={{ 
-                            color: theme.palette.mode === 'light' ? '#64748b' : '#94a3b8'
-                          }}>
-                            Ограниченные права
-                          </Typography>
-                        </Box>
-                      </Stack>
-                    </MenuItem>
-                  </Select>
-                </FormControl>
-                
-                <FormControlLabel
-                  control={
-                    <Checkbox
-                      name="isActive"
-                      checked={formData.isActive}
-                      onChange={handleChange}
-                      sx={{
-                        color: theme.palette.primary.main,
-                        '&.Mui-checked': {
-                          color: theme.palette.primary.main
-                        }
-                      }}
-                    />
-                  }
-                  label={
-                    <Stack>
-                      <Typography sx={{ 
-                        color: theme.palette.mode === 'light' ? '#0f172a' : '#ffffff',
-                        fontWeight: 500 
-                      }}>
-                        Аккаунт активен
-                      </Typography>
-                      <Typography variant="caption" sx={{ 
-                        color: theme.palette.mode === 'light' ? '#64748b' : '#94a3b8'
-                      }}>
-                        {formData.isActive 
-                          ? 'Пользователь может войти в систему'
-                          : 'Пользователь не может войти в систему'}
-                      </Typography>
+                    }
+                  }}
+                >
+                  <MenuItem value="user">
+                    <Stack direction="row" alignItems="center" spacing={1.5}>
+                      <PersonIcon sx={{ color: '#3b82f6' }} />
+                      <Box>
+                        <Typography sx={{ 
+                          color: theme.palette.mode === 'light' ? '#0f172a' : '#ffffff'
+                        }}>
+                          Пользователь
+                        </Typography>
+                        <Typography variant="caption" sx={{ 
+                          color: theme.palette.mode === 'light' ? '#64748b' : '#94a3b8'
+                        }}>
+                          Стандартные права
+                        </Typography>
+                      </Box>
                     </Stack>
-                  }
-                />
-              </Stack>
+                  </MenuItem>
+                  <MenuItem value="admin">
+                    <Stack direction="row" alignItems="center" spacing={1.5}>
+                      <AdminPanelSettingsIcon sx={{ color: '#ef4444' }} />
+                      <Box>
+                        <Typography sx={{ 
+                          color: theme.palette.mode === 'light' ? '#0f172a' : '#ffffff'
+                        }}>
+                          Администратор
+                        </Typography>
+                        <Typography variant="caption" sx={{ 
+                          color: theme.palette.mode === 'light' ? '#64748b' : '#94a3b8'
+                        }}>
+                          Полный доступ к системе
+                        </Typography>
+                      </Box>
+                    </Stack>
+                  </MenuItem>
+                </Select>
+              </FormControl>
             </CardContent>
           </Card>
 
-          {/* Пароль - только при создании или при явном запросе */}
           {(!isEditMode || showPasswordFields) && (
             <Card sx={{ 
               mb: 3,
@@ -924,7 +825,6 @@ const UserForm: React.FC = () => {
             </Card>
           )}
 
-          {/* Кнопки действий */}
           <Paper
             sx={{
               p: 3,
@@ -986,7 +886,6 @@ const UserForm: React.FC = () => {
         </form>
       </Container>
 
-      {/* Стили для анимации */}
       <style>
         {`
           @keyframes pulse {

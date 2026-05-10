@@ -107,10 +107,6 @@ const UserList: React.FC = () => {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deleteCandidate, setDeleteCandidate] = useState<User | null>(null);
   const [deleting, setDeleting] = useState(false);
-  
-  const [toggleStatusDialogOpen, setToggleStatusDialogOpen] = useState(false);
-  const [toggleStatusCandidate, setToggleStatusCandidate] = useState<User | null>(null);
-  const [togglingStatus, setTogglingStatus] = useState(false);
 
   const fetchUsers = async (page = 1) => {
     try {
@@ -231,35 +227,6 @@ const UserList: React.FC = () => {
       setDeleting(false);
       setDeleteDialogOpen(false);
       setDeleteCandidate(null);
-    }
-  };
-
-  const handleToggleStatusClick = (user: User) => {
-    setToggleStatusCandidate(user);
-    setToggleStatusDialogOpen(true);
-  };
-
-  const handleToggleStatusConfirm = async () => {
-    if (!toggleStatusCandidate) return;
-    
-    try {
-      setTogglingStatus(true);
-      const response = await adminApi.updateUser(toggleStatusCandidate._id, {
-        isActive: !toggleStatusCandidate.isActive
-      });
-      
-      if (response.success) {
-        setSuccess(`Пользователь успешно ${!toggleStatusCandidate.isActive ? 'активирован' : 'деактивирован'}`);
-        fetchUsers(pagination.page);
-      } else {
-        throw new Error(response.error || 'Ошибка изменения статуса');
-      }
-    } catch (err: any) {
-      setError(err.message || 'Ошибка при изменении статуса пользователя');
-    } finally {
-      setTogglingStatus(false);
-      setToggleStatusDialogOpen(false);
-      setToggleStatusCandidate(null);
     }
   };
 
@@ -426,7 +393,20 @@ const UserList: React.FC = () => {
                 Всего пользователей: {pagination.total}
               </Typography>
             </Box>
-         
+            
+            <Button
+              startIcon={<AddIcon />}
+              onClick={handleCreateUser}
+              variant="contained"
+              sx={{
+                background: `linear-gradient(135deg, ${theme.palette.primary.main} 0%, ${theme.palette.primary.dark} 100%)`,
+                '&:hover': {
+                  background: `linear-gradient(135deg, ${theme.palette.primary.dark} 0%, ${theme.palette.primary.main} 100%)`
+                }
+              }}
+            >
+              Создать пользователя
+            </Button>
           </Stack>
 
           {/* Сообщения об ошибках/успехе */}
@@ -546,7 +526,7 @@ const UserList: React.FC = () => {
                 <Stack 
                   direction={{ xs: 'column', sm: 'row' }}
                   spacing={2}
-                  sx={{ minWidth: { md: '500px' } }}
+                  sx={{ minWidth: { md: '400px' } }}
                 >
                   <FormControl size="small" sx={{ minWidth: 120 }}>
                     <InputLabel sx={{ color: theme.palette.mode === 'light' ? '#475569' : '#94a3b8' }}>
@@ -768,7 +748,7 @@ const UserList: React.FC = () => {
                         color: theme.palette.mode === 'light' ? '#475569' : '#94a3b8',
                         fontWeight: 600, 
                         py: 2,
-                        width: '25%'
+                        width: '30%'
                       }}>
                         Пользователь
                       </TableCell>
@@ -800,7 +780,7 @@ const UserList: React.FC = () => {
                         color: theme.palette.mode === 'light' ? '#475569' : '#94a3b8',
                         fontWeight: 600, 
                         py: 2,
-                        width: '20%'
+                        width: '15%'
                       }}>
                         Дата регистрации
                       </TableCell>
@@ -873,42 +853,21 @@ const UserList: React.FC = () => {
                             />
                           </TableCell>
                           <TableCell sx={{ py: 2 }}>
-                            <Stack direction="row" alignItems="center" spacing={1}>
-                              <Chip
-                                icon={statusInfo.icon}
-                                label={statusInfo.label}
-                                size="small"
-                                sx={{
-                                  bgcolor: alpha(statusInfo.color, 0.1),
-                                  color: statusInfo.color,
-                                  border: `1px solid ${alpha(statusInfo.color, 0.3)}`,
-                                  fontWeight: 500,
-                                  fontSize: '0.75rem',
-                                  '& .MuiChip-icon': {
-                                    color: statusInfo.color
-                                  }
-                                }}
-                              />
-                              <Tooltip title={user.isActive ? 'Деактивировать' : 'Активировать'}>
-                                <IconButton
-                                  size="small"
-                                  onClick={() => handleToggleStatusClick(user)}
-                                  sx={{
-                                    color: user.isActive ? '#f59e0b' : '#10b981',
-                                    '&:hover': {
-                                      bgcolor: user.isActive 
-                                        ? alpha('#f59e0b', 0.1) 
-                                        : alpha('#10b981', 0.1)
-                                    }
-                                  }}
-                                >
-                                  {user.isActive ? 
-                                    <CancelIcon fontSize="small" /> : 
-                                    <CheckCircleIcon fontSize="small" />
-                                  }
-                                </IconButton>
-                              </Tooltip>
-                            </Stack>
+                            <Chip
+                              icon={statusInfo.icon}
+                              label={statusInfo.label}
+                              size="small"
+                              sx={{
+                                bgcolor: alpha(statusInfo.color, 0.1),
+                                color: statusInfo.color,
+                                border: `1px solid ${alpha(statusInfo.color, 0.3)}`,
+                                fontWeight: 500,
+                                fontSize: '0.75rem',
+                                '& .MuiChip-icon': {
+                                  color: statusInfo.color
+                                }
+                              }}
+                            />
                           </TableCell>
                           <TableCell sx={{ py: 2 }}>
                             <Chip
@@ -944,41 +903,39 @@ const UserList: React.FC = () => {
                             </Stack>
                           </TableCell>
                           <TableCell align="center" sx={{ py: 2 }}>
-                            <Stack direction="row" spacing={0.5} justifyContent="center">
-                              <Tooltip title="Редактировать">
-                                <IconButton
-                                  size="small"
-                                  onClick={() => handleEditUser(user._id)}
-                                  sx={{
-                                    color: '#3b82f6',
-                                    bgcolor: alpha('#3b82f6', 0.1),
-                                    '&:hover': { 
-                                      bgcolor: alpha('#3b82f6', 0.2),
-                                      transform: 'scale(1.1)'
-                                    }
-                                  }}
-                                >
-                                  <EditIcon fontSize="small" />
-                                </IconButton>
-                              </Tooltip>
-                              
-                              <Tooltip title="Удалить">
-                                <IconButton
-                                  size="small"
-                                  onClick={() => handleDeleteClick(user)}
-                                  sx={{
-                                    color: '#ef4444',
-                                    bgcolor: alpha('#ef4444', 0.1),
-                                    '&:hover': { 
-                                      bgcolor: alpha('#ef4444', 0.2),
-                                      transform: 'scale(1.1)'
-                                    }
-                                  }}
-                                >
-                                  <DeleteIcon fontSize="small" />
-                                </IconButton>
-                              </Tooltip>
-                            </Stack>
+                            <Tooltip title="Редактировать">
+                              <IconButton
+                                size="small"
+                                onClick={() => handleEditUser(user._id)}
+                                sx={{
+                                  color: '#3b82f6',
+                                  bgcolor: alpha('#3b82f6', 0.1),
+                                  '&:hover': { 
+                                    bgcolor: alpha('#3b82f6', 0.2),
+                                    transform: 'scale(1.1)'
+                                  }
+                                }}
+                              >
+                                <EditIcon fontSize="small" />
+                              </IconButton>
+                            </Tooltip>
+                            
+                            <Tooltip title="Удалить">
+                              <IconButton
+                                size="small"
+                                onClick={() => handleDeleteClick(user)}
+                                sx={{
+                                  color: '#ef4444',
+                                  bgcolor: alpha('#ef4444', 0.1),
+                                  '&:hover': { 
+                                    bgcolor: alpha('#ef4444', 0.2),
+                                    transform: 'scale(1.1)'
+                                  }
+                                }}
+                              >
+                                <DeleteIcon fontSize="small" />
+                              </IconButton>
+                            </Tooltip>
                           </TableCell>
                         </TableRow>
                       );
@@ -1154,162 +1111,6 @@ const UserList: React.FC = () => {
         </DialogActions>
       </Dialog>
 
-      {/* Диалог изменения статуса */}
-      <Dialog
-        open={toggleStatusDialogOpen}
-        onClose={() => setToggleStatusDialogOpen(false)}
-        PaperProps={{
-          sx: {
-            bgcolor: theme.palette.mode === 'light' ? '#ffffff' : '#1e293b',
-            color: theme.palette.mode === 'light' ? '#0f172a' : '#ffffff',
-            borderRadius: 2,
-            width: '100%',
-            maxWidth: '400px'
-          }
-        }}
-      >
-        <DialogTitle sx={{ 
-          borderBottom: `1px solid ${alpha(theme.palette.warning.main, 0.3)}`,
-          pb: 2,
-          color: 'inherit',
-          fontWeight: 600
-        }}>
-          <Stack direction="row" alignItems="center" spacing={1.5}>
-            <WarningIcon sx={{ color: theme.palette.warning.main }} />
-            <span>Изменение статуса</span>
-          </Stack>
-        </DialogTitle>
-        
-        <DialogContent sx={{ pt: 3 }}>
-          {toggleStatusCandidate && (
-            <>
-              <Typography sx={{ color: 'inherit', mb: 2 }}>
-                Вы уверены, что хотите {toggleStatusCandidate.isActive ? 'деактивировать' : 'активировать'} этого пользователя?
-              </Typography>
-              
-              <Box sx={{ 
-                p: 2, 
-                mb: 2,
-                bgcolor: toggleStatusCandidate.isActive 
-                  ? alpha(theme.palette.warning.main, 0.1)
-                  : alpha(theme.palette.success.main, 0.1),
-                borderRadius: 1,
-                border: `1px solid ${toggleStatusCandidate.isActive 
-                  ? alpha(theme.palette.warning.main, 0.3)
-                  : alpha(theme.palette.success.main, 0.3)}`
-              }}>
-                <Stack spacing={1}>
-                  <Typography variant="body2" sx={{ 
-                    color: toggleStatusCandidate.isActive 
-                      ? theme.palette.warning.main
-                      : theme.palette.success.main,
-                    fontWeight: 500 
-                  }}>
-                    <strong>ФИО:</strong> {toggleStatusCandidate.fullName}
-                  </Typography>
-                  <Typography variant="body2" sx={{ 
-                    color: toggleStatusCandidate.isActive 
-                      ? theme.palette.warning.main
-                      : theme.palette.success.main
-                  }}>
-                    <strong>Email:</strong> {toggleStatusCandidate.email}
-                  </Typography>
-                  <Typography variant="body2" sx={{ 
-                    color: toggleStatusCandidate.isActive 
-                      ? theme.palette.warning.main
-                      : theme.palette.success.main
-                  }}>
-                    <strong>Текущий статус:</strong> {toggleStatusCandidate.isActive ? 'Активен' : 'Неактивен'}
-                  </Typography>
-                  <Typography variant="body2" sx={{ 
-                    color: toggleStatusCandidate.isActive 
-                      ? theme.palette.warning.main
-                      : theme.palette.success.main
-                  }}>
-                    <strong>Новый статус:</strong> {toggleStatusCandidate.isActive ? 'Неактивен' : 'Активен'}
-                  </Typography>
-                </Stack>
-              </Box>
-              
-              <Alert 
-                severity={toggleStatusCandidate.isActive ? "warning" : "info"}
-                sx={{ 
-                  bgcolor: toggleStatusCandidate.isActive 
-                    ? alpha(theme.palette.warning.main, 0.1)
-                    : alpha(theme.palette.info.main, 0.1),
-                  border: `1px solid ${toggleStatusCandidate.isActive 
-                    ? alpha(theme.palette.warning.main, 0.3)
-                    : alpha(theme.palette.info.main, 0.3)}`,
-                  color: toggleStatusCandidate.isActive 
-                    ? theme.palette.warning.main
-                    : theme.palette.info.main
-                }}
-              >
-                <Typography variant="caption">
-                  {toggleStatusCandidate.isActive 
-                    ? 'Деактивированный пользователь не сможет войти в систему.'
-                    : 'Активированный пользователь сможет войти в систему и использовать все функции.'}
-                </Typography>
-              </Alert>
-            </>
-          )}
-        </DialogContent>
-        
-        <DialogActions sx={{ px: 3, pb: 3 }}>
-          <Button 
-            onClick={() => setToggleStatusDialogOpen(false)}
-            disabled={togglingStatus}
-            sx={{
-              color: theme.palette.mode === 'light' ? '#64748b' : '#94a3b8',
-              '&:hover': {
-                color: theme.palette.mode === 'light' ? '#0f172a' : '#ffffff',
-                backgroundColor: alpha(theme.palette.text.primary, 0.1)
-              }
-            }}
-          >
-            Отмена
-          </Button>
-          <Button
-            onClick={handleToggleStatusConfirm}
-            variant="contained"
-            disabled={togglingStatus}
-            sx={{
-              bgcolor: toggleStatusCandidate?.isActive 
-                ? theme.palette.warning.main 
-                : theme.palette.success.main,
-              color: 'white',
-              px: 3,
-              '&:hover': {
-                bgcolor: toggleStatusCandidate?.isActive 
-                  ? theme.palette.warning.dark
-                  : theme.palette.success.dark,
-                boxShadow: `0 4px 20px ${toggleStatusCandidate?.isActive 
-                  ? alpha(theme.palette.warning.main, 0.3)
-                  : alpha(theme.palette.success.main, 0.3)}`
-              },
-              '&.Mui-disabled': {
-                bgcolor: toggleStatusCandidate?.isActive 
-                  ? alpha(theme.palette.warning.main, 0.3)
-                  : alpha(theme.palette.success.main, 0.3),
-                color: theme.palette.mode === 'light' 
-                  ? alpha('#ffffff', 0.5)
-                  : alpha(toggleStatusCandidate?.isActive 
-                    ? theme.palette.warning.light
-                    : theme.palette.success.light, 0.5)
-              }
-            }}
-          >
-            {togglingStatus ? (
-              <Stack direction="row" spacing={1} alignItems="center">
-                <CircularProgress size={16} sx={{ color: 'white' }} />
-                <span>Сохранение...</span>
-              </Stack>
-            ) : toggleStatusCandidate?.isActive ? 'Деактивировать' : 'Активировать'}
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* Стили для анимации */}
       <style>
         {`
           @keyframes pulse {

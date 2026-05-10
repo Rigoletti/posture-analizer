@@ -91,7 +91,7 @@ export const getUserById = async (req, res) => {
 
 export const updateUser = async (req, res) => {
   try {
-    const { role, isActive, postureSettings } = req.body;
+    const { role, postureSettings } = req.body;
     
     const existingUser = await User.findById(req.params.id);
     
@@ -104,13 +104,12 @@ export const updateUser = async (req, res) => {
     
     const updateData = {};
     
-    if (role && ['guest', 'user', 'admin'].includes(role)) {
+    // Разрешаем только роли 'user' и 'admin' (без 'guest')
+    if (role && ['user', 'admin'].includes(role)) {
       updateData.role = role;
     }
     
-    if (isActive !== undefined) {
-      updateData.isActive = isActive;
-    }
+    // НЕ РАЗРЕШАЕМ изменять isActive - удаляем эту возможность полностью
     
     if (postureSettings) {
       updateData.postureSettings = {
