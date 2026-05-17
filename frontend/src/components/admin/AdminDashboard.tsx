@@ -701,7 +701,7 @@ const AdminDashboard: React.FC = () => {
           </Alert>
         )}
 
-        {/* КАРТОЧКИ СТАТИСТИКИ - ИСПРАВЛЕНА ШИРИНА */}
+        {/* КАРТОЧКИ СТАТИСТИКИ  */}
         <Grid container spacing={isMobile ? 1.5 : 3} sx={{ mb: 4 }}>
           {statCards.map((card, index) => (
             <Grid 

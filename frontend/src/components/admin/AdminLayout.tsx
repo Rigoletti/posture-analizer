@@ -25,7 +25,6 @@ import {
   Menu,
   MenuItem,
   ListItemIcon as MuiListItemIcon,
-  Badge
 } from '@mui/material';
 import {
   Dashboard as DashboardIcon,
@@ -37,16 +36,10 @@ import {
   ChevronLeft as ChevronLeftIcon,
   ChevronRight as ChevronRightIcon,
   Menu as MenuIcon,
-  Home as HomeIcon,
-  RateReview as ReviewsIcon,
-  BarChart as StatisticsIcon,
   Brightness4 as DarkIcon,
   Brightness7 as LightIcon,
   Person as PersonIcon,
   Logout as LogoutIcon,
-  KeyboardArrowDown as ArrowDownIcon,
-  Settings as SettingsIcon,
-  Notifications as NotificationsIcon
 } from '@mui/icons-material';
 import Button from '@mui/material/Button';
 import { useThemeMode } from '../../theme/ThemeContext';
@@ -64,7 +57,6 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children, title }) => {
   const navigate = useNavigate();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
-  const isTablet = useMediaQuery(theme.breakpoints.down('md'));
   const { user, logout } = useAuthStore();
   const { mode, toggleTheme } = useThemeMode();
   
@@ -108,14 +100,6 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children, title }) => {
     return `${first}${last}`.toUpperCase() || 'U';
   };
 
-  const getUserName = () => {
-    if (!user) return '';
-    if (user.firstName && user.lastName) {
-      return `${user.firstName} ${user.lastName.charAt(0)}.`;
-    }
-    return user.firstName || user.fullName || 'Пользователь';
-  };
-
   const getAvatarSrc = () => {
     if (!user) return undefined;
     if ((user as any).avatarUrl) return (user as any).avatarUrl;
@@ -150,7 +134,6 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children, title }) => {
     }
   ];
 
-  // Десктопный Drawer
   const desktopDrawer = (
     <Box sx={{ 
       height: '100%',
@@ -158,7 +141,6 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children, title }) => {
       display: 'flex',
       flexDirection: 'column'
     }}>
-      {/* Логотип */}
       <Box sx={{ 
         display: 'flex', 
         alignItems: 'center', 
@@ -190,7 +172,6 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children, title }) => {
         )}
       </Box>
       
-      {/* Меню */}
       <List sx={{ p: 1, flex: 1 }}>
         {menuItems.map((item) => (
           <ListItem key={item.text} disablePadding sx={{ mb: 0.5 }}>
@@ -225,7 +206,6 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children, title }) => {
         ))}
       </List>
       
-      {/* Кнопка на главную */}
       <Box sx={{ p: collapsed ? 1 : 2, borderTop: `1px solid ${theme.palette.divider}` }}>
         <Tooltip title="На главную" placement={collapsed ? 'right' : 'top'}>
           <Button
@@ -246,7 +226,6 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children, title }) => {
     </Box>
   );
 
-  // Мобильный Drawer
   const mobileDrawer = (
     <Box sx={{ 
       width: 280,
@@ -255,7 +234,6 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children, title }) => {
       display: 'flex',
       flexDirection: 'column'
     }}>
-      {/* Шапка мобильного меню */}
       <Box sx={{ p: 2, borderBottom: `1px solid ${theme.palette.divider}` }}>
         <Stack direction="row" alignItems="center" spacing={1}>
           <AdminPanelSettingsIcon sx={{ color: theme.palette.primary.main }} />
@@ -265,7 +243,6 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children, title }) => {
         </Stack>
       </Box>
       
-      {/* Мобильное меню */}
       <List sx={{ p: 1, flex: 1 }}>
         {menuItems.map((item) => (
           <ListItem key={item.text} disablePadding sx={{ mb: 0.5 }}>
@@ -296,7 +273,6 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children, title }) => {
         ))}
       </List>
       
-      {/* Кнопка на главную в мобильном меню */}
       <Box sx={{ p: 2, borderTop: `1px solid ${theme.palette.divider}` }}>
         <Button
           fullWidth
@@ -351,8 +327,8 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children, title }) => {
   }
 
   return (
-    <Box sx={{ display: 'flex', minHeight: '100vh' }}>
-      {/* AppBar - только для мобильных */}
+    <>
+      {/* Мобильная AppBar */}
       {isMobile && (
         <AppBar 
           position="fixed" 
@@ -389,27 +365,31 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children, title }) => {
         </AppBar>
       )}
 
-      {/* Drawer - десктопный вариант */}
+      {/* Десктопный Drawer */}
       {!isMobile && (
-        <Drawer
-          variant="permanent"
+        <Box
           sx={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
             width: collapsed ? collapsedDrawerWidth : drawerWidth,
-            flexShrink: 0,
-            '& .MuiDrawer-paper': {
-              width: collapsed ? collapsedDrawerWidth : drawerWidth,
-              boxSizing: 'border-box',
-              borderRight: `1px solid ${theme.palette.divider}`,
-              position: 'relative',
-              height: '100vh'
-            }
+            height: '100vh',
+            zIndex: theme.zIndex.drawer,
+            bgcolor: isLight ? '#ffffff' : '#0f172a',
+            borderRight: `1px solid ${theme.palette.divider}`,
+            overflowY: 'auto',
+            overflowX: 'hidden',
+            transition: theme.transitions.create('width', {
+              easing: theme.transitions.easing.sharp,
+              duration: theme.transitions.duration.enteringScreen,
+            }),
           }}
         >
           {desktopDrawer}
-        </Drawer>
+        </Box>
       )}
 
-      {/* Drawer - мобильный вариант */}
+      {/* Мобильный Drawer */}
       {isMobile && (
         <Drawer
           variant="temporary"
@@ -428,34 +408,35 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children, title }) => {
         </Drawer>
       )}
 
-      {/* Основной контент */}
+      {/* Основной контент - без отступов, просто с margin-left */}
       <Box
         component="main"
         sx={{
           flexGrow: 1,
-          p: { xs: 2, sm: 2, md: 3 },
-          width: { md: `calc(100% - ${collapsed ? collapsedDrawerWidth : drawerWidth}px)` },
-          mt: { xs: '56px', md: 0 },
-          minHeight: { xs: 'calc(100vh - 56px)', md: '100vh' },
+          minHeight: '100vh',
+          ml: !isMobile ? (collapsed ? `${collapsedDrawerWidth}px` : `${drawerWidth}px`) : 0,
+          mt: isMobile ? '56px' : 0,
           bgcolor: theme.palette.background.default,
-          overflowX: 'hidden'
+          overflowX: 'hidden',
         }}
       >
-        {/* Десктопный заголовок страницы */}
-        {!isMobile && (
-          <Typography variant="h5" fontWeight={600} sx={{ mb: 3 }}>
-            {title}
-          </Typography>
-        )}
-        
-        <Fade in={true} timeout={300}>
-          <Box sx={{ width: '100%' }}>
-            {children}
-          </Box>
-        </Fade>
+        <Box sx={{ p: { xs: 2, sm: 2, md: 3 } }}>
+          {/* Десктопный заголовок страницы */}
+          {!isMobile && (
+            <Typography variant="h5" fontWeight={600} sx={{ mb: 3 }}>
+              {title}
+            </Typography>
+          )}
+          
+          <Fade in={true} timeout={300}>
+            <Box sx={{ width: '100%' }}>
+              {children}
+            </Box>
+          </Fade>
+        </Box>
       </Box>
 
-      {/* Меню пользователя (общее для всех) */}
+      {/* Меню пользователя */}
       <Menu
         anchorEl={anchorEl}
         open={open}
@@ -522,7 +503,7 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children, title }) => {
           <Typography variant="body2">Выйти</Typography>
         </MenuItem>
       </Menu>
-    </Box>
+    </>
   );
 };
 
