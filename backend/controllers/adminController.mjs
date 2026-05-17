@@ -104,12 +104,9 @@ export const updateUser = async (req, res) => {
     
     const updateData = {};
     
-    // Разрешаем только роли 'user' и 'admin' (без 'guest')
     if (role && ['user', 'admin'].includes(role)) {
       updateData.role = role;
     }
-    
-    // НЕ РАЗРЕШАЕМ изменять isActive - удаляем эту возможность полностью
     
     if (postureSettings) {
       updateData.postureSettings = {
@@ -856,23 +853,7 @@ export const getAnalyticsData = async (req, res) => {
       startDate.setFullYear(startDate.getFullYear() - 1);
     }
     
-    const userTimeline = await User.aggregate([
-      {
-        $match: {
-          createdAt: { $gte: startDate }
-        }
-      },
-      {
-        $group: {
-          _id: {
-            $dateToString: { format: "%Y-%m-%d", date: "$createdAt" }
-          },
-          count: { $sum: 1 }
-        }
-      },
-      { $sort: { _id: 1 } }
-    ]);
-    
+    // 1. ДИНАМИКА СЕССИЙ - реальные данные по дням
     const sessionTimeline = await Session.aggregate([
       {
         $match: {
@@ -886,81 +867,176 @@ export const getAnalyticsData = async (req, res) => {
             $dateToString: { format: "%Y-%m-%d", date: "$startTime" }
           },
           sessions: { $sum: 1 },
-          avgScore: { $avg: "$postureMetrics.postureScore" },
-          totalDuration: { $sum: "$duration" }
+          avgScore: { $avg: "$postureMetrics.postureScore" }
         }
       },
       { $sort: { _id: 1 } }
     ]);
     
+    // Создаем массив дат за период
+    const dates = [];
+    const currentDate = new Date(startDate);
+    while (currentDate <= new Date()) {
+      dates.push(new Date(currentDate));
+      currentDate.setDate(currentDate.getDate() + 1);
+    }
+    
+    const sessionMap = new Map();
+    sessionTimeline.forEach(item => {
+      sessionMap.set(item._id, {
+        sessions: item.sessions,
+        avgScore: Math.round(item.avgScore || 0)
+      });
+    });
+    
+    const timelineData = [];
+    for (const date of dates) {
+      const dateStr = date.toISOString().split('T')[0];
+      const sessionData = sessionMap.get(dateStr) || { sessions: 0, avgScore: 0 };
+      
+      timelineData.push({
+        date: date.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' }),
+        sessions: sessionData.sessions,
+        avgScore: sessionData.avgScore
+      });
+    }
+    
+    // 2. АКТИВНОСТЬ ПО ЧАСАМ - уникальные пользователи за последние 30 дней
     const hourlyActivity = await Session.aggregate([
       {
         $match: {
-          startTime: { $gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) }
+          startTime: { $gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) },
+          status: 'completed'
         }
       },
       {
         $group: {
-          _id: { $hour: "$startTime" },
+          _id: {
+            hour: { $hour: "$startTime" },
+            userId: "$userId"
+          }
+        }
+      },
+      {
+        $group: {
+          _id: "$_id.hour",
           activeUsers: { $sum: 1 }
         }
       },
       { $sort: { _id: 1 } }
     ]);
     
-    const daysOfWeek = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
-    const timelineData = daysOfWeek.map((day, index) => {
-      const userData = userTimeline[index] || { count: 0 };
-      const sessionData = sessionTimeline[index] || { sessions: 0, avgScore: 0, totalDuration: 0 };
+    const hourMap = new Map();
+    hourlyActivity.forEach(item => {
+      hourMap.set(item._id, item.activeUsers);
+    });
+    
+    const userActivity = Array.from({ length: 24 }, (_, i) => ({
+      hour: i,
+      activeUsers: hourMap.get(i) || 0
+    }));
+    
+    // 3. ПОПУЛЯРНЫЕ УПРАЖНЕНИЯ - из сессий
+    const popularExercises = await Session.aggregate([
+      {
+        $match: {
+          status: 'completed',
+          startTime: { $gte: startDate }
+        }
+      },
+      { $unwind: { path: "$keyMoments", preserveNullAndEmptyArrays: true } },
+      {
+        $match: {
+          "keyMoments.type": "exercise_completed",
+          "keyMoments.data.exerciseId": { $exists: true, $ne: null }
+        }
+      },
+      {
+        $group: {
+          _id: "$keyMoments.data.exerciseId",
+          count: { $sum: 1 }
+        }
+      },
+      { $sort: { count: -1 } },
+      { $limit: 5 }
+    ]);
+    
+    const popularExerciseIds = popularExercises.map(item => item._id).filter(id => id);
+    let popularExercisesData = [];
+    if (popularExerciseIds.length > 0) {
+      popularExercisesData = await Exercise.find({ _id: { $in: popularExerciseIds } }).select('title');
+    }
+    
+    const topExercises = popularExercises.map(item => {
+      const exercise = popularExercisesData.find(e => e._id.toString() === item._id?.toString());
       return {
-        date: day,
-        users: userData.count || Math.floor(Math.random() * 500) + 1000,
-        sessions: sessionData.sessions || Math.floor(Math.random() * 200) + 100,
-        avgScore: Math.round(sessionData.avgScore || Math.random() * 30 + 70)
+        name: exercise?.title || 'Упражнение',
+        count: item.count,
+        duration: 0
       };
     });
     
-    const userActivity = Array.from({ length: 24 }, (_, i) => {
-      const hourData = hourlyActivity.find(h => h._id === i);
-      return {
-        hour: i,
-        activeUsers: hourData?.activeUsers || Math.floor(Math.random() * 600) + (i > 8 && i < 22 ? 300 : 50)
-      };
-    });
-    
-    const topExercisesData = [
-      { name: 'Растяжка спины', count: 234, duration: 45 },
-      { name: 'Упражнения для осанки', count: 189, duration: 38 },
-      { name: 'Кардио тренировка', count: 167, duration: 52 },
-      { name: 'Силовой комплекс', count: 145, duration: 48 },
-      { name: 'Йога для начинающих', count: 123, duration: 40 }
-    ];
-    
+    // 4. КАЧЕСТВО ТРЕНИРОВОК - средний балл по дням
     const sessionTrends = timelineData.map(item => ({
       date: item.date,
       avgScore: item.avgScore,
-      totalSessions: item.sessions,
-      totalDuration: Math.floor(item.sessions * (Math.random() * 30 + 60))
+      totalSessions: item.sessions
     }));
     
-    const geoDistribution = await User.aggregate([
+    // 5. ТИПЫ УПРАЖНЕНИЙ - статистика из базы
+    const exerciseTypesStats = await Exercise.aggregate([
       {
         $group: {
-          _id: "$location.city",
-          users: { $sum: 1 }
+          _id: '$type',
+          count: { $sum: 1 }
         }
-      },
-      { $sort: { users: -1 } },
-      { $limit: 10 }
+      }
     ]);
+    
+    const exerciseTypesData = exerciseTypesStats.reduce((acc, type) => {
+      acc[type._id] = type.count;
+      return acc;
+    }, {});
+    
+    // 6. ГЕОГРАФИЧЕСКОЕ РАСПРЕДЕЛЕНИЕ
+    let geoDistribution = [];
+    try {
+      geoDistribution = await User.aggregate([
+        {
+          $match: {
+            "location.city": { $exists: true, $ne: null, $ne: "" }
+          }
+        },
+        {
+          $group: {
+            _id: "$location.city",
+            users: { $sum: 1 }
+          }
+        },
+        { $sort: { users: -1 } },
+        { $limit: 10 }
+      ]);
+    } catch (err) {
+      geoDistribution = await User.aggregate([
+        {
+          $group: {
+            _id: { $arrayElemAt: [{ $split: ["$email", "@"] }, 1] },
+            users: { $sum: 1 }
+          }
+        },
+        { $sort: { users: -1 } },
+        { $limit: 10 }
+      ]);
+    }
     
     res.status(200).json({
       success: true,
       data: {
         timelineData,
         userActivity,
-        topExercises: topExercisesData,
+        topExercises,
         sessionTrends,
+        exerciseTypes: exerciseTypesData,
         geoDistribution: geoDistribution.map(g => ({
           city: g._id || 'Неизвестно',
           users: g.users
