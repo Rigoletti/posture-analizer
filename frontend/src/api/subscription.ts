@@ -82,6 +82,7 @@ export const subscriptionApi = {
   // Отмена подписки
   cancelSubscription: async () => {
     try {
+      console.log('Calling cancel subscription API...');
       const response = await fetch(`${API_URL}/subscription/cancel`, {
         method: 'POST',
         headers: {
@@ -91,6 +92,7 @@ export const subscriptionApi = {
       });
       
       const data = await response.json();
+      console.log('Cancel subscription response:', data);
       
       if (!response.ok) {
         throw new Error(data.error || 'Ошибка при отмене подписки');

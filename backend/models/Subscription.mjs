@@ -8,18 +8,18 @@ const subscriptionSchema = new mongoose.Schema({
     unique: true
   },
   
-  // Тип подписки
+  // Только один тип подписки - Premium
   plan: {
     type: String,
-    enum: ['basic', 'premium', 'trial'],
-    default: 'trial'
+    enum: ['premium'],
+    default: 'premium'
   },
   
-  // Статус подписки
+  // Статус подписки - добавляем 'pending'
   status: {
     type: String,
-    enum: ['active', 'inactive', 'expired', 'cancelled', 'pending'],
-    default: 'inactive'
+    enum: ['active', 'expired', 'cancelled', 'pending'],
+    default: 'pending'
   },
   
   // Информация о платеже в ЮKassa
@@ -47,11 +47,6 @@ const subscriptionSchema = new mongoose.Schema({
   },
   
   endDate: {
-    type: Date,
-    default: null
-  },
-  
-  trialEndDate: {
     type: Date,
     default: null
   },
@@ -91,12 +86,6 @@ const subscriptionSchema = new mongoose.Schema({
   nextPaymentDate: {
     type: Date,
     default: null
-  },
-  
-  // Метаданные
-  metadata: {
-    type: mongoose.Schema.Types.Mixed,
-    default: {}
   }
 }, {
   timestamps: true
@@ -106,17 +95,11 @@ const subscriptionSchema = new mongoose.Schema({
 subscriptionSchema.index({ user: 1 });
 subscriptionSchema.index({ status: 1 });
 subscriptionSchema.index({ endDate: 1 });
-subscriptionSchema.index({ nextPaymentDate: 1 });
 subscriptionSchema.index({ paymentId: 1 });
 
 // Методы для работы с подпиской
 subscriptionSchema.methods.isActive = function() {
-  return this.status === 'active' && 
-         (!this.endDate || new Date(this.endDate) > new Date());
-};
-
-subscriptionSchema.methods.isInTrial = function() {
-  return this.trialEndDate && new Date(this.trialEndDate) > new Date();
+  return this.status === 'active' && this.endDate && new Date(this.endDate) > new Date();
 };
 
 subscriptionSchema.methods.getRemainingDays = function() {
@@ -126,12 +109,7 @@ subscriptionSchema.methods.getRemainingDays = function() {
 };
 
 subscriptionSchema.methods.getPlanPrice = function() {
-  const prices = {
-    trial: 0,
-    basic: 299,
-    premium: 599
-  };
-  return prices[this.plan] || 0;
+  return 599; // Цена премиум подписки
 };
 
 // Статические методы
@@ -146,10 +124,7 @@ subscriptionSchema.statics.findByPaymentId = function(paymentId) {
 subscriptionSchema.statics.findActiveSubscriptions = function() {
   return this.find({
     status: 'active',
-    $or: [
-      { endDate: { $exists: false } },
-      { endDate: { $gt: new Date() } }
-    ]
+    endDate: { $gt: new Date() }
   });
 };
 

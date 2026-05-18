@@ -1,407 +1,105 @@
-// frontend/api/sessions.ts
-import api from './index';
+const API_URL = 'http://localhost:5000/api';
 
-export interface SessionPostureMetrics {
-  totalFrames: number;
-  goodPostureFrames: number;
-  warningFrames: number;
-  errorFrames: number;
-  errorsByZone: {
-    shoulders: { count: number; duration: number; percentage?: number };
-    head: { count: number; duration: number; percentage?: number };
-    hips: { count: number; duration: number; percentage?: number };
-  };
-  postureScore: number;
-  averageTrackingQuality: number;
-}
-
-export interface SessionKeyMoment {
-  timestamp: string;
-  type: string;
-  message: string;
-  data?: any;
-}
-
-export interface SessionData {
-  _id: string;
-  sessionId: string;
-  userId: string;
-  startTime: string;
-  endTime?: string;
-  duration: number;
-  postureMetrics: SessionPostureMetrics;
-  keyMoments: SessionKeyMoment[];
-  settings: any;
-  deviceInfo: any;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface SessionSummary {
-  _id: string;
-  sessionId: string;
-  startTime: string;
-  endTime: string;
-  duration: number;
-  postureMetrics: {
-    postureScore: number;
-  };
-  keyMoments: any[];
-}
-
-export interface SessionStatistics {
-  dayOfWeekStats: Array<{ _id: number; count: number; avgScore: number }>;
-  hourStats: Array<{ _id: number; count: number; avgScore: number }>;
-  errorStats: {
-    totalShoulderErrors: number;
-    totalHeadErrors: number;
-    totalHipErrors: number;
-  };
-  progressStats: Array<{ date: string; score: number; duration: number }>;
-}
-
-export interface Recommendation {
-  problemType: string;
-  problemSeverity: 'low' | 'medium' | 'high';
-  problemPercentage?: number;
-  exercise: {
-    _id: string;
-    title: string;
-    description: string;
-    type: string;
-    difficulty: string;
-    duration: number;
-    instructions: string[];
-    benefits: string[];
-    has3dModel?: boolean;
-    modelType?: string;
-    videoUrl?: string;
-    imageUrl?: string;
-  };
-  recommendation: string;
-  priority: number;
-}
-
-export interface SessionRecommendations {
-  success: boolean;
-  data: {
-    sessionId: string;
-    postureScore: number;
-    problems: Array<{
-      type: string;
-      severity: 'low' | 'medium' | 'high';
-      percentage?: number;
-    }>;
-    recommendations: Recommendation[];
-    timestamp: string;
-  };
-}
-
-export interface SessionMetrics {
-  totalFrames: number;
-  goodPostureFrames: number;
-  warningFrames: number;
-  errorFrames: number;
-  errorsByZone: {
-    shoulders: { count: number; duration: number; percentage?: number };
-    head: { count: number; duration: number; percentage?: number };
-    hips: { count: number; duration: number; percentage?: number };
-  };
-  postureScore: number;
-  averageTrackingQuality: number;
-  goodPercentage?: number;
-  warningPercentage?: number;
-  errorPercentage?: number;
-}
-
-
-export interface SessionSummary {
-  _id: string;
-  sessionId: string;
-  startTime: string;
-  endTime?: string;
-  duration: number;
-  durationMinutes?: number;
-  timeOfDay?: string;
-  postureMetrics: SessionMetrics;
-  problems: string[];
-  keyMomentsCount: number;
-  settings: any;
-  deviceInfo: any;
-  status: string;
-}
-
-export interface SessionsHistoryResponse {
-  success: boolean;
-  data: {
-    sessions: SessionSummary[];
-    pagination: {
-      page: number;
-      limit: number;
-      total: number;
-      pages: number;
-    };
-    statistics: {
-      totalSessions: number;
-      totalDuration: number;
-      avgScore: number;
-      bestScore: number;
-      worstScore: number;
-      avgDuration: number;
-      totalFrames: number;
-      totalGoodFrames: number;
-      totalWarningFrames: number;
-      totalErrorFrames: number;
-      totalShoulderErrors: number;
-      totalHeadErrors: number;
-      totalHipErrors: number;
-      goodPosturePercentage?: number;
-      warningPercentage?: number;
-      errorPercentage?: number;
-    };
-  };
-}
-
-export interface VoiceCommandData {
-  command: string;
-  commandText: string;
-  timestamp: number;
-  wasProcessed: boolean;
-  response?: string;
-}
-
-/**
- * Типы голосовых команд для сессии
- */
-export type VoiceCommandType = 
-  | 'check_posture'      // Проверка осанки
-  | 'start_analysis'     // Начать анализ
-  | 'stop_analysis'      // Остановить анализ
-  | 'show_stats'         // Показать статистику
-  | 'calibrate'          // Калибровка
-  | 'reset_calibration'  // Сброс калибровки
-  | 'set_reminder'       // Установить напоминание
-  | 'recommend_exercises' // Рекомендация упражнений
-  | 'help';              // Помощь
-
-export const sessionsApi = {
-  // Начать новый сеанс
-  startSession: async (settings?: any, deviceInfo?: any) => {
+export const subscriptionApi = {
+  // Создание платежа
+  createPayment: async (plan: string, returnUrl?: string) => {
     try {
-      const response = await api.post('/sessions/start', {
-        settings,
-        deviceInfo
+      const response = await fetch(`${API_URL}/subscription/create-payment`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ 
+          plan, 
+          returnUrl: returnUrl || window.location.origin + '/profile/subscription/success'
+        }),
+        credentials: 'include'
       });
       
-      console.log('Start session response:', response.data);
-      return response.data;
-    } catch (error: any) {
-      console.error('Start session error:', error);
-      throw error;
-    }
-  },
-
-  // Завершить сеанс
-  endSession: async (sessionId: string, finalMetrics?: any, endSnapshots?: any[]) => {
-    try {
-      const response = await api.post(`/sessions/end/${sessionId}`, {
-        finalMetrics,
-        endSnapshots
-      });
+      const data = await response.json();
       
-      console.log('End session response:', response.data);
-      return response.data;
-    } catch (error: any) {
-      console.error('End session error:', error);
-      throw error;
-    }
-  },
-
-  // Обновить метрики в реальном времени
-  updateSessionMetrics: async (
-    sessionId: string, 
-    frameData: any, 
-    timestamp: number,
-    currentStatus: string,
-    issues: string[] = []
-  ) => {
-    try {
-      const response = await api.post(`/sessions/metrics/${sessionId}`, {
-        frameData,
-        timestamp,
-        currentStatus,
-        issues
-      });
-      
-      return response.data;
-    } catch (error: any) {
-      console.error('Update session metrics error:', error);
-      return null;
-    }
-  },
-
-  /**
-   * Добавить ключевой момент в сессию
-   * @param sessionId ID сессии
-   * @param type Тип момента (notification, calibration, voice_command и т.д.)
-   * @param message Текст сообщения
-   * @param data Дополнительные данные
-   */
-  addKeyMoment: async (sessionId: string, type: string, message: string, data?: any) => {
-    try {
-      const response = await api.post(`/sessions/key-moments/${sessionId}`, {
-        type,
-        message,
-        data
-      });
-      
-      return response.data;
-    } catch (error: any) {
-      console.error('Add key moment error:', error);
-      return null;
-    }
-  },
-
-  /**
-   * Добавить голосовую команду как ключевой момент
-   * @param sessionId ID сессии
-   * @param commandType Тип голосовой команды
-   * @param commandText Распознанный текст команды
-   * @param response Ответ ассистента
-   */
-  addVoiceCommand: async (
-    sessionId: string, 
-    commandType: VoiceCommandType, 
-    commandText: string,
-    response?: string
-  ) => {
-    return sessionsApi.addKeyMoment(sessionId, 'voice_command', `Голосовая команда: ${commandText}`, {
-      command: commandType,
-      commandText,
-      response,
-      timestamp: Date.now()
-    });
-  },
-
-  /**
-   * Добавить голосовую подсказку о нарушении осанки
-   * @param sessionId ID сессии
-   * @param alertType Тип нарушения (shoulders, head, hips)
-   * @param message Текст подсказки
-   */
-  addVoicePostureAlert: async (
-    sessionId: string,
-    alertType: 'shoulders' | 'head' | 'hips',
-    message: string
-  ) => {
-    return sessionsApi.addKeyMoment(sessionId, 'voice_alert', message, {
-      type: alertType,
-      isVoiceAlert: true,
-      timestamp: Date.now()
-    });
-  },
-
-  /**
-   * Добавить голосовое напоминание
-   * @param sessionId ID сессии
-   * @param message Текст напоминания
-   * @param minutes Через сколько минут было установлено напоминание
-   */
-  addVoiceReminder: async (
-    sessionId: string,
-    message: string,
-    minutes: number
-  ) => {
-    return sessionsApi.addKeyMoment(sessionId, 'voice_reminder', message, {
-      reminderMinutes: minutes,
-      timestamp: Date.now()
-    });
-  },
-
-  // Получить историю сеансов
-  getSessionsHistory: async (
-    page = 1, 
-    limit = 10, 
-    filters?: {
-      dateFrom?: string;
-      dateTo?: string;
-      minScore?: number;
-      maxScore?: number;
-      sortBy?: string;
-      sortOrder?: 'asc' | 'desc';
-    }
-  ) => {
-    try {
-      const params: any = { page, limit };
-      if (filters) {
-        Object.assign(params, filters);
+      if (!response.ok) {
+        throw new Error(data.error || 'Ошибка при создании платежа');
       }
       
-      const response = await api.get('/sessions/history', { params });
+      return data;
+    } catch (error: any) {
+      console.error('Error creating payment:', error);
+      throw error;
+    }
+  },
+
+  // Проверка статуса платежа
+  checkPaymentStatus: async (paymentId: string) => {
+    try {
+      console.log('Checking payment status for:', paymentId);
+      const response = await fetch(`${API_URL}/subscription/payment-status/${paymentId}`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        credentials: 'include'
+      });
       
-      return response.data as SessionsHistoryResponse;
-    } catch (error: any) {
-      console.error('Get sessions history error:', error);
-      throw error;
-    }
-  },
-
-  // Получить детали сеанса
-  getSessionDetails: async (sessionId: string) => {
-    try {
-      const response = await api.get(`/sessions/${sessionId}`);
+      const data = await response.json();
+      console.log('Payment status response:', data);
       
-      return response.data;
-    } catch (error: any) {
-      console.error('Get session details error:', error);
-      throw error;
-    }
-  },
-
-  // Получить статистику
-  getSessionStatistics: async () => {
-    try {
-      const response = await api.get('/sessions/statistics');
+      if (!response.ok) {
+        throw new Error(data.error || 'Ошибка при проверке статуса платежа');
+      }
       
-      return response.data;
+      return data;
     } catch (error: any) {
-      console.error('Get session statistics error:', error);
+      console.error('Error checking payment status:', error);
       throw error;
     }
   },
 
-  // Удалить сеанс
-  deleteSession: async (sessionId: string) => {
+  // Получение информации о подписке текущего пользователя
+  getMySubscription: async () => {
     try {
-      const response = await api.delete(`/sessions/${sessionId}`);
+      const response = await fetch(`${API_URL}/subscription/my-subscription`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        credentials: 'include'
+      });
       
-      return response.data;
+      const data = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(data.error || 'Ошибка при получении информации о подписке');
+      }
+      
+      return data;
     } catch (error: any) {
-      console.error('Delete session error:', error);
+      console.error('Error getting subscription:', error);
       throw error;
     }
   },
 
-  // Получить рекомендации для сеанса
-  getSessionRecommendations: async (sessionId: string) => {
+  // Отмена подписки
+  cancelSubscription: async () => {
     try {
-      const response = await api.get(`/sessions/${sessionId}/recommendations`);
-      return response.data as SessionRecommendations;
+      const response = await fetch(`${API_URL}/subscription/cancel`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        credentials: 'include'
+      });
+      
+      const data = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(data.error || 'Ошибка при отмене подписки');
+      }
+      
+      return data;
     } catch (error: any) {
-      console.error('Get session recommendations error:', error);
-      throw error;
-    }
-  },
-
-  // Получить детали сеанса с рекомендациями
-  getSessionDetailsWithRecommendations: async (sessionId: string) => {
-    try {
-      const response = await api.get(`/sessions/${sessionId}/details-with-recommendations`);
-      return response.data;
-    } catch (error: any) {
-      console.error('Get session details with recommendations error:', error);
+      console.error('Error cancelling subscription:', error);
       throw error;
     }
   }
 };
-

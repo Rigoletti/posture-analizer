@@ -29,7 +29,7 @@ export const protect = async (req, res, next) => {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     
     // Находим пользователя по ID из токена
-    const user = await User.findById(decoded.id);
+    const user = await User.findById(decoded.id).populate('subscription');
     
     if (!user) {
       return res.status(401).json({
@@ -101,8 +101,8 @@ export const authorize = (...roles) => {
   };
 };
 
-// Middleware для проверки наличия активной подписки
-export const requireSubscription = (requiredPlan = null) => {
+// Middleware для проверки наличия активной подписки (только Premium)
+export const requireSubscription = () => {
   return async (req, res, next) => {
     if (!req.user) {
       return res.status(401).json({
@@ -116,38 +116,71 @@ export const requireSubscription = (requiredPlan = null) => {
       return next();
     }
 
-    // Проверяем, есть ли у пользователя доступ к премиум функциям
-    const hasAccess = req.user.hasPremiumAccess || 
-                     (req.user.trialEndsAt && new Date(req.user.trialEndsAt) > new Date());
+    // Проверяем наличие активной премиум подписки
+    const hasPremiumAccess = req.user.hasPremiumAccess === true;
+    const subscriptionEndsAt = req.user.subscriptionEndsAt;
+    const isSubscriptionValid = subscriptionEndsAt && new Date(subscriptionEndsAt) > new Date();
+    
+    const hasActiveSubscription = hasPremiumAccess && isSubscriptionValid;
 
-    if (!hasAccess) {
+    if (!hasActiveSubscription) {
       return res.status(403).json({
         success: false,
-        error: 'Для доступа к этому разделу необходима подписка',
+        error: 'Для доступа к этому разделу необходима премиум подписка',
         requiresSubscription: true
       });
-    }
-
-    // Если указан конкретный план, проверяем его
-    if (requiredPlan) {
-      const Subscription = (await import('../models/Subscription.mjs')).default;
-      const subscription = await Subscription.findOne({ 
-        user: req.user._id,
-        status: 'active'
-      });
-
-      if (!subscription || subscription.plan !== requiredPlan) {
-        return res.status(403).json({
-          success: false,
-          error: `Для доступа к этому разделу необходима подписка ${requiredPlan}`
-        });
-      }
     }
 
     next();
   };
 };
 
+// Middleware для проверки наличия активной подписки (с проверкой через модель Subscription)
+export const requireActiveSubscription = () => {
+  return async (req, res, next) => {
+    if (!req.user) {
+      return res.status(401).json({
+        success: false,
+        error: 'Не авторизован'
+      });
+    }
+
+    // Админы имеют доступ ко всему
+    if (req.user.role === 'admin') {
+      return next();
+    }
+
+    try {
+      // Импортируем модель Subscription динамически для избежания циклических зависимостей
+      const Subscription = (await import('../models/Subscription.mjs')).default;
+      
+      // Находим активную подписку пользователя
+      const subscription = await Subscription.findOne({
+        user: req.user._id,
+        status: 'active',
+        endDate: { $gt: new Date() }
+      });
+
+      if (!subscription) {
+        return res.status(403).json({
+          success: false,
+          error: 'Для доступа к этому разделу необходима активная премиум подписка',
+          requiresSubscription: true
+        });
+      }
+
+      // Добавляем информацию о подписке в запрос
+      req.subscription = subscription;
+      next();
+    } catch (error) {
+      console.error('Require subscription error:', error);
+      return res.status(500).json({
+        success: false,
+        error: 'Ошибка при проверке подписки'
+      });
+    }
+  };
+};
 
 // Генерация JWT токена
 export const generateToken = (userId) => {
@@ -182,4 +215,46 @@ export const clearTokenCookie = (res) => {
     sameSite: 'strict',
     path: '/'
   });
+};
+
+// Middleware для проверки пробного периода
+export const checkTrial = async (req, res, next) => {
+  if (!req.user) {
+    return res.status(401).json({
+      success: false,
+      error: 'Не авторизован'
+    });
+  }
+
+  // Админы имеют доступ ко всему
+  if (req.user.role === 'admin') {
+    return next();
+  }
+
+  const trialEndsAt = req.user.trialEndsAt;
+  const hasPremiumAccess = req.user.hasPremiumAccess;
+  const isPremiumActive = hasPremiumAccess && req.user.subscriptionEndsAt && new Date(req.user.subscriptionEndsAt) > new Date();
+  
+  // Если есть активная премиум подписка
+  if (isPremiumActive) {
+    return next();
+  }
+  
+  // Проверяем пробный период
+  const isTrialValid = trialEndsAt && new Date(trialEndsAt) > new Date();
+
+  if (!isTrialValid && !isPremiumActive) {
+    return res.status(403).json({
+      success: false,
+      error: 'Пробный период истек. Оформите подписку для продолжения использования.',
+      trialExpired: true,
+      requiresSubscription: true
+    });
+  }
+
+  // Добавляем информацию о пробном периоде
+  req.isTrial = true;
+  req.trialDaysLeft = Math.ceil((new Date(trialEndsAt) - new Date()) / (1000 * 60 * 60 * 24));
+  
+  next();
 };

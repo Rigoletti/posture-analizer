@@ -109,6 +109,7 @@ const userSchema = new mongoose.Schema({
     }
   },
   
+  // Упрощенная система подписки - только 1 тип
   subscription: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Subscription',
@@ -121,10 +122,10 @@ const userSchema = new mongoose.Schema({
     default: false
   },
   
-  // Дата окончания бесплатного пробного периода
-  trialEndsAt: {
+  // Дата окончания подписки
+  subscriptionEndsAt: {
     type: Date,
-    default: () => new Date(+new Date() + 7*24*60*60*1000) // 7 дней пробного периода
+    default: null
   },
   
   createdAt: {
@@ -190,6 +191,12 @@ userSchema.virtual('avatarThumbnailUrl').get(function() {
     return `${process.env.API_URL || 'http://localhost:5000'}${this.avatarThumbnail}`;
   }
   return null;
+});
+
+// Виртуальное поле для проверки активной подписки
+userSchema.virtual('isSubscriptionActive').get(function() {
+  if (!this.subscriptionEndsAt) return false;
+  return new Date(this.subscriptionEndsAt) > new Date();
 });
 
 // Хеширование пароля перед сохранением
@@ -273,6 +280,17 @@ userSchema.methods.updateAvatar = function(avatarPath, thumbnailPath) {
 userSchema.methods.clearAvatar = function() {
   this.avatar = null;
   this.avatarThumbnail = null;
+};
+
+userSchema.methods.activateSubscription = function(subscriptionId, endDate) {
+  this.subscription = subscriptionId;
+  this.hasPremiumAccess = true;
+  this.subscriptionEndsAt = endDate;
+};
+
+userSchema.methods.deactivateSubscription = function() {
+  this.hasPremiumAccess = false;
+  this.subscriptionEndsAt = null;
 };
 
 userSchema.statics.findByEmail = function(email) {
