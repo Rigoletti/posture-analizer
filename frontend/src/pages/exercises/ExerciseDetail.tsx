@@ -97,7 +97,7 @@ const ExerciseDetail: React.FC = () => {
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const isTablet = useMediaQuery(theme.breakpoints.down('md'));
   
-  // Все хуки useState
+
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentStep, setCurrentStep] = useState(0);
   const [timeRemaining, setTimeRemaining] = useState(0);
@@ -108,12 +108,11 @@ const ExerciseDetail: React.FC = () => {
   const [showMobileSteps, setShowMobileSteps] = useState(false);
   const [showMobileInfo, setShowMobileInfo] = useState(false);
   
-  // Все useRef хуки
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const animationFrameRef = useRef<number | null>(null);
   const lastTimestampRef = useRef<number>(0);
 
-  // Cleanup функция для таймеров
+
   const cleanupTimers = useCallback(() => {
     if (timerRef.current) {
       clearInterval(timerRef.current);

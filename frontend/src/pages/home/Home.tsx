@@ -12,6 +12,12 @@ import {
   useTheme,
   IconButton,
   Paper,
+  AppBar,
+  Toolbar,
+  Drawer,
+  List,
+  ListItem,
+  ListItemText,
 } from '@mui/material';
 import {
   ArrowBack as ArrowBackIcon,
@@ -20,7 +26,7 @@ import {
   Timeline as TimelineIcon,
   NotificationsActive as NotificationsActiveIcon,
   Verified as VerifiedIcon,
-  Close as CloseIcon,
+  Menu as MenuIcon,
 } from '@mui/icons-material';
 import { motion, AnimatePresence } from 'framer-motion';
 import ReviewCarousel from '../../components/reviews/ReviewCarousel';
@@ -48,18 +54,13 @@ const WebcamLoader = () => (
     display: 'flex', 
     justifyContent: 'center', 
     alignItems: 'center',
-    minHeight: { xs: 400, sm: 500 },
+    minHeight: { xs: 300, sm: 500 },
     borderRadius: { xs: 2, sm: 4 },
     background: `linear-gradient(135deg, ${COLORS.primary}05, ${COLORS.secondary}05)`,
     p: { xs: 2, sm: 3 },
   }}>
     <Stack spacing={3} alignItems="center">
-      <motion.div
-        animate={{ rotate: 360 }}
-        transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
-      >
-        <CircularProgress size={{ xs: 40, sm: 48 }} sx={{ color: COLORS.primary }} />
-      </motion.div>
+      <CircularProgress size={{ xs: 40, sm: 48 }} sx={{ color: COLORS.primary }} />
       <Typography sx={{ color: COLORS.textLight, fontWeight: 500, fontSize: { xs: '0.875rem', sm: '1rem' } }}>
         Инициализация камеры...
       </Typography>
@@ -71,6 +72,7 @@ const Home: React.FC = () => {
   const navigate = useNavigate();
   const { user } = useAuthStore();
   const [analysisStarted, setAnalysisStarted] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const isTablet = useMediaQuery(theme.breakpoints.between('sm', 'md'));
@@ -83,13 +85,10 @@ const Home: React.FC = () => {
     { value: '<0.2с', label: 'Задержка', icon: <SpeedIcon />, color: COLORS.secondary },
   ], []);
 
-  // Полностью удаляем все скроллы кроме body
   useEffect(() => {
-    // Сохраняем оригинальные стили
     const originalHtmlOverflow = document.documentElement.style.overflow;
     const originalBodyOverflow = document.body.style.overflow;
     
-    // Устанавливаем правильные стили
     document.documentElement.style.overflow = 'visible';
     document.documentElement.style.height = 'auto';
     document.body.style.overflow = 'auto';
@@ -103,7 +102,6 @@ const Home: React.FC = () => {
     }
     
     return () => {
-      // Восстанавливаем стили
       document.documentElement.style.overflow = originalHtmlOverflow;
       document.documentElement.style.height = '';
       document.body.style.overflow = originalBodyOverflow;
@@ -123,6 +121,63 @@ const Home: React.FC = () => {
       position: 'relative',
       overflowX: 'hidden',
     }}>
+      {/* Header с бургер меню */}
+      <AppBar position="static" elevation={0} sx={{ bgcolor: 'transparent', pt: { xs: 1, sm: 2 } }}>
+        <Toolbar sx={{ justifyContent: 'space-between', px: { xs: 2, sm: 3 } }}>
+          <Typography sx={{ fontWeight: 700, fontSize: { xs: '1.25rem', sm: '1.5rem' }, color: COLORS.primary }}>
+            PostureAI
+          </Typography>
+          
+          {isMobile ? (
+            <IconButton onClick={() => setMobileMenuOpen(true)} sx={{ color: COLORS.text }}>
+              <MenuIcon />
+            </IconButton>
+          ) : (
+            <Stack direction="row" spacing={2}>
+              <Button color="inherit" onClick={() => navigate('/')}>Главная</Button>
+              <Button color="inherit" onClick={() => navigate('/about')}>О нас</Button>
+              <Button color="inherit" onClick={() => navigate('/reviews')}>Отзывы</Button>
+              {user ? (
+                <Button variant="contained" onClick={() => navigate('/profile')}>Профиль</Button>
+              ) : (
+                <Button variant="outlined" onClick={() => navigate('/login')}>Войти</Button>
+              )}
+            </Stack>
+          )}
+        </Toolbar>
+      </AppBar>
+
+      {/* Мобильное меню */}
+      <Drawer anchor="right" open={mobileMenuOpen} onClose={() => setMobileMenuOpen(false)}>
+        <Box sx={{ width: 250, pt: 2 }}>
+          <List>
+            <ListItem component="button" onClick={() => { navigate('/'); setMobileMenuOpen(false); }}>
+              <ListItemText primary="Главная" />
+            </ListItem>
+            <ListItem component="button" onClick={() => { navigate('/about'); setMobileMenuOpen(false); }}>
+              <ListItemText primary="О нас" />
+            </ListItem>
+            <ListItem component="button" onClick={() => { navigate('/reviews'); setMobileMenuOpen(false); }}>
+              <ListItemText primary="Отзывы" />
+            </ListItem>
+            {user ? (
+              <ListItem component="button" onClick={() => { navigate('/profile'); setMobileMenuOpen(false); }}>
+                <ListItemText primary="Профиль" />
+              </ListItem>
+            ) : (
+              <>
+                <ListItem component="button" onClick={() => { navigate('/login'); setMobileMenuOpen(false); }}>
+                  <ListItemText primary="Войти" />
+                </ListItem>
+                <ListItem component="button" onClick={() => { navigate('/register'); setMobileMenuOpen(false); }}>
+                  <ListItemText primary="Регистрация" />
+                </ListItem>
+              </>
+            )}
+          </List>
+        </Box>
+      </Drawer>
+
       <Container 
         maxWidth="lg" 
         sx={{ 
@@ -141,7 +196,7 @@ const Home: React.FC = () => {
               exit={{ opacity: 0 }}
               transition={{ duration: 0.3 }}
             >
-              <Box sx={{ maxWidth: 900, mx: 'auto', textAlign: 'center', mb: { xs: 4, sm: 6, md: 8 } }}>
+              <Box sx={{ textAlign: 'center', mb: { xs: 4, sm: 6, md: 8 } }}>
                 <motion.div
                   initial={{ y: 30, opacity: 0 }}
                   animate={{ y: 0, opacity: 1 }}
@@ -158,7 +213,6 @@ const Home: React.FC = () => {
                       backgroundClip: 'text',
                       WebkitBackgroundClip: 'text',
                       color: 'transparent',
-                      wordBreak: 'break-word',
                     }}
                   >
                     Держите спину<br />прямо с AI
@@ -204,16 +258,14 @@ const Home: React.FC = () => {
                       fontSize: { xs: '1rem', sm: '1.1rem' },
                       fontWeight: 600,
                       boxShadow: `0 8px 20px ${COLORS.primary}40`,
-                      transition: 'all 0.2s',
-                      maxWidth: { xs: '100%', sm: 'auto' },
+                      maxWidth: { xs: '100%', sm: 300 },
                       '&:hover': {
                         bgcolor: COLORS.primaryDark,
                         transform: isMobile ? 'none' : 'translateY(-2px)',
-                        boxShadow: `0 12px 28px ${COLORS.primary}50`,
                       },
                     }}
                   >
-                    {isMobile ? 'Начать анализ' : <>Начать анализ</>}
+                    {isMobile ? 'Начать анализ' : 'Начать анализ'}
                   </Button>
                 </motion.div>
               </Box>
@@ -227,46 +279,41 @@ const Home: React.FC = () => {
                   direction={{ xs: 'column', sm: 'row' }} 
                   spacing={{ xs: 2, sm: 3, md: 4 }} 
                   justifyContent="center" 
-                  alignItems="center"
+                  alignItems="stretch"
                   sx={{ mb: { xs: 6, sm: 8, md: 10 } }}
                 >
                   {stats.map((stat, i) => (
-                    <motion.div
+                    <Paper
                       key={i}
-                      whileHover={!isMobile ? { scale: 1.05 } : {}}
-                      transition={{ type: "spring", stiffness: 300 }}
-                      style={{ width: isMobile ? '100%' : 'auto' }}
+                      elevation={0}
+                      sx={{
+                        p: { xs: 2, sm: 1.5 },
+                        borderRadius: 3,
+                        background: 'rgba(255,255,255,0.8)',
+                        backdropFilter: 'blur(10px)',
+                        border: `1px solid ${COLORS.border}`,
+                        flex: 1,
+                      }}
                     >
-                      <Paper
-                        elevation={0}
-                        sx={{
-                          p: { xs: 2, sm: 1.5 },
-                          borderRadius: 3,
-                          background: 'rgba(255,255,255,0.8)',
-                          backdropFilter: 'blur(10px)',
-                          border: `1px solid ${COLORS.border}`,
-                        }}
-                      >
-                        <Stack direction="row" spacing={2} alignItems="center" justifyContent="center">
-                          <Box sx={{ 
-                            p: 1.5, 
-                            borderRadius: 2,
-                            color: stat.color,
-                            bgcolor: `${stat.color}10`,
-                          }}>
-                            {stat.icon}
-                          </Box>
-                          <Box>
-                            <Typography sx={{ fontSize: { xs: '1.5rem', sm: '1.8rem' }, fontWeight: 700, lineHeight: 1 }}>
-                              {stat.value}
-                            </Typography>
-                            <Typography variant="body2" sx={{ color: COLORS.textLight }}>
-                              {stat.label}
-                            </Typography>
-                          </Box>
-                        </Stack>
-                      </Paper>
-                    </motion.div>
+                      <Stack direction="row" spacing={2} alignItems="center" justifyContent="center">
+                        <Box sx={{ 
+                          p: 1.5, 
+                          borderRadius: 2,
+                          color: stat.color,
+                          bgcolor: `${stat.color}10`,
+                        }}>
+                          {stat.icon}
+                        </Box>
+                        <Box>
+                          <Typography sx={{ fontSize: { xs: '1.5rem', sm: '1.8rem' }, fontWeight: 700, lineHeight: 1 }}>
+                            {stat.value}
+                          </Typography>
+                          <Typography variant="body2" sx={{ color: COLORS.textLight }}>
+                            {stat.label}
+                          </Typography>
+                        </Box>
+                      </Stack>
+                    </Paper>
                   ))}
                 </Stack>
               </motion.div>
@@ -276,63 +323,62 @@ const Home: React.FC = () => {
                 animate={{ y: 0, opacity: 1 }}
                 transition={{ delay: 0.6 }}
               >
-                <Grid container spacing={{ xs: 2, sm: 3, md: 4 }}>
+                <Box sx={{ 
+                  display: 'flex', 
+                  flexDirection: { xs: 'column', sm: 'row', md: 'row' },
+                  gap: { xs: 2, sm: 3, md: 4 },
+                  mb: { xs: 6, sm: 8, md: 10 }
+                }}>
                   {[
                     { icon: <TimelineIcon />, title: '17 точки отслеживания', desc: 'Локализуем проблему с точностью до миллиметра', color: '#0066FF' },
                     { icon: <SpeedIcon />, title: 'Реальное время', desc: 'Мгновенная реакция на изменение позы', color: '#FF6B35' },
                     { icon: <NotificationsActiveIcon />, title: 'Умные напоминания', desc: 'Не дадим вам забыть о правильной осанке', color: '#00C9A7' },
                   ].map((item, i) => (
-                    <Grid item xs={12} md={4} key={i}>
-                      <motion.div
-                        whileHover={!isMobile ? { y: -8 } : {}}
-                        transition={{ type: "spring", stiffness: 200 }}
-                      >
-                        <Paper
-                          elevation={0}
-                          sx={{
-                            p: { xs: 2, sm: 2.5 },
-                            borderRadius: 3,
-                            background: 'rgba(255,255,255,0.6)',
-                            backdropFilter: 'blur(10px)',
-                            border: `1px solid ${COLORS.border}`,
-                            height: '100%',
-                            textAlign: { xs: 'center', md: 'left' },
-                          }}
-                        >
-                          <Box sx={{ 
-                            width: { xs: 48, sm: 56 }, 
-                            height: { xs: 48, sm: 56 }, 
-                            borderRadius: 2,
-                            background: `linear-gradient(135deg, ${item.color}20, ${item.color}05)`,
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            mb: 2,
-                            color: item.color,
-                            mx: { xs: 'auto', md: 0 },
-                          }}>
-                            {item.icon}
-                          </Box>
-                          <Typography sx={{ 
-                            fontWeight: 700, 
-                            fontSize: { xs: '1.125rem', sm: '1.25rem' }, 
-                            mb: 1,
-                            textAlign: { xs: 'center', md: 'left' }
-                          }}>
-                            {item.title}
-                          </Typography>
-                          <Typography sx={{ 
-                            color: COLORS.textLight, 
-                            lineHeight: 1.5,
-                            textAlign: { xs: 'center', md: 'left' }
-                          }}>
-                            {item.desc}
-                          </Typography>
-                        </Paper>
-                      </motion.div>
-                    </Grid>
+                    <Paper
+                      key={i}
+                      elevation={0}
+                      sx={{
+                        p: { xs: 2, sm: 2.5 },
+                        borderRadius: 3,
+                        background: 'rgba(255,255,255,0.6)',
+                        backdropFilter: 'blur(10px)',
+                        border: `1px solid ${COLORS.border}`,
+                        flex: 1,
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: { xs: 'center', sm: 'center', md: 'flex-start' },
+                        textAlign: { xs: 'center', sm: 'center', md: 'left' },
+                      }}
+                    >
+                      <Box sx={{ 
+                        width: { xs: 48, sm: 56 }, 
+                        height: { xs: 48, sm: 56 }, 
+                        borderRadius: 2,
+                        background: `linear-gradient(135deg, ${item.color}20, ${item.color}05)`,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        mb: 2,
+                        color: item.color,
+                      }}>
+                        {item.icon}
+                      </Box>
+                      <Typography sx={{ 
+                        fontWeight: 700, 
+                        fontSize: { xs: '1.125rem', sm: '1.25rem' }, 
+                        mb: 1,
+                      }}>
+                        {item.title}
+                      </Typography>
+                      <Typography sx={{ 
+                        color: COLORS.textLight, 
+                        lineHeight: 1.5,
+                      }}>
+                        {item.desc}
+                      </Typography>
+                    </Paper>
                   ))}
-                </Grid>
+                </Box>
               </motion.div>
 
               <Box sx={{ mt: { xs: 8, sm: 10, md: 12 } }}>
@@ -341,7 +387,7 @@ const Home: React.FC = () => {
                   animate={{ y: 0, opacity: 1 }}
                   transition={{ delay: 0.7 }}
                 >
-                  <Typography variant="h3" sx={{ 
+                  <Typography sx={{ 
                     fontWeight: 700, 
                     textAlign: 'center', 
                     mb: { xs: 1, sm: 2 },
@@ -354,13 +400,12 @@ const Home: React.FC = () => {
                     color: COLORS.textLight, 
                     mb: { xs: 4, sm: 5, md: 6 }, 
                     fontSize: { xs: '1rem', sm: '1.1rem' },
-                    px: { xs: 2, sm: 0 }
                   }}>
                     Присоединяйтесь к сообществу
                   </Typography>
 
                   <ReviewCarousel
-                    limit={isMobile ? 3 : 5}
+                    limit={isMobile ? 1 : isTablet ? 2 : 3}
                     autoPlay
                     showControls={!isMobile}
                     onReviewClick={() => navigate('/reviews')}
@@ -370,7 +415,7 @@ const Home: React.FC = () => {
                     direction={{ xs: 'column', sm: 'row' }} 
                     justifyContent="center" 
                     spacing={{ xs: 2, sm: 2 }} 
-                    sx={{ mt: { xs: 3, sm: 4, md: 5 }, mb: 4 }}
+                    sx={{ mt: { xs: 4, sm: 5, md: 6 } }}
                   >
                     <Button
                       variant="outlined"
@@ -380,11 +425,9 @@ const Home: React.FC = () => {
                         borderColor: COLORS.border,
                         color: COLORS.text,
                         borderRadius: 50,
-                        px: { xs: 2, sm: 3 },
+                        px: { xs: 3, sm: 4 },
                         py: { xs: 1, sm: 1.5 },
                         textTransform: 'none',
-                        fontSize: { xs: '0.875rem', sm: '0.9375rem' },
-                        '&:hover': { borderColor: COLORS.primary, bgcolor: 'transparent' },
                       }}
                     >
                       Все отзывы
@@ -397,10 +440,9 @@ const Home: React.FC = () => {
                         sx={{
                           bgcolor: COLORS.primary,
                           borderRadius: 50,
-                          px: { xs: 2, sm: 3 },
+                          px: { xs: 3, sm: 4 },
                           py: { xs: 1, sm: 1.5 },
                           textTransform: 'none',
-                          fontSize: { xs: '0.875rem', sm: '0.9375rem' },
                           '&:hover': { bgcolor: COLORS.primaryDark },
                         }}
                       >
@@ -443,7 +485,6 @@ const Home: React.FC = () => {
                         color: COLORS.textLight,
                         borderRadius: 50,
                         textTransform: 'none',
-                        '&:hover': { bgcolor: `${COLORS.primary}10` }
                       }}
                     >
                       На главную
@@ -469,13 +510,8 @@ const Home: React.FC = () => {
                       borderRadius: '50%', 
                       bgcolor: COLORS.accent,
                       animation: 'pulse 1.5s infinite',
-                      '@keyframes pulse': {
-                        '0%': { opacity: 1, transform: 'scale(1)' },
-                        '50%': { opacity: 0.5, transform: 'scale(1.2)' },
-                        '100%': { opacity: 1, transform: 'scale(1)' },
-                      }
                     }} />
-                    <Typography variant="body2" sx={{ color: COLORS.textLight, fontWeight: 500, fontSize: { xs: '0.75rem', sm: '0.875rem' } }}>
+                    <Typography variant="body2" sx={{ color: COLORS.textLight, fontWeight: 500 }}>
                       Активный мониторинг
                     </Typography>
                   </Stack>
@@ -489,6 +525,15 @@ const Home: React.FC = () => {
           )}
         </AnimatePresence>
       </Container>
+
+      <style>
+        {`
+          @keyframes pulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.5; transform: scale(1.2); }
+          }
+        `}
+      </style>
     </Box>
   );
 };
