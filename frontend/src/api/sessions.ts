@@ -113,12 +113,12 @@ export const sessionsApi = {
     notificationEnabled: boolean;
   }) => {
     try {
-      const response = await fetch(`${API_URL}/sessions`, {
+      const response = await fetch(`${API_URL}/sessions/start`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify(data),
+        body: JSON.stringify({ settings: data }),
         credentials: 'include'
       });
       
@@ -138,12 +138,12 @@ export const sessionsApi = {
   // Завершение сессии
   endSession: async (sessionId: string, metrics: any) => {
     try {
-      const response = await fetch(`${API_URL}/sessions/${sessionId}/end`, {
-        method: 'PUT',
+      const response = await fetch(`${API_URL}/sessions/end/${sessionId}`, {
+        method: 'POST',
         headers: {
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify(metrics),
+        body: JSON.stringify({ finalMetrics: metrics }),
         credentials: 'include'
       });
       
@@ -160,10 +160,28 @@ export const sessionsApi = {
     }
   },
 
-  // Получение списка сессий пользователя
-  getSessions: async () => {
+  // Получение истории сеансов (соответствует маршруту GET /sessions/history)
+  getSessionsHistory: async (page: number = 1, limit: number = 20, filters?: {
+    sortBy?: string;
+    sortOrder?: string;
+    dateFrom?: string;
+    dateTo?: string;
+    minScore?: number;
+    maxScore?: number;
+  }) => {
     try {
-      const response = await fetch(`${API_URL}/sessions`, {
+      const queryParams = new URLSearchParams();
+      queryParams.append('page', page.toString());
+      queryParams.append('limit', limit.toString());
+      
+      if (filters?.sortBy) queryParams.append('sortBy', filters.sortBy);
+      if (filters?.sortOrder) queryParams.append('sortOrder', filters.sortOrder);
+      if (filters?.dateFrom) queryParams.append('dateFrom', filters.dateFrom);
+      if (filters?.dateTo) queryParams.append('dateTo', filters.dateTo);
+      if (filters?.minScore !== undefined) queryParams.append('minScore', filters.minScore.toString());
+      if (filters?.maxScore !== undefined) queryParams.append('maxScore', filters.maxScore.toString());
+      
+      const response = await fetch(`${API_URL}/sessions/history?${queryParams.toString()}`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json'
@@ -177,14 +195,46 @@ export const sessionsApi = {
         throw new Error(result.error || 'Ошибка при получении списка сессий');
       }
       
-      return result;
+      // Возвращаем в формате, ожидаемом в SessionsHistory
+      return {
+        success: true,
+        data: {
+          sessions: result.data?.sessions || [],
+          pagination: result.data?.pagination || {
+            page,
+            limit,
+            total: 0,
+            pages: 1
+          },
+          statistics: result.data?.statistics || {
+            totalSessions: 0,
+            totalDuration: 0,
+            avgScore: 0,
+            bestScore: 0,
+            worstScore: 0,
+            avgDuration: 0,
+            totalFrames: 0,
+            totalGoodFrames: 0,
+            totalWarningFrames: 0,
+            totalErrorFrames: 0
+          }
+        }
+      };
     } catch (error: any) {
-      console.error('Error getting sessions:', error);
-      throw error;
+      console.error('Error getting sessions history:', error);
+      return {
+        success: false,
+        error: error.message || 'Ошибка при загрузке истории сеансов',
+        data: {
+          sessions: [],
+          pagination: { page: 1, limit, total: 0, pages: 1 },
+          statistics: null
+        }
+      };
     }
   },
 
-  // Получение конкретной сессии
+  // Получение конкретной сессии (соответствует маршруту GET /sessions/:sessionId)
   getSession: async (sessionId: string) => {
     try {
       const response = await fetch(`${API_URL}/sessions/${sessionId}`, {
@@ -208,20 +258,47 @@ export const sessionsApi = {
     }
   },
 
-  // Добавление ключевого момента
+  // Получение деталей сессии с рекомендациями
+  getSessionWithRecommendations: async (sessionId: string) => {
+    try {
+      const response = await fetch(`${API_URL}/sessions/${sessionId}/details-with-recommendations`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        credentials: 'include'
+      });
+      
+      const result = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(result.error || 'Ошибка при получении деталей сессии');
+      }
+      
+      return result;
+    } catch (error: any) {
+      console.error('Error getting session with recommendations:', error);
+      throw error;
+    }
+  },
+
+  // Добавление ключевого момента (соответствует маршруту POST /sessions/key-moments/:sessionId)
   addKeyMoment: async (sessionId: string, moment: {
     type: string;
-    description: string;
-    timestamp: number;
-    metadata?: any;
+    message: string;
+    data?: any;
   }) => {
     try {
-      const response = await fetch(`${API_URL}/sessions/${sessionId}/moments`, {
+      const response = await fetch(`${API_URL}/sessions/key-moments/${sessionId}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify(moment),
+        body: JSON.stringify({
+          type: moment.type,
+          message: moment.message,
+          data: moment.data || {}
+        }),
         credentials: 'include'
       });
       
@@ -238,20 +315,25 @@ export const sessionsApi = {
     }
   },
 
-  // Обновление метрик сессии
+  // Обновление метрик сессии (соответствует маршруту POST /sessions/metrics/:sessionId)
   updateMetrics: async (sessionId: string, metrics: {
-    normalizedPoints?: Array<{ x: number; y: number; score: number }>;
-    postureStatus?: string;
-    issues?: string[];
+    frameData?: any;
     timestamp?: number;
+    currentStatus?: string;
+    issues?: string[];
   }) => {
     try {
-      const response = await fetch(`${API_URL}/sessions/${sessionId}/metrics`, {
-        method: 'PUT',
+      const response = await fetch(`${API_URL}/sessions/metrics/${sessionId}`, {
+        method: 'POST',
         headers: {
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify(metrics),
+        body: JSON.stringify({
+          frameData: metrics.frameData,
+          timestamp: metrics.timestamp || Date.now(),
+          currentStatus: metrics.currentStatus,
+          issues: metrics.issues || []
+        }),
         credentials: 'include'
       });
       
@@ -264,6 +346,54 @@ export const sessionsApi = {
       return result;
     } catch (error: any) {
       console.error('Error updating metrics:', error);
+      throw error;
+    }
+  },
+
+  // Удаление сессии (соответствует маршруту DELETE /sessions/:sessionId)
+  deleteSession: async (sessionId: string) => {
+    try {
+      const response = await fetch(`${API_URL}/sessions/${sessionId}`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        credentials: 'include'
+      });
+      
+      const result = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(result.error || 'Ошибка при удалении сессии');
+      }
+      
+      return result;
+    } catch (error: any) {
+      console.error('Error deleting session:', error);
+      throw error;
+    }
+  },
+
+  // Получение статистики сессий (соответствует маршруту GET /sessions/statistics)
+  getSessionsStatistics: async () => {
+    try {
+      const response = await fetch(`${API_URL}/sessions/statistics`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        credentials: 'include'
+      });
+      
+      const result = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(result.error || 'Ошибка при получении статистики');
+      }
+      
+      return result;
+    } catch (error: any) {
+      console.error('Error getting sessions statistics:', error);
       throw error;
     }
   }
