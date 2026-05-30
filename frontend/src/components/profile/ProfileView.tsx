@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../store/auth';
 import { authApi } from '../../api/auth';
+import { subscriptionApi } from '../../api/subscription';
 import { LoadingSpinner } from '../ui/LoadingSpinner';
 import { Alert } from '../ui/Alert';
 import YandexProfileInfo from './YandexProfileInfo';
@@ -30,33 +31,43 @@ import {
   useTheme,
   Fade,
   Zoom,
-  Badge
+  Badge,
+  LinearProgress
 } from '@mui/material';
 import {
   Edit as EditIcon,
   ContentCopy as ContentCopyIcon,
-  Person as PersonIcon,
   Email as EmailIcon,
   CalendarToday as CalendarIcon,
   Login as LoginIcon,
   Badge as BadgeIcon,
   ChevronRight as ChevronRightIcon,
   Security as SecurityIcon,
-  Print as PrintIcon,
   Payment as PaymentIcon,
   FlashOn as FlashOnIcon,
   PhotoCamera as PhotoCameraIcon,
   Delete as DeleteIcon,
   CloudUpload as CloudUploadIcon,
-  Close as CloseIcon,
   CheckCircle as CheckCircleIcon,
   Info as InfoIcon,
-  Warning as WarningIcon
+  Refresh as RefreshIcon,
+  Diamond as DiamondIcon,
+  Star as StarIcon,
+  AccessTime as AccessTimeIcon
 } from '@mui/icons-material';
 import { styled } from '@mui/material/styles';
 
 // Импортируем иконку Яндекса для чипа
 import yandexIconUrl from '../../assets/img/icons/icon_yandex.svg';
+
+interface SubscriptionInfo {
+  id: string;
+  plan: string;
+  status: string;
+  endDate: string | null;
+  remainingDays: number;
+  hasActiveSubscription: boolean;
+}
 
 const ProfileView: React.FC = () => {
   const { user, isLoading, error, clearError, refreshUserData } = useAuthStore();
@@ -75,20 +86,106 @@ const ProfileView: React.FC = () => {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
+  
+  // Состояние для подписки
+  const [subscriptionInfo, setSubscriptionInfo] = useState<SubscriptionInfo | null>(null);
+  const [isSubscriptionLoading, setIsSubscriptionLoading] = useState(true);
 
   useEffect(() => {
     clearError();
+    loadAllData();
   }, [clearError]);
+
+  // Загрузка всех данных (пользователь + подписка)
+  const loadAllData = async () => {
+    try {
+      setIsSubscriptionLoading(true);
+      
+      // Сначала обновляем данные пользователя
+      await refreshUserData();
+      
+      // Затем загружаем информацию о подписке
+      await loadSubscriptionInfo();
+      
+    } catch (error) {
+      console.error('Error loading data:', error);
+    } finally {
+      setIsSubscriptionLoading(false);
+    }
+  };
+
+  // Загрузка информации о подписке
+  const loadSubscriptionInfo = async () => {
+    try {
+      const response = await subscriptionApi.getMySubscription();
+      const data = response.data;
+      
+      console.log('Subscription data from API:', data);
+      
+      if (data.subscription && data.hasActiveSubscription) {
+        const sub = data.subscription;
+        setSubscriptionInfo({
+          id: sub.id,
+          plan: sub.plan,
+          status: sub.status,
+          endDate: sub.endDate,
+          remainingDays: sub.remainingDays || 0,
+          hasActiveSubscription: true
+        });
+      } else {
+        // Проверяем также через user данные
+        const userHasAccess = user?.hasPremiumAccess === true;
+        const userHasEndDate = user?.subscriptionEndsAt && new Date(user.subscriptionEndsAt) > new Date();
+        
+        if (userHasAccess && userHasEndDate) {
+          console.log('User has premium access from user data');
+          setSubscriptionInfo({
+            id: '',
+            plan: 'premium',
+            status: 'active',
+            endDate: user.subscriptionEndsAt,
+            remainingDays: Math.ceil((new Date(user.subscriptionEndsAt).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)),
+            hasActiveSubscription: true
+          });
+        } else {
+          setSubscriptionInfo(null);
+        }
+      }
+    } catch (error) {
+      console.error('Error loading subscription info:', error);
+      
+      // Если ошибка, проверяем через user данные
+      const userHasAccess = user?.hasPremiumAccess === true;
+      const userHasEndDate = user?.subscriptionEndsAt && new Date(user.subscriptionEndsAt) > new Date();
+      
+      if (userHasAccess && userHasEndDate) {
+        setSubscriptionInfo({
+          id: '',
+          plan: 'premium',
+          status: 'active',
+          endDate: user.subscriptionEndsAt,
+          remainingDays: Math.ceil((new Date(user.subscriptionEndsAt).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)),
+          hasActiveSubscription: true
+        });
+      } else {
+        setSubscriptionInfo(null);
+      }
+    }
+  };
+
+  // Обновление данных (после изменения подписки)
+  const handleRefreshData = async () => {
+    await loadAllData();
+    showNotification('Данные обновлены', 'success');
+  };
 
   // Логируем изменения user
   useEffect(() => {
     if (user) {
       console.log('=== USER DATA IN PROFILE VIEW ===');
-      console.log('Full user object:', user);
-      console.log('avatarUrl:', user.avatarUrl);
-      console.log('avatar:', user.avatar);
-      console.log('authProvider:', user.authProvider);
-      console.log('yandexAvatar:', user.yandexAvatar);
+      console.log('hasPremiumAccess:', user.hasPremiumAccess);
+      console.log('subscriptionEndsAt:', user.subscriptionEndsAt);
+      console.log('subscription:', user.subscription);
     }
   }, [user]);
 
@@ -118,19 +215,16 @@ const ProfileView: React.FC = () => {
     const file = event.target.files?.[0];
     if (!file) return;
 
-    // Проверяем тип файла
     if (!file.type.startsWith('image/')) {
       showNotification('Пожалуйста, выберите изображение', 'error');
       return;
     }
 
-    // Проверяем размер файла (макс 5MB)
     if (file.size > 5 * 1024 * 1024) {
       showNotification('Файл слишком большой. Максимальный размер: 5MB', 'error');
       return;
     }
 
-    // Создаем превью
     const reader = new FileReader();
     reader.onload = (e) => {
       setPreviewUrl(e.target?.result as string);
@@ -147,10 +241,8 @@ const ProfileView: React.FC = () => {
 
     try {
       setIsUploading(true);
-      console.log('Uploading avatar...', selectedFile);
       
       const response = await authApi.uploadAvatar(selectedFile);
-      console.log('Upload response:', response);
       
       if (response.success) {
         await refreshUserData();
@@ -195,60 +287,31 @@ const ProfileView: React.FC = () => {
 
   const getAvatarSource = () => {
     if (!user) {
-      console.log('No user, returning undefined');
       return undefined;
     }
     
-    console.log('=== GET AVATAR SOURCE ===');
-    console.log('1. Checking uploaded avatar (avatarUrl):', user.avatarUrl);
-    
-    // Приоритет 1: Загруженный пользователем аватар
     if (user.avatarUrl) {
-      console.log('✅ USING UPLOADED AVATAR:', user.avatarUrl);
       return user.avatarUrl;
     }
     
-    console.log('2. Checking Yandex avatar:', user.yandexAvatar);
-    console.log('3. Auth provider:', user.authProvider);
-    
-    // Приоритет 2: Аватар из Яндекса (только если нет загруженного)
     if (user.authProvider === 'yandex' && user.yandexAvatar) {
-      console.log('✅ USING YANDEX AVATAR:', user.yandexAvatar);
       return user.yandexAvatar;
     }
     
-    console.log('❌ No avatar available, using initials');
     return undefined;
   };
 
-  if (isLoading) {
-    return (
-      <Box
-        sx={{
-          minHeight: '100vh',
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          justifyContent: 'center',
-          gap: 2,
-          bgcolor: theme.palette.background.default,
-          background: theme.palette.mode === 'light'
-            ? 'linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)'
-            : 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)'
-        }}
-      >
-        <LoadingSpinner size="large" />
-        <Typography sx={{ color: theme.palette.text.secondary }}>Загрузка профиля...</Typography>
-      </Box>
-    );
-  }
+  const formatDate = (dateString: string | null) => {
+    if (!dateString) return '—';
+    const date = new Date(dateString);
+    return date.toLocaleDateString('ru-RU', {
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric'
+    });
+  };
 
-  if (!user) {
-    navigate('/login');
-    return null;
-  }
-
-  const formatDate = (dateString: string) => {
+  const formatDateTime = (dateString: string) => {
     const date = new Date(dateString);
     return date.toLocaleDateString('ru-RU', {
       day: 'numeric',
@@ -260,10 +323,29 @@ const ProfileView: React.FC = () => {
   };
 
   const getUserInitials = () => {
-    const first = user.firstName?.charAt(0) || '';
-    const last = user.lastName?.charAt(0) || '';
+    const first = user?.firstName?.charAt(0) || '';
+    const last = user?.lastName?.charAt(0) || '';
     return `${first}${last}`.toUpperCase() || 'U';
   };
+
+  // Получение иконки для плана подписки
+  const getPlanIcon = (plan: string) => {
+    return plan === 'premium' ? <DiamondIcon sx={{ fontSize: 20 }} /> : <StarIcon sx={{ fontSize: 20 }} />;
+  };
+
+  // Получение названия плана
+  const getPlanName = (plan: string) => {
+    return plan === 'premium' ? 'Премиум' : 'Базовый';
+  };
+
+  // Получение цвета для плана
+  const getPlanColor = (plan: string) => {
+    return plan === 'premium' ? theme.palette.warning.main : theme.palette.info.main;
+  };
+
+  // Проверяем активность подписки через user данные
+  const hasActiveSubscriptionFromUser = user?.hasPremiumAccess === true && 
+    user?.subscriptionEndsAt && new Date(user.subscriptionEndsAt) > new Date();
 
   const avatarSource = getAvatarSource();
 
@@ -282,15 +364,6 @@ const ProfileView: React.FC = () => {
     '&:hover': {
       borderColor: t.palette.primary.main
     }
-  }));
-
-  const InfoCard = styled(Box)(({ theme: t }) => ({
-    padding: t.spacing(2),
-    backgroundColor: t.palette.mode === 'light'
-      ? alpha(t.palette.background.paper, 0.6)
-      : '#1e242c',
-    borderRadius: 12,
-    border: `1px solid ${t.palette.divider}`
   }));
 
   const ActionButton = styled(Button)(({ theme: t }) => ({
@@ -313,35 +386,47 @@ const ProfileView: React.FC = () => {
     }
   }));
 
+  if (isLoading) {
+    return (
+      <Box
+        sx={{
+          minHeight: '100vh',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: 2,
+          bgcolor: theme.palette.background.default,
+        }}
+      >
+        <LoadingSpinner size="large" />
+        <Typography sx={{ color: theme.palette.text.secondary }}>Загрузка профиля...</Typography>
+      </Box>
+    );
+  }
+
+  if (!user) {
+    navigate('/login');
+    return null;
+  }
+
+  // Определяем, показывать ли блок с подпиской
+  const showSubscriptionBlock = hasActiveSubscriptionFromUser || (subscriptionInfo?.hasActiveSubscription === true);
+  const activePlan = subscriptionInfo?.plan || (hasActiveSubscriptionFromUser ? 'premium' : null);
+  const activeEndDate = subscriptionInfo?.endDate || user?.subscriptionEndsAt;
+  const activeRemainingDays = subscriptionInfo?.remainingDays || 
+    (user?.subscriptionEndsAt ? Math.ceil((new Date(user.subscriptionEndsAt).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)) : 0);
+
   return (
     <Box
       sx={{
         minHeight: '100vh',
         bgcolor: theme.palette.background.default,
-        background: theme.palette.mode === 'light'
-          ? 'linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)'
-          : 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)',
         py: 4,
         px: { xs: 2, sm: 3, md: 4 },
         position: 'relative'
       }}
     >
-      {/* Анимированный фон */}
-      <Box sx={{
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        background: theme.palette.mode === 'light'
-          ? `radial-gradient(circle at 20% 80%, ${alpha(theme.palette.primary.main, 0.03)} 0%, transparent 50%),
-             radial-gradient(circle at 80% 20%, ${alpha(theme.palette.secondary.main, 0.03)} 0%, transparent 50%)`
-          : `radial-gradient(circle at 20% 80%, ${alpha(theme.palette.primary.main, 0.1)} 0%, transparent 50%),
-             radial-gradient(circle at 80% 20%, ${alpha(theme.palette.secondary.main, 0.1)} 0%, transparent 50%)`,
-        pointerEvents: 'none',
-        zIndex: 0
-      }} />
-
       <Container maxWidth="lg" sx={{ position: 'relative', zIndex: 1 }}>
         {/* Заголовок */}
         <Fade in={true} timeout={800}>
@@ -398,7 +483,7 @@ const ProfileView: React.FC = () => {
         {/* Основная карточка профиля */}
         <DarkPaper sx={{ mb: 3, p: 4 }}>
           <Grid container spacing={4} alignItems="flex-start">
-            <Grid item xs={12} md={8}>
+            <Grid item xs={12} md={7}>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 3 }}>
                 <Box sx={{ position: 'relative' }}>
                   <Badge
@@ -463,11 +548,6 @@ const ProfileView: React.FC = () => {
                         fontWeight: 500,
                         fontSize: '0.85rem',
                         height: 24,
-                        border: '1px solid',
-                        borderColor: alpha(
-                          user.role === 'admin' ? theme.palette.primary.main : theme.palette.text.secondary,
-                          0.2
-                        )
                       }}
                     />
                     {user.authProvider === 'yandex' && (
@@ -480,9 +560,6 @@ const ProfileView: React.FC = () => {
                             sx={{
                               width: 14,
                               height: 14,
-                              filter: theme.palette.mode === 'light'
-                                ? 'brightness(0) saturate(100%) invert(24%) sepia(95%) saturate(7489%) hue-rotate(357deg) brightness(97%) contrast(107%)'
-                                : 'brightness(0) saturate(100%) invert(32%) sepia(86%) saturate(7489%) hue-rotate(357deg) brightness(97%) contrast(107%)'
                             }}
                           />
                         }
@@ -491,13 +568,6 @@ const ProfileView: React.FC = () => {
                         sx={{
                           bgcolor: alpha('#FC3F1D', 0.1),
                           color: '#FC3F1D',
-                          border: `1px solid ${alpha('#FC3F1D', 0.2)}`,
-                          fontWeight: 500,
-                          fontSize: '0.85rem',
-                          height: 24,
-                          '& .MuiChip-icon': {
-                            ml: 0.5
-                          }
                         }}
                       />
                     )}
@@ -533,22 +603,13 @@ const ProfileView: React.FC = () => {
               </Box>
             </Grid>
 
-            <Grid item xs={12} md={4}>
+            <Grid item xs={12} md={5}>
               <Box sx={{ display: 'flex', gap: 1.5, justifyContent: { xs: 'flex-start', md: 'flex-end' } }}>
                 <Button
                   variant="outlined"
                   size="small"
                   startIcon={<EditIcon />}
                   onClick={() => navigate('/profile/edit')}
-                  sx={{
-                    borderColor: theme.palette.divider,
-                    color: theme.palette.text.secondary,
-                    textTransform: 'none',
-                    '&:hover': {
-                      borderColor: theme.palette.primary.main,
-                      bgcolor: alpha(theme.palette.primary.main, 0.1)
-                    }
-                  }}
                 >
                   Редактировать
                 </Button>
@@ -556,7 +617,7 @@ const ProfileView: React.FC = () => {
             </Grid>
           </Grid>
 
-          <Divider sx={{ my: 3, borderColor: theme.palette.divider }} />
+          <Divider sx={{ my: 3 }} />
 
           <Grid container spacing={3}>
             <Grid item xs={12} sm={6}>
@@ -567,7 +628,7 @@ const ProfileView: React.FC = () => {
                     Зарегистрирован
                   </Typography>
                   <Typography variant="body2" sx={{ color: theme.palette.text.primary, fontWeight: 500 }}>
-                    {formatDate(user.createdAt)}
+                    {formatDateTime(user.createdAt)}
                   </Typography>
                 </Box>
               </Box>
@@ -580,7 +641,7 @@ const ProfileView: React.FC = () => {
                     Последний вход
                   </Typography>
                   <Typography variant="body2" sx={{ color: theme.palette.text.primary, fontWeight: 500 }}>
-                    {user.lastLogin ? formatDate(user.lastLogin) : '—'}
+                    {user.lastLogin ? formatDateTime(user.lastLogin) : '—'}
                   </Typography>
                 </Box>
               </Box>
@@ -588,22 +649,171 @@ const ProfileView: React.FC = () => {
           </Grid>
         </DarkPaper>
 
+        {/* Блок с информацией о подписке - показываем если есть активная подписка */}
+        {showSubscriptionBlock && activePlan && (
+          <DarkPaper sx={{ mb: 3 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 3 }}>
+              <Box
+                sx={{
+                  width: 32,
+                  height: 32,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  bgcolor: alpha(getPlanColor(activePlan), 0.1),
+                  borderRadius: '10px',
+                }}
+              >
+                {getPlanIcon(activePlan)}
+              </Box>
+              <Typography variant="h6" sx={{ fontWeight: 600, color: theme.palette.text.primary }}>
+                Моя подписка
+              </Typography>
+              <Chip
+                label={subscriptionInfo?.status === 'cancelled' ? 'Отменена' : 'Активна'}
+                size="small"
+                sx={{
+                  bgcolor: alpha(
+                    subscriptionInfo?.status === 'cancelled' ? theme.palette.warning.main : theme.palette.success.main,
+                    0.1
+                  ),
+                  color: subscriptionInfo?.status === 'cancelled' ? theme.palette.warning.main : theme.palette.success.main,
+                }}
+              />
+            </Box>
+
+            <Grid container spacing={3}>
+              <Grid item xs={12} sm={6}>
+                <Box sx={{ 
+                  p: 2, 
+                  bgcolor: alpha(theme.palette.background.paper, 0.5), 
+                  borderRadius: 3,
+                }}>
+                  <Typography variant="caption" sx={{ color: theme.palette.text.secondary, display: 'block', mb: 1 }}>
+                    Тариф
+                  </Typography>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    {getPlanIcon(activePlan)}
+                    <Typography variant="h6" sx={{ fontWeight: 600, color: getPlanColor(activePlan) }}>
+                      {getPlanName(activePlan)}
+                    </Typography>
+                  </Box>
+                </Box>
+              </Grid>
+              
+              <Grid item xs={12} sm={6}>
+                <Box sx={{ 
+                  p: 2, 
+                  bgcolor: alpha(theme.palette.background.paper, 0.5), 
+                  borderRadius: 3,
+                }}>
+                  <Typography variant="caption" sx={{ color: theme.palette.text.secondary, display: 'block', mb: 1 }}>
+                    Действует до
+                  </Typography>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <AccessTimeIcon sx={{ color: theme.palette.text.secondary, fontSize: 18 }} />
+                    <Typography variant="body1" sx={{ fontWeight: 500, color: theme.palette.text.primary }}>
+                      {formatDate(activeEndDate)}
+                    </Typography>
+                  </Box>
+                </Box>
+              </Grid>
+            </Grid>
+
+            {activeRemainingDays > 0 && (
+              <Box sx={{ mt: 3 }}>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+                  <Typography variant="caption" sx={{ color: theme.palette.text.secondary }}>
+                    Осталось дней
+                  </Typography>
+                  <Typography variant="caption" sx={{ fontWeight: 600, color: getPlanColor(activePlan) }}>
+                    {activeRemainingDays} из 30
+                  </Typography>
+                </Box>
+                <LinearProgress
+                  variant="determinate"
+                  value={(activeRemainingDays / 30) * 100}
+                  sx={{
+                    height: 6,
+                    borderRadius: 3,
+                    backgroundColor: alpha(getPlanColor(activePlan), 0.2),
+                    '& .MuiLinearProgress-bar': {
+                      backgroundColor: getPlanColor(activePlan),
+                      borderRadius: 3
+                    }
+                  }}
+                />
+              </Box>
+            )}
+
+            <Box sx={{ mt: 3, display: 'flex', gap: 2 }}>
+              <Button
+                variant="outlined"
+                size="small"
+                startIcon={<PaymentIcon />}
+                onClick={() => navigate('/profile/subscription')}
+              >
+                Управление подпиской
+              </Button>
+              <Button
+                variant="text"
+                size="small"
+                startIcon={<RefreshIcon />}
+                onClick={handleRefreshData}
+                disabled={isSubscriptionLoading}
+              >
+                Обновить
+              </Button>
+            </Box>
+          </DarkPaper>
+        )}
+
+        {/* Если нет активной подписки, показываем предложение */}
+        {!showSubscriptionBlock && (
+          <DarkPaper sx={{ mb: 3 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 2 }}>
+              <Box
+                sx={{
+                  width: 32,
+                  height: 32,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  bgcolor: alpha(theme.palette.info.main, 0.1),
+                  borderRadius: '10px',
+                }}
+              >
+                <InfoIcon sx={{ color: theme.palette.info.main, fontSize: 18 }} />
+              </Box>
+              <Typography variant="h6" sx={{ fontWeight: 600, color: theme.palette.text.primary }}>
+                Нет активной подписки
+              </Typography>
+            </Box>
+            
+            <Typography variant="body2" sx={{ color: theme.palette.text.secondary, mb: 2 }}>
+              Оформите подписку, чтобы получить доступ ко всем функциям приложения
+            </Typography>
+            
+            <Button
+              variant="contained"
+              size="small"
+              startIcon={<PaymentIcon />}
+              onClick={() => navigate('/profile/subscription')}
+              sx={{
+                background: `linear-gradient(135deg, ${theme.palette.primary.main} 0%, ${theme.palette.secondary.main} 100%)`,
+              }}
+            >
+              Оформить подписку
+            </Button>
+          </DarkPaper>
+        )}
+
         {/* Меню аватара */}
         <Menu
           anchorEl={avatarMenuAnchor}
           open={Boolean(avatarMenuAnchor)}
           onClose={handleAvatarMenuClose}
           TransitionComponent={Fade}
-          PaperProps={{
-            sx: {
-              bgcolor: theme.palette.background.paper,
-              border: `1px solid ${theme.palette.divider}`,
-              borderRadius: 12,
-              minWidth: 200,
-              mt: 1,
-              boxShadow: theme.shadows[5]
-            }
-          }}
         >
           <input
             type="file"
@@ -612,38 +822,17 @@ const ProfileView: React.FC = () => {
             accept="image/jpeg,image/png,image/gif,image/webp"
             style={{ display: 'none' }}
           />
-          <MenuItem 
-            onClick={() => {
-              fileInputRef.current?.click();
-            }}
-            sx={{
-              color: theme.palette.text.primary,
-              '&:hover': {
-                bgcolor: alpha(theme.palette.primary.main, 0.1)
-              }
-            }}
-          >
+          <MenuItem onClick={() => fileInputRef.current?.click()}>
             <ListItemIcon>
-              <CloudUploadIcon sx={{ color: theme.palette.primary.main, fontSize: 20 }} />
+              <CloudUploadIcon fontSize="small" />
             </ListItemIcon>
             <ListItemText>Загрузить фото</ListItemText>
           </MenuItem>
           
           {user.avatarUrl && (
-            <MenuItem 
-              onClick={() => {
-                setDeleteDialogOpen(true);
-                handleAvatarMenuClose();
-              }}
-              sx={{
-                color: theme.palette.error.main,
-                '&:hover': {
-                  bgcolor: alpha(theme.palette.error.main, 0.1)
-                }
-              }}
-            >
+            <MenuItem onClick={() => setDeleteDialogOpen(true)}>
               <ListItemIcon>
-                <DeleteIcon sx={{ color: theme.palette.error.main, fontSize: 20 }} />
+                <DeleteIcon fontSize="small" color="error" />
               </ListItemIcon>
               <ListItemText>Удалить фото</ListItemText>
             </MenuItem>
@@ -651,208 +840,36 @@ const ProfileView: React.FC = () => {
         </Menu>
 
         {/* Диалог загрузки аватара */}
-        <Dialog 
-          open={uploadDialogOpen} 
-          onClose={handleUploadDialogClose}
-          TransitionComponent={Zoom}
-          maxWidth="sm"
-          fullWidth
-          PaperProps={{
-            sx: {
-              borderRadius: 16,
-              bgcolor: theme.palette.background.paper,
-              border: `1px solid ${theme.palette.divider}`,
-              boxShadow: theme.shadows[10],
-            }
-          }}
-        >
-          <DialogTitle sx={{ pb: 1 }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-              <Box
-                sx={{
-                  width: 40,
-                  height: 40,
-                  borderRadius: '12px',
-                  bgcolor: alpha(theme.palette.primary.main, 0.1),
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  border: `1px solid ${alpha(theme.palette.primary.main, 0.2)}`,
-                }}
-              >
-                <PhotoCameraIcon sx={{ color: theme.palette.primary.main }} />
-              </Box>
-              <Box>
-                <Typography variant="h6" sx={{ color: theme.palette.text.primary, fontWeight: 600 }}>
-                  Загрузка аватара
-                </Typography>
-                <Typography variant="body2" sx={{ color: theme.palette.text.secondary }}>
-                  Предпросмотр изображения
-                </Typography>
-              </Box>
-            </Box>
-          </DialogTitle>
-          
-          <DialogContent sx={{ py: 3 }}>
+        <Dialog open={uploadDialogOpen} onClose={handleUploadDialogClose} maxWidth="sm" fullWidth>
+          <DialogTitle>Загрузка аватара</DialogTitle>
+          <DialogContent>
             {previewUrl && (
-              <Box sx={{ 
-                display: 'flex', 
-                justifyContent: 'center',
-                alignItems: 'center',
-                p: 2,
-                bgcolor: alpha(theme.palette.background.paper, 0.5),
-                borderRadius: 12,
-                border: `1px solid ${theme.palette.divider}`
-              }}>
-                <Avatar
-                  src={previewUrl}
-                  sx={{
-                    width: 200,
-                    height: 200,
-                    border: `3px solid ${theme.palette.primary.main}`,
-                    boxShadow: theme.shadows[5]
-                  }}
-                />
+              <Box sx={{ display: 'flex', justifyContent: 'center', mb: 2 }}>
+                <Avatar src={previewUrl} sx={{ width: 150, height: 150 }} />
               </Box>
             )}
-            
-            <Box sx={{ mt: 2 }}>
-              <Typography variant="body2" sx={{ color: theme.palette.text.secondary }}>
-                Рекомендации:
-              </Typography>
-              <Box component="ul" sx={{ mt: 1, pl: 2, color: theme.palette.text.primary }}>
-                <li>Квадратное изображение</li>
-                <li>Минимум 400x400 пикселей</li>
-                <li>Максимальный размер 5MB</li>
-                <li>Форматы: JPEG, PNG, GIF, WEBP</li>
-              </Box>
-            </Box>
+            <Typography variant="body2" color="text.secondary">
+              Выберите изображение для аватара. Рекомендуемый размер: 400x400 пикселей.
+            </Typography>
           </DialogContent>
-          
-          <DialogActions sx={{ p: 2, borderTop: `1px solid ${theme.palette.divider}`, gap: 1 }}>
-            <Button 
-              onClick={handleUploadDialogClose}
-              disabled={isUploading}
-              sx={{
-                color: theme.palette.text.secondary,
-                borderRadius: '10px',
-                textTransform: 'none',
-                '&:hover': {
-                  bgcolor: alpha(theme.palette.text.secondary, 0.1)
-                }
-              }}
-            >
-              Отмена
-            </Button>
-            <Button 
-              onClick={handleUploadAvatar}
-              variant="contained"
-              disabled={isUploading}
-              startIcon={isUploading ? <CircularProgress size={18} /> : <CheckCircleIcon />}
-              sx={{
-                borderRadius: '10px',
-                textTransform: 'none',
-                background: `linear-gradient(135deg, ${theme.palette.primary.main} 0%, ${theme.palette.secondary.main} 100%)`,
-                color: theme.palette.primary.contrastText,
-                px: 3,
-                '&:hover': {
-                  background: `linear-gradient(135deg, ${theme.palette.primary.dark} 0%, ${theme.palette.secondary.dark} 100%)`
-                },
-                '&:disabled': {
-                  background: alpha(theme.palette.primary.main, 0.5)
-                }
-              }}
-            >
-              {isUploading ? 'Загрузка...' : 'Сохранить'}
+          <DialogActions>
+            <Button onClick={handleUploadDialogClose}>Отмена</Button>
+            <Button onClick={handleUploadAvatar} variant="contained" disabled={isUploading}>
+              {isUploading ? <CircularProgress size={24} /> : 'Загрузить'}
             </Button>
           </DialogActions>
         </Dialog>
 
         {/* Диалог удаления аватара */}
-        <Dialog 
-          open={deleteDialogOpen} 
-          onClose={() => setDeleteDialogOpen(false)}
-          TransitionComponent={Zoom}
-          maxWidth="sm"
-          fullWidth
-          PaperProps={{
-            sx: {
-              borderRadius: 16,
-              bgcolor: theme.palette.background.paper,
-              border: `1px solid ${theme.palette.divider}`,
-              boxShadow: theme.shadows[10],
-            }
-          }}
-        >
-          <DialogTitle sx={{ pb: 1 }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-              <Box
-                sx={{
-                  width: 40,
-                  height: 40,
-                  borderRadius: '12px',
-                  bgcolor: alpha(theme.palette.error.main, 0.1),
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  border: `1px solid ${alpha(theme.palette.error.main, 0.2)}`,
-                }}
-              >
-                <DeleteIcon sx={{ color: theme.palette.error.main }} />
-              </Box>
-              <Box>
-                <Typography variant="h6" sx={{ color: theme.palette.text.primary, fontWeight: 600 }}>
-                  Удалить аватар
-                </Typography>
-                <Typography variant="body2" sx={{ color: theme.palette.text.secondary }}>
-                  Вы уверены, что хотите удалить фото профиля?
-                </Typography>
-              </Box>
-            </Box>
-          </DialogTitle>
-          
+        <Dialog open={deleteDialogOpen} onClose={() => setDeleteDialogOpen(false)}>
+          <DialogTitle>Удалить аватар?</DialogTitle>
           <DialogContent>
-            <Alert 
-              type="warning" 
-              message="После удаления будет отображаться аватар с инициалами"
-            />
+            <Typography>Вы уверены, что хотите удалить аватар?</Typography>
           </DialogContent>
-          
-          <DialogActions sx={{ p: 2, borderTop: `1px solid ${theme.palette.divider}`, gap: 1 }}>
-            <Button 
-              onClick={() => setDeleteDialogOpen(false)}
-              disabled={isDeleting}
-              sx={{
-                color: theme.palette.text.secondary,
-                borderRadius: '10px',
-                textTransform: 'none',
-                '&:hover': {
-                  bgcolor: alpha(theme.palette.text.secondary, 0.1)
-                }
-              }}
-            >
-              Отмена
-            </Button>
-            <Button 
-              onClick={handleDeleteAvatar}
-              variant="contained"
-              disabled={isDeleting}
-              startIcon={isDeleting ? <CircularProgress size={18} /> : null}
-              sx={{
-                borderRadius: '10px',
-                textTransform: 'none',
-                bgcolor: theme.palette.error.main,
-                color: theme.palette.error.contrastText,
-                px: 3,
-                '&:hover': {
-                  bgcolor: theme.palette.error.dark
-                },
-                '&:disabled': {
-                  bgcolor: alpha(theme.palette.error.main, 0.5)
-                }
-              }}
-            >
-              {isDeleting ? 'Удаление...' : 'Удалить'}
+          <DialogActions>
+            <Button onClick={() => setDeleteDialogOpen(false)}>Отмена</Button>
+            <Button onClick={handleDeleteAvatar} color="error" disabled={isDeleting}>
+              {isDeleting ? <CircularProgress size={24} /> : 'Удалить'}
             </Button>
           </DialogActions>
         </Dialog>
@@ -872,7 +889,6 @@ const ProfileView: React.FC = () => {
                 justifyContent: 'center',
                 bgcolor: alpha(theme.palette.primary.main, 0.1),
                 borderRadius: '10px',
-                border: `1px solid ${alpha(theme.palette.primary.main, 0.2)}`,
               }}
             >
               <FlashOnIcon sx={{ color: theme.palette.primary.main, fontSize: 18 }} />
@@ -887,8 +903,8 @@ const ProfileView: React.FC = () => {
               <ActionButton
                 fullWidth
                 variant="outlined"
-                startIcon={<EditIcon sx={{ color: theme.palette.primary.main }} />}
-                endIcon={<ChevronRightIcon sx={{ fontSize: 18, color: theme.palette.text.secondary }} />}
+                startIcon={<EditIcon />}
+                endIcon={<ChevronRightIcon />}
                 onClick={() => navigate('/profile/edit')}
               >
                 Редактировать
@@ -898,8 +914,8 @@ const ProfileView: React.FC = () => {
               <ActionButton
                 fullWidth
                 variant="outlined"
-                startIcon={<SecurityIcon sx={{ color: theme.palette.primary.main }} />}
-                endIcon={<ChevronRightIcon sx={{ fontSize: 18, color: theme.palette.text.secondary }} />}
+                startIcon={<SecurityIcon />}
+                endIcon={<ChevronRightIcon />}
                 onClick={() => navigate('/profile/security')}
               >
                 Безопасность
@@ -909,8 +925,8 @@ const ProfileView: React.FC = () => {
               <ActionButton
                 fullWidth
                 variant="outlined"
-                startIcon={<PaymentIcon sx={{ color: theme.palette.primary.main }} />}
-                endIcon={<ChevronRightIcon sx={{ fontSize: 18, color: theme.palette.text.secondary }} />}
+                startIcon={<PaymentIcon />}
+                endIcon={<ChevronRightIcon />}
                 onClick={() => navigate('/profile/subscription')}
               >
                 Подписка

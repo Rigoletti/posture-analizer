@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Box,
   Typography,
@@ -26,7 +26,8 @@ import {
   Fade,
   Zoom,
   Container,
-  Snackbar
+  Snackbar,
+  IconButton
 } from '@mui/material';
 import {
   CheckCircle as CheckCircleIcon,
@@ -35,29 +36,33 @@ import {
   Warning as WarningIcon,
   Info as InfoIcon,
   Payment as PaymentIcon,
-  History as HistoryIcon,
   CreditCard as CreditCardIcon,
   AccountBalance as AccountBalanceIcon,
   PhoneAndroid as PhoneAndroidIcon,
   Star as StarIcon,
   Storefront as StorefrontIcon,
   AccessTime as AccessTimeIcon,
-  Verified as VerifiedIcon
+  Verified as VerifiedIcon,
+  Diamond as DiamondIcon,
+  Refresh as RefreshIcon
 } from '@mui/icons-material';
 import { motion } from 'framer-motion';
 import { subscriptionApi } from '../../api/subscription';
 import { useAuthStore } from '../../store/auth';
 
+interface Plan {
+  id: string;
+  name: string;
+  price: number;
+  description: string;
+  features: string[];
+}
+
 interface SubscriptionData {
   subscription: any;
-  availablePlans: Array<{
-    id: string;
-    name: string;
-    price: number;
-    description: string;
-    features: string[];
-  }>;
+  availablePlans: Plan[];
   hasActiveSubscription: boolean;
+  currentPlan?: string;
 }
 
 const SubscriptionInfo: React.FC = () => {
@@ -69,33 +74,125 @@ const SubscriptionInfo: React.FC = () => {
   const [processingPlan, setProcessingPlan] = useState<string | null>(null);
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
-  const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity: 'success' | 'error' }>({
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity: 'success' | 'error' | 'info' | 'warning' }>({
     open: false,
     message: '',
     severity: 'success'
   });
 
-  useEffect(() => {
-    loadSubscriptionData();
-  }, []);
+  // Функция для проверки и синхронизации статуса подписки
+  const checkAndSyncSubscriptionStatus = useCallback(async () => {
+    try {
+      console.log('Checking and syncing subscription status...');
+      
+      // Получаем текущую подписку
+      const response = await subscriptionApi.getMySubscription();
+      const sub = response.data?.subscription;
+      
+      console.log('Current subscription status:', sub?.status);
+      console.log('User hasPremiumAccess:', hasPremiumAccess());
+      console.log('User subscriptionEndsAt:', user?.subscriptionEndsAt);
+      
+      // Если статус pending но есть дата окончания или есть доступ у пользователя
+      if (sub?.status === 'pending') {
+        // Проверяем, есть ли активный доступ у пользователя
+        const userHasAccess = hasPremiumAccess();
+        const hasEndDate = user?.subscriptionEndsAt && new Date(user.subscriptionEndsAt) > new Date();
+        
+        if (userHasAccess && hasEndDate) {
+          console.log('User has active access but subscription status is pending - forcing refresh');
+          // Принудительно обновляем данные
+          await refreshUserData();
+          // Повторно загружаем подписку
+          const freshResponse = await subscriptionApi.getMySubscription();
+          setSubscriptionData(freshResponse.data);
+          return;
+        }
+        
+        // Если нет доступа у пользователя, но есть paymentId - проверяем статус платежа
+        if (sub?.paymentId || sub?.yookassaPaymentId) {
+          const paymentId = sub?.yookassaPaymentId || sub?.paymentId;
+          if (paymentId) {
+            console.log('Checking payment status for:', paymentId);
+            try {
+              const paymentStatus = await subscriptionApi.checkPaymentStatus(paymentId);
+              console.log('Payment status:', paymentStatus);
+              
+              if (paymentStatus.data?.subscriptionStatus === 'active') {
+                console.log('Payment is successful, refreshing data');
+                await refreshUserData();
+                const finalResponse = await subscriptionApi.getMySubscription();
+                setSubscriptionData(finalResponse.data);
+                return;
+              }
+            } catch (paymentError) {
+              console.error('Error checking payment:', paymentError);
+            }
+          }
+        }
+      }
+      
+      setSubscriptionData(response.data);
+    } catch (error) {
+      console.error('Error checking subscription status:', error);
+    }
+  }, [hasPremiumAccess, refreshUserData, user?.subscriptionEndsAt]);
 
-  const loadSubscriptionData = async () => {
+  const loadSubscriptionData = useCallback(async () => {
     try {
       setIsLoading(true);
       setError(null);
-      const response = await subscriptionApi.getMySubscription();
-      console.log('Subscription data loaded:', response.data);
-      setSubscriptionData(response.data);
       
-      // Обновляем данные пользователя, чтобы синхронизировать статус подписки
+      // Сначала проверяем и синхронизируем статус
+      await checkAndSyncSubscriptionStatus();
+      
+      // Затем обновляем пользователя
       await refreshUserData();
+      
     } catch (error: any) {
       console.error('Error loading subscription:', error);
       setError(error.message || 'Ошибка при загрузке данных подписки');
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [checkAndSyncSubscriptionStatus, refreshUserData]);
+
+  const handleRefresh = useCallback(async () => {
+    try {
+      setIsRefreshing(true);
+      setError(null);
+      
+      // Принудительная проверка статуса
+      await checkAndSyncSubscriptionStatus();
+      await refreshUserData();
+      
+      setSnackbar({
+        open: true,
+        message: 'Данные успешно обновлены',
+        severity: 'success'
+      });
+    } catch (error: any) {
+      console.error('Refresh error:', error);
+      setSnackbar({
+        open: true,
+        message: 'Ошибка при обновлении данных',
+        severity: 'error'
+      });
+    } finally {
+      setIsRefreshing(false);
+    }
+  }, [checkAndSyncSubscriptionStatus, refreshUserData]);
+
+  useEffect(() => {
+    const forceLoad = async () => {
+      setIsLoading(true);
+      await checkAndSyncSubscriptionStatus();
+      await refreshUserData();
+      setIsLoading(false);
+    };
+    forceLoad();
+  }, [checkAndSyncSubscriptionStatus, refreshUserData]);
 
   const handleSubscribe = async (planId: string) => {
     try {
@@ -118,60 +215,75 @@ const SubscriptionInfo: React.FC = () => {
     }
   };
 
-  const handleCancelSubscription = async () => {
-    try {
-      setIsCancelling(true);
-      setError(null);
+const handleCancelSubscription = useCallback(async () => {
+  try {
+    setIsCancelling(true);
+    setError(null);
+    
+    console.log('Cancelling subscription...');
+    const response = await subscriptionApi.cancelSubscription();
+    console.log('Cancel response:', response);
+    
+    if (response.success) {
+      setCancelDialogOpen(false);
       
-      console.log('Cancelling subscription...');
-      const response = await subscriptionApi.cancelSubscription();
-      console.log('Cancel response:', response);
+      let message = response.message || 'Подписка успешно отменена';
       
-      if (response.success) {
-        // Закрываем диалог
-        setCancelDialogOpen(false);
-        
-        // Показываем сообщение об успехе через Snackbar
-        setSnackbar({
-          open: true,
-          message: 'Подписка успешно отменена',
-          severity: 'success'
-        });
-        
-        // Перезагружаем данные подписки
-        await loadSubscriptionData();
-        
-        // Обновляем данные пользователя
-        await refreshUserData();
-        
-        // Принудительно обновляем состояние, чтобы скрыть кнопку отмены
-        // Делаем дополнительную проверку через 1 секунду
-        setTimeout(async () => {
-          await refreshUserData();
-          const currentUser = useAuthStore.getState().user;
-          console.log('Updated user after cancellation:', currentUser);
-        }, 1000);
-        
-      } else {
-        setSnackbar({
-          open: true,
-          message: response.error || 'Не удалось отменить подписку',
-          severity: 'error'
-        });
+      if (response.alreadyCancelled) {
+        message = response.message || 'Подписка уже отменена или неактивна';
       }
-    } catch (error: any) {
-      console.error('Cancel subscription error:', error);
+      
       setSnackbar({
         open: true,
-        message: error.message || 'Ошибка при отмене подписки',
+        message: message,
+        severity: response.alreadyCancelled ? 'info' : 'success'
+      });
+      
+      // Принудительно обновляем данные после отмены
+      await refreshUserData();
+      await checkAndSyncSubscriptionStatus();
+      
+      // Дополнительная проверка через 1 секунду
+      setTimeout(async () => {
+        await refreshUserData();
+        await checkAndSyncSubscriptionStatus();
+        const currentUser = useAuthStore.getState().user;
+        console.log('Updated user after cancellation:', currentUser);
+      }, 1000);
+      
+    } else {
+      setSnackbar({
+        open: true,
+        message: response.error || 'Не удалось отменить подписку',
         severity: 'error'
       });
-    } finally {
-      setIsCancelling(false);
     }
-  };
+  } catch (error: any) {
+    console.error('Cancel subscription error:', error);
+    
+    const errorMessage = error.response?.data?.error || error.message;
+    
+    if (errorMessage?.includes('неактивна') || errorMessage?.includes('истекла')) {
+      setSnackbar({
+        open: true,
+        message: 'Подписка уже неактивна или истекла. Обновляем данные...',
+        severity: 'info'
+      });
+      await refreshUserData();
+      await checkAndSyncSubscriptionStatus();
+    } else {
+      setSnackbar({
+        open: true,
+        message: errorMessage || 'Ошибка при отмене подписки',
+        severity: 'error'
+      });
+    }
+  } finally {
+    setIsCancelling(false);
+  }
+}, [checkAndSyncSubscriptionStatus, refreshUserData]);
 
-  const formatDate = (dateString: string) => {
+  const formatDate = (dateString: string | null | undefined) => {
     if (!dateString) return '—';
     return new Date(dateString).toLocaleDateString('ru-RU', {
       day: 'numeric',
@@ -180,7 +292,6 @@ const SubscriptionInfo: React.FC = () => {
     });
   };
 
-  // Функция для проверки, активна ли подписка (по дате)
   const checkIfSubscriptionIsActive = (endDate: string | null | undefined): boolean => {
     if (!endDate) return false;
     const end = new Date(endDate);
@@ -188,54 +299,82 @@ const SubscriptionInfo: React.FC = () => {
     return end > now;
   };
 
-  // Получаем актуальный статус подписки
   const subscription = subscriptionData?.subscription;
   const endDate = subscription?.endDate || user?.subscriptionEndsAt;
-  
-  // Проверяем активность подписки по дате
   const isSubscriptionActiveByDate = checkIfSubscriptionIsActive(endDate);
-  
-  // Проверяем через store (hasPremiumAccess) и дополнительно проверяем дату
   const hasActiveFromStore = hasPremiumAccess();
-  const hasActiveSubscription = hasActiveFromStore && isSubscriptionActiveByDate;
   
-  // Проверяем статус подписки из данных API
+  // Активна если: есть доступ в сторе И дата не истекла, ИЛИ подписка отменена но дата не истекла
+  let hasActiveSubscription = (hasActiveFromStore && isSubscriptionActiveByDate);
+  
+  // Если подписка отменена, но дата не истекла - все еще активна
+  if (subscription?.status === 'cancelled' && isSubscriptionActiveByDate) {
+    hasActiveSubscription = true;
+  }
+  
   const isSubscriptionCancelled = subscription?.status === 'cancelled';
   const isSubscriptionExpired = subscription?.status === 'expired';
+  // Показываем "Ожидание оплаты" только если статус pending И нет активного доступа
+  const isSubscriptionPending = subscription?.status === 'pending' && !hasActiveSubscription;
+  const currentPlanId = subscriptionData?.currentPlan || subscription?.plan;
   
-  // Вычисляем оставшиеся дни (только если подписка активна)
-  const getRemainingDays = (endDate: string | null | undefined): number => {
-    if (!endDate) return 0;
-    const end = new Date(endDate);
+  const getRemainingDays = (date: string | null | undefined): number => {
+    if (!date) return 0;
+    const end = new Date(date);
     const now = new Date();
     if (end <= now) return 0;
     const diff = end.getTime() - now.getTime();
     return Math.ceil(diff / (1000 * 60 * 60 * 24));
   };
   
-  const remainingDays = hasActiveSubscription ? getRemainingDays(endDate) : 0;
-  
-  // Проверяем пробный период
-  const isInTrial = user?.trialEndsAt && new Date(user.trialEndsAt) > new Date();
-  const trialDaysLeft = isInTrial && user?.trialEndsAt 
-    ? Math.ceil((new Date(user.trialEndsAt).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24))
-    : 0;
+  const remainingDays = (hasActiveSubscription && endDate) ? getRemainingDays(endDate) : 0;
 
-  // Премиум план (только один)
-  const premiumPlan = subscriptionData?.availablePlans?.[0] || {
-    id: 'premium',
-    name: 'Премиум',
-    price: 599,
-    description: 'Полный доступ ко всем функциям приложения на 30 дней',
-    features: [
-      'Неограниченное количество сеансов',
-      'Детальная статистика осанки',
-      'Сохранение истории измерений',
-      'Персональные рекомендации',
-      'Расширенная аналитика',
-      'Экспорт данных в PDF',
-      'Приоритетная поддержка'
-    ]
+  // Проверка, можно ли отменить подписку
+  const canCancelSubscription = (): boolean => {
+    if (!hasActiveSubscription) return false;
+    if (isSubscriptionCancelled) return false;
+    if (isSubscriptionExpired) return false;
+    if (remainingDays <= 0) return false;
+    return true;
+  };
+  
+  const plans = subscriptionData?.availablePlans || [
+    {
+      id: 'basic',
+      name: 'Базовый',
+      price: 299,
+      description: 'Базовый доступ к функциям приложения на 30 дней',
+      features: [
+        'До 30 сеансов в месяц',
+        'Базовая статистика осанки',
+        'Сохранение истории измерений (30 дней)',
+        'Основные рекомендации',
+        'Email поддержка'
+      ]
+    },
+    {
+      id: 'premium',
+      name: 'Премиум',
+      price: 599,
+      description: 'Полный доступ ко всем функциям приложения на 30 дней',
+      features: [
+        'Неограниченное количество сеансов',
+        'Детальная статистика осанки',
+        'Сохранение истории измерений',
+        'Персональные рекомендации',
+        'Расширенная аналитика',
+        'Экспорт данных в PDF',
+        'Приоритетная поддержка'
+      ]
+    }
+  ];
+
+  const getPlanIcon = (planId: string) => {
+    return planId === 'premium' ? <DiamondIcon sx={{ fontSize: 60 }} /> : <StarIcon sx={{ fontSize: 60 }} />;
+  };
+
+  const getPlanColor = (planId: string) => {
+    return planId === 'premium' ? theme.palette.warning.main : theme.palette.info.main;
   };
 
   if (isLoading) {
@@ -257,7 +396,6 @@ const SubscriptionInfo: React.FC = () => {
 
   return (
     <Container maxWidth="lg" sx={{ py: 4 }}>
-      {/* Snackbar для уведомлений */}
       <Snackbar
         open={snackbar.open}
         autoHideDuration={6000}
@@ -280,9 +418,14 @@ const SubscriptionInfo: React.FC = () => {
             sx={{ mb: 3 }} 
             onClose={() => setError(null)}
             action={
-              <Button color="inherit" size="small" onClick={loadSubscriptionData}>
-                Повторить
-              </Button>
+              <Box sx={{ display: 'flex', gap: 1 }}>
+                <Button color="inherit" size="small" onClick={handleRefresh} disabled={isRefreshing}>
+                  {isRefreshing ? <CircularProgress size={20} /> : 'Обновить'}
+                </Button>
+                <Button color="inherit" size="small" onClick={loadSubscriptionData}>
+                  Повторить
+                </Button>
+              </Box>
             }
           >
             {error}
@@ -290,9 +433,13 @@ const SubscriptionInfo: React.FC = () => {
         </Zoom>
       )}
 
-      {/* Заголовок */}
       <Fade in={true} timeout={500}>
         <Box sx={{ mb: 5, textAlign: 'center' }}>
+          <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2 }}>
+            <IconButton onClick={handleRefresh} disabled={isRefreshing} sx={{ mr: 1 }}>
+              <RefreshIcon />
+            </IconButton>
+          </Box>
           <Typography 
             variant="h3" 
             gutterBottom 
@@ -304,7 +451,7 @@ const SubscriptionInfo: React.FC = () => {
               mb: 2
             }}
           >
-            Премиум подписка
+            Выберите подписку
           </Typography>
           <Typography variant="h6" sx={{ color: theme.palette.text.secondary, maxWidth: 600, mx: 'auto' }}>
             Получите доступ ко всем функциям приложения для эффективной работы над осанкой
@@ -312,10 +459,10 @@ const SubscriptionInfo: React.FC = () => {
         </Box>
       </Fade>
 
-      {/* Статус подписки */}
-      <Fade in={true} timeout={800}>
-        <Box sx={{ mb: 4 }}>
-          {hasActiveSubscription && remainingDays > 0 && !isSubscriptionCancelled ? (
+      {/* Статус активной подписки */}
+      {hasActiveSubscription && remainingDays > 0 && !isSubscriptionCancelled && (
+        <Fade in={true} timeout={800}>
+          <Box sx={{ mb: 4 }}>
             <Paper 
               elevation={0}
               sx={{ 
@@ -347,14 +494,18 @@ const SubscriptionInfo: React.FC = () => {
                   alignItems: 'center',
                   justifyContent: 'center'
                 }}>
-                  <VerifiedIcon sx={{ color: theme.palette.success.main, fontSize: 48 }} />
+                  {currentPlanId === 'premium' ? (
+                    <DiamondIcon sx={{ color: theme.palette.warning.main, fontSize: 48 }} />
+                  ) : (
+                    <VerifiedIcon sx={{ color: theme.palette.success.main, fontSize: 48 }} />
+                  )}
                 </Box>
                 <Box sx={{ flex: 1 }}>
                   <Typography variant="h4" gutterBottom sx={{ color: theme.palette.success.main, fontWeight: 700 }}>
-                    Премиум подписка активна
+                    {currentPlanId === 'premium' ? 'Премиум' : 'Базовый'} подписка активна
                   </Typography>
                   <Typography variant="body1" sx={{ color: theme.palette.text.primary, mb: 2 }}>
-                    Вам доступны все функции приложения
+                    Вам доступны все функции выбранного тарифа
                   </Typography>
                   
                   <Grid container spacing={2} sx={{ mb: 2 }}>
@@ -394,41 +545,39 @@ const SubscriptionInfo: React.FC = () => {
                     </Box>
                   )}
 
-                  {subscription?.autoRenew && (
-                    <Chip 
-                      label="Автопродление включено" 
-                      size="small" 
-                      color="success" 
+                  {canCancelSubscription() && (
+                    <Button
                       variant="outlined"
-                      icon={<CheckCircleIcon />}
-                      sx={{ mt: 1 }}
-                    />
+                      color="error"
+                      size="large"
+                      onClick={() => setCancelDialogOpen(true)}
+                      sx={{ mt: 3 }}
+                      startIcon={<CancelIcon />}
+                    >
+                      Отменить подписку
+                    </Button>
                   )}
-
-                  <Button
-                    variant="outlined"
-                    color="error"
-                    size="large"
-                    onClick={() => setCancelDialogOpen(true)}
-                    sx={{ mt: 3 }}
-                    startIcon={<CancelIcon />}
-                  >
-                    Отменить подписку
-                  </Button>
                 </Box>
               </Box>
             </Paper>
-          ) : isInTrial && trialDaysLeft > 0 ? (
+          </Box>
+        </Fade>
+      )}
+
+      {/* Отмененная, но еще действующая подписка */}
+      {isSubscriptionCancelled && remainingDays > 0 && (
+        <Fade in={true} timeout={800}>
+          <Box sx={{ mb: 4 }}>
             <Paper 
               elevation={0}
               sx={{ 
-                p: 4,
+                p: 4, 
                 background: `linear-gradient(135deg, ${alpha(theme.palette.warning.main, 0.1)} 0%, ${alpha(theme.palette.warning.dark, 0.05)} 100%)`,
                 border: `1px solid ${alpha(theme.palette.warning.main, 0.2)}`,
-                borderRadius: 4
+                borderRadius: 4,
               }}
             >
-              <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 3, flexWrap: 'wrap' }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 3, flexWrap: 'wrap' }}>
                 <Box sx={{ 
                   p: 2, 
                   borderRadius: 3, 
@@ -437,212 +586,225 @@ const SubscriptionInfo: React.FC = () => {
                   alignItems: 'center',
                   justifyContent: 'center'
                 }}>
-                  <TimerIcon sx={{ color: theme.palette.warning.main, fontSize: 48 }} />
+                  <WarningIcon sx={{ color: theme.palette.warning.main, fontSize: 48 }} />
                 </Box>
                 <Box sx={{ flex: 1 }}>
                   <Typography variant="h4" gutterBottom sx={{ color: theme.palette.warning.main, fontWeight: 700 }}>
-                    Пробный период
+                    Подписка отменена
                   </Typography>
-                  <Typography variant="body1" sx={{ color: theme.palette.text.primary, mb: 2 }}>
-                    Вы используете пробный период приложения
+                  <Typography variant="body1" sx={{ color: theme.palette.text.primary, mb: 1 }}>
+                    Доступ к платным функциям сохранится до {formatDate(endDate)}
                   </Typography>
-                  
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
-                    <LinearProgress 
-                      variant="determinate" 
-                      value={((7 - trialDaysLeft) / 7) * 100} 
-                      sx={{ 
-                        flex: 1,
-                        height: 8,
-                        borderRadius: 4,
-                        backgroundColor: alpha(theme.palette.warning.main, 0.1),
-                        '& .MuiLinearProgress-bar': {
-                          backgroundColor: theme.palette.warning.main
-                        }
-                      }}
-                    />
-                    <Typography variant="body2" sx={{ color: theme.palette.warning.main, fontWeight: 500 }}>
-                      Осталось {trialDaysLeft} дн.
-                    </Typography>
-                  </Box>
-
                   <Typography variant="body2" sx={{ color: theme.palette.text.secondary }}>
-                    После окончания пробного периода оформите подписку для продолжения использования
+                    Осталось дней: <strong>{remainingDays}</strong>
                   </Typography>
-                  
+                  <Chip 
+                    label="Автопродление отключено" 
+                    size="small" 
+                    color="warning" 
+                    variant="outlined"
+                    icon={<InfoIcon />}
+                    sx={{ mt: 2 }}
+                  />
+                </Box>
+              </Box>
+            </Paper>
+          </Box>
+        </Fade>
+      )}
+
+      {/* Ожидание подтверждения платежа - показываем только если нет активной подписки */}
+      {isSubscriptionPending && !hasActiveSubscription && (
+        <Fade in={true} timeout={800}>
+          <Box sx={{ mb: 4 }}>
+            <Paper 
+              elevation={0}
+              sx={{ 
+                p: 4, 
+                background: `linear-gradient(135deg, ${alpha(theme.palette.info.main, 0.1)} 0%, ${alpha(theme.palette.info.dark, 0.05)} 100%)`,
+                border: `1px solid ${alpha(theme.palette.info.main, 0.2)}`,
+                borderRadius: 4,
+              }}
+            >
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 3, flexWrap: 'wrap' }}>
+                <CircularProgress size={48} sx={{ color: theme.palette.info.main }} />
+                <Box sx={{ flex: 1 }}>
+                  <Typography variant="h4" gutterBottom sx={{ color: theme.palette.info.main, fontWeight: 700 }}>
+                    Ожидание оплаты
+                  </Typography>
+                  <Typography variant="body1" sx={{ color: theme.palette.text.primary }}>
+                    Ваш платеж обрабатывается. После подтверждения подписка активируется автоматически.
+                  </Typography>
                   <Button
-                    variant="contained"
-                    color="primary"
-                    size="large"
-                    onClick={() => handleSubscribe(premiumPlan.id)}
-                    disabled={!!processingPlan}
-                    sx={{ mt: 3 }}
+                    variant="outlined"
+                    size="small"
+                    onClick={handleRefresh}
+                    disabled={isRefreshing}
+                    sx={{ mt: 2 }}
+                    startIcon={<RefreshIcon />}
                   >
-                    {processingPlan === premiumPlan.id ? (
-                      <CircularProgress size={24} sx={{ color: 'white' }} />
-                    ) : (
-                      'Оформить подписку'
-                    )}
+                    {isRefreshing ? <CircularProgress size={20} /> : 'Проверить статус'}
                   </Button>
                 </Box>
               </Box>
             </Paper>
-          ) : (
-            <Paper 
-              elevation={0}
-              sx={{ 
-                p: 4,
-                background: `linear-gradient(135deg, ${alpha(theme.palette.info.main, 0.1)} 0%, ${alpha(theme.palette.info.dark, 0.05)} 100%)`,
-                border: `1px solid ${alpha(theme.palette.info.main, 0.2)}`,
-                borderRadius: 4,
-                textAlign: 'center'
-              }}
-            >
-              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 2, mb: 2, flexWrap: 'wrap' }}>
-                <InfoIcon sx={{ color: theme.palette.info.main, fontSize: 48 }} />
-                <Typography variant="h4" sx={{ color: theme.palette.info.main, fontWeight: 700 }}>
-                  Нет активной подписки
-                </Typography>
-              </Box>
-              <Typography variant="body1" sx={{ color: theme.palette.text.secondary, maxWidth: 500, mx: 'auto', mb: 3 }}>
-                Оформите премиум подписку для доступа ко всем функциям приложения
-              </Typography>
-              
-              <Button
-                variant="contained"
-                color="primary"
-                size="large"
-                onClick={() => handleSubscribe(premiumPlan.id)}
-                disabled={!!processingPlan}
-                sx={{
-                  background: `linear-gradient(135deg, ${theme.palette.primary.main} 0%, ${theme.palette.secondary.main} 100%)`,
-                }}
-              >
-                {processingPlan === premiumPlan.id ? (
-                  <CircularProgress size={24} sx={{ color: 'white' }} />
-                ) : (
-                  'Оформить подписку за 599 ₽'
-                )}
-              </Button>
-            </Paper>
-          )}
-        </Box>
-      </Fade>
+          </Box>
+        </Fade>
+      )}
 
-      {/* Карточка тарифа - только Premium */}
+      {/* Карточки тарифов */}
       <Fade in={true} timeout={1000}>
-        <Box>
-          <Typography variant="h5" sx={{ mb: 3, fontWeight: 600, textAlign: 'center' }}>
-            О тарифе
-          </Typography>
-          
-          <Grid container justifyContent="center">
-            <Grid item xs={12} md={8} lg={6}>
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.5 }}
-              >
-                <Card 
-                  sx={{ 
-                    height: '100%',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    position: 'relative',
-                    transition: 'all 0.3s',
-                    borderRadius: 4,
-                    overflow: 'hidden',
-                    border: hasActiveSubscription && remainingDays > 0 && !isSubscriptionCancelled
-                      ? `2px solid ${theme.palette.success.main}` 
-                      : `1px solid ${theme.palette.divider}`,
-                  }}
+        <Grid container spacing={4} justifyContent="center">
+          {plans.map((plan, index) => {
+            const isCurrentPlan = hasActiveSubscription && currentPlanId === plan.id && !isSubscriptionCancelled;
+            const isDisabled = (hasActiveSubscription && !isSubscriptionCancelled) || isSubscriptionPending;
+            
+            return (
+              <Grid item xs={12} md={6} key={plan.id}>
+                <motion.div
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.5, delay: index * 0.1 }}
                 >
-                  <CardContent sx={{ flexGrow: 1, p: 4 }}>
-                    <Box sx={{ textAlign: 'center', mb: 3 }}>
-                      <StarIcon sx={{ fontSize: 60, color: theme.palette.warning.main, mb: 2 }} />
-                      <Typography variant="h4" gutterBottom sx={{ fontWeight: 700 }}>
-                        {premiumPlan.name}
-                      </Typography>
-                      <Typography variant="body2" sx={{ color: theme.palette.text.secondary, mb: 2 }}>
-                        {premiumPlan.description}
-                      </Typography>
-                    </Box>
-                    
-                    <Box sx={{ textAlign: 'center', my: 3 }}>
-                      <Typography variant="h2" component="span" sx={{ fontWeight: 800 }}>
-                        {premiumPlan.price}
-                      </Typography>
-                      <Typography variant="h5" component="span" sx={{ color: theme.palette.text.secondary }}>
-                        ₽
-                      </Typography>
-                      <Typography variant="body2" sx={{ color: theme.palette.text.secondary }}>
-                        в месяц
-                      </Typography>
-                    </Box>
-
-                    <Divider sx={{ my: 3 }} />
-
-                    <List dense>
-                      {premiumPlan.features.map((feature, index) => (
-                        <ListItem key={index}>
-                          <ListItemIcon>
-                            <CheckCircleIcon color="success" fontSize="small" />
-                          </ListItemIcon>
-                          <ListItemText primary={feature} />
-                        </ListItem>
-                      ))}
-                    </List>
-
-                    <Box sx={{ mt: 3, p: 2, bgcolor: alpha(theme.palette.info.main, 0.05), borderRadius: 2 }}>
-                      <Typography variant="body2" sx={{ color: theme.palette.text.secondary, textAlign: 'center' }}>
-                        🔒 Безопасная оплата через ЮKassa
-                      </Typography>
-                    </Box>
-                  </CardContent>
-
-                  <CardActions sx={{ p: 4, pt: 0 }}>
-                    {hasActiveSubscription && remainingDays > 0 && !isSubscriptionCancelled ? (
-                      <Button 
-                        fullWidth 
-                        variant="outlined" 
-                        disabled
-                        size="large"
-                        startIcon={<CheckCircleIcon />}
-                        sx={{ py: 1.5 }}
-                      >
-                        Текущий тариф
-                      </Button>
-                    ) : (
-                      <Button 
-                        fullWidth 
-                        variant="contained" 
-                        size="large"
-                        onClick={() => handleSubscribe(premiumPlan.id)}
-                        disabled={!!processingPlan}
-                        sx={{
-                          py: 1.5,
-                          background: `linear-gradient(135deg, ${theme.palette.primary.main} 0%, ${theme.palette.secondary.main} 100%)`,
-                          '&:hover': {
-                            background: `linear-gradient(135deg, ${theme.palette.primary.dark} 0%, ${theme.palette.secondary.dark} 100%)`
-                          }
-                        }}
-                      >
-                        {processingPlan === premiumPlan.id ? (
-                          <>
-                            <CircularProgress size={24} sx={{ mr: 1, color: 'white' }} />
-                            Обработка...
-                          </>
-                        ) : (
-                          'Оформить подписку'
-                        )}
-                      </Button>
+                  <Card 
+                    sx={{ 
+                      height: '100%',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      position: 'relative',
+                      transition: 'all 0.3s',
+                      borderRadius: 4,
+                      overflow: 'hidden',
+                      border: isCurrentPlan
+                        ? `2px solid ${theme.palette.success.main}` 
+                        : `1px solid ${theme.palette.divider}`,
+                      '&:hover': {
+                        transform: 'translateY(-8px)',
+                        boxShadow: theme.shadows[8]
+                      }
+                    }}
+                  >
+                    {plan.id === 'premium' && !isCurrentPlan && (
+                      <Box sx={{
+                        position: 'absolute',
+                        top: 20,
+                        right: -35,
+                        transform: 'rotate(45deg)',
+                        backgroundColor: theme.palette.warning.main,
+                        color: 'white',
+                        px: 4,
+                        py: 0.5,
+                        fontSize: '0.75rem',
+                        fontWeight: 600,
+                        zIndex: 1
+                      }}>
+                        ПОПУЛЯРНЫЙ
+                      </Box>
                     )}
-                  </CardActions>
-                </Card>
-              </motion.div>
-            </Grid>
-          </Grid>
-        </Box>
+                    
+                    <CardContent sx={{ flexGrow: 1, p: 4 }}>
+                      <Box sx={{ textAlign: 'center', mb: 3 }}>
+                        <Box sx={{ color: getPlanColor(plan.id) }}>
+                          {getPlanIcon(plan.id)}
+                        </Box>
+                        <Typography variant="h4" gutterBottom sx={{ fontWeight: 700, mt: 2 }}>
+                          {plan.name}
+                        </Typography>
+                        <Typography variant="body2" sx={{ color: theme.palette.text.secondary, mb: 2 }}>
+                          {plan.description}
+                        </Typography>
+                      </Box>
+                      
+                      <Box sx={{ textAlign: 'center', my: 3 }}>
+                        <Typography variant="h2" component="span" sx={{ fontWeight: 800, color: getPlanColor(plan.id) }}>
+                          {plan.price}
+                        </Typography>
+                        <Typography variant="h5" component="span" sx={{ color: theme.palette.text.secondary }}>
+                          ₽
+                        </Typography>
+                        <Typography variant="body2" sx={{ color: theme.palette.text.secondary }}>
+                          /мес
+                        </Typography>
+                      </Box>
+
+                      <Divider sx={{ my: 3 }} />
+
+                      <List dense>
+                        {plan.features.map((feature, idx) => (
+                          <ListItem key={idx}>
+                            <ListItemIcon>
+                              <CheckCircleIcon sx={{ color: getPlanColor(plan.id) }} fontSize="small" />
+                            </ListItemIcon>
+                            <ListItemText primary={feature} />
+                          </ListItem>
+                        ))}
+                      </List>
+
+                      <Box sx={{ mt: 3, p: 2, bgcolor: alpha(theme.palette.info.main, 0.05), borderRadius: 2 }}>
+                        <Typography variant="body2" sx={{ color: theme.palette.text.secondary, textAlign: 'center' }}>
+                          🔒 Безопасная оплата через ЮKassa
+                        </Typography>
+                      </Box>
+                    </CardContent>
+
+                    <CardActions sx={{ p: 4, pt: 0 }}>
+                      {isCurrentPlan ? (
+                        <Button 
+                          fullWidth 
+                          variant="outlined" 
+                          disabled
+                          size="large"
+                          startIcon={<CheckCircleIcon />}
+                          sx={{ py: 1.5 }}
+                        >
+                          Текущий тариф
+                        </Button>
+                      ) : isDisabled ? (
+                        <Button 
+                          fullWidth 
+                          variant="outlined" 
+                          disabled
+                          size="large"
+                          sx={{ py: 1.5 }}
+                        >
+                          {hasActiveSubscription ? 'Подписка уже активна' : 'Ожидание оплаты'}
+                        </Button>
+                      ) : (
+                        <Button 
+                          fullWidth 
+                          variant="contained" 
+                          size="large"
+                          onClick={() => handleSubscribe(plan.id)}
+                          disabled={!!processingPlan}
+                          sx={{
+                            py: 1.5,
+                            background: plan.id === 'premium'
+                              ? `linear-gradient(135deg, ${theme.palette.warning.main} 0%, ${theme.palette.error.main} 100%)`
+                              : `linear-gradient(135deg, ${theme.palette.primary.main} 0%, ${theme.palette.secondary.main} 100%)`,
+                            '&:hover': {
+                              background: plan.id === 'premium'
+                                ? `linear-gradient(135deg, ${theme.palette.warning.dark} 0%, ${theme.palette.error.dark} 100%)`
+                                : `linear-gradient(135deg, ${theme.palette.primary.dark} 0%, ${theme.palette.secondary.dark} 100%)`
+                            }
+                          }}
+                        >
+                          {processingPlan === plan.id ? (
+                            <>
+                              <CircularProgress size={24} sx={{ mr: 1, color: 'white' }} />
+                              Обработка...
+                            </>
+                          ) : (
+                            `Оформить за ${plan.price} ₽`
+                          )}
+                        </Button>
+                      )}
+                    </CardActions>
+                  </Card>
+                </motion.div>
+              </Grid>
+            );
+          })}
+        </Grid>
       </Fade>
 
       {/* Способы оплаты */}
@@ -692,13 +854,13 @@ const SubscriptionInfo: React.FC = () => {
         </DialogTitle>
         <DialogContent>
           <Alert severity="warning" sx={{ mb: 3 }}>
-            После отмены подписки вы потеряете доступ к премиум-функциям
+            После отмены подписки вы потеряете доступ к платным функциям
           </Alert>
           <Typography variant="body1" paragraph>
             Вы уверены, что хотите отменить подписку?
           </Typography>
           <Typography variant="body2" sx={{ color: theme.palette.text.secondary }}>
-            Подписка будет отменена, но доступ к функциям сохранится до конца оплаченного периода.
+            Подписка будет отменена, но доступ к функциям сохранится до конца оплаченного периода ({formatDate(endDate)}).
           </Typography>
         </DialogContent>
         <DialogActions sx={{ p: 3, pt: 0, gap: 2 }}>

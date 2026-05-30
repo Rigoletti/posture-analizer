@@ -1,107 +1,73 @@
-const API_URL = 'http://localhost:5000/api';
+import axios from 'axios';
+
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+
+const api = axios.create({
+  baseURL: API_URL,
+  withCredentials: true,
+  headers: {
+    'Content-Type': 'application/json'
+  }
+});
 
 export const subscriptionApi = {
   // Создание платежа
   createPayment: async (plan: string, returnUrl?: string) => {
     try {
-      const response = await fetch(`${API_URL}/subscription/create-payment`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ 
-          plan, 
-          returnUrl: returnUrl || window.location.origin + '/profile/subscription/success'
-        }),
-        credentials: 'include'
+      const response = await api.post('/subscription/create-payment', {
+        plan,
+        returnUrl
       });
-      
-      const data = await response.json();
-      
-      if (!response.ok) {
-        throw new Error(data.error || 'Ошибка при создании платежа');
-      }
-      
-      return data;
+      return response.data;
     } catch (error: any) {
-      console.error('Error creating payment:', error);
-      throw error;
+      console.error('Create payment error:', error);
+      throw error.response?.data || error;
     }
   },
 
   // Проверка статуса платежа
   checkPaymentStatus: async (paymentId: string) => {
     try {
-      console.log('Checking payment status for:', paymentId);
-      const response = await fetch(`${API_URL}/subscription/payment-status/${paymentId}`, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        credentials: 'include'
-      });
-      
-      const data = await response.json();
-      console.log('Payment status response:', data);
-      
-      if (!response.ok) {
-        throw new Error(data.error || 'Ошибка при проверке статуса платежа');
-      }
-      
-      return data;
+      const response = await api.get(`/subscription/payment-status/${paymentId}`);
+      return response.data;
     } catch (error: any) {
-      console.error('Error checking payment status:', error);
-      throw error;
+      console.error('Check payment status error:', error);
+      throw error.response?.data || error;
     }
   },
 
-  // Получение информации о подписке текущего пользователя
+  // Получение информации о подписке
   getMySubscription: async () => {
     try {
-      const response = await fetch(`${API_URL}/subscription/my-subscription`, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        credentials: 'include'
-      });
-      
-      const data = await response.json();
-      
-      if (!response.ok) {
-        throw new Error(data.error || 'Ошибка при получении информации о подписке');
-      }
-      
-      return data;
+      const response = await api.get('/subscription/my-subscription');
+      return response.data;
     } catch (error: any) {
-      console.error('Error getting subscription:', error);
-      throw error;
+      console.error('Get subscription error:', error);
+      throw error.response?.data || error;
     }
   },
 
   // Отмена подписки
   cancelSubscription: async () => {
     try {
-      console.log('Calling cancel subscription API...');
-      const response = await fetch(`${API_URL}/subscription/cancel`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        credentials: 'include'
-      });
-      
-      const data = await response.json();
-      console.log('Cancel subscription response:', data);
-      
-      if (!response.ok) {
-        throw new Error(data.error || 'Ошибка при отмене подписки');
-      }
-      
-      return data;
+      const response = await api.post('/subscription/cancel');
+      return response.data;
     } catch (error: any) {
-      console.error('Error cancelling subscription:', error);
-      throw error;
+      console.error('Cancel subscription error:', error);
+      throw error.response?.data || error;
     }
+  },
+
+  // Синхронизация подписки
+syncSubscription: async () => {
+  try {
+    const response = await api.post('/subscription/sync');
+    return response.data;
+  } catch (error: any) {
+    console.error('Sync subscription error:', error);
+    throw error.response?.data || error;
   }
+}
 };
+
+export default subscriptionApi;

@@ -8,22 +8,25 @@ const subscriptionSchema = new mongoose.Schema({
     unique: true
   },
   
-  // Только один тип подписки - Premium
   plan: {
     type: String,
-    enum: ['premium'],
-    default: 'premium'
+    enum: ['basic', 'premium'],
+    default: 'basic'
   },
   
-  // Статус подписки - добавляем 'pending'
   status: {
     type: String,
     enum: ['active', 'expired', 'cancelled', 'pending'],
     default: 'pending'
   },
   
-  // Информация о платеже в ЮKassa
   paymentId: {
+    type: String,
+    sparse: true,
+    default: null
+  },
+  
+  yookassaPaymentId: {
     type: String,
     sparse: true,
     default: null
@@ -31,7 +34,6 @@ const subscriptionSchema = new mongoose.Schema({
   
   paymentMethod: {
     type: String,
-    enum: ['bank_card', 'yoo_money', 'sberbank', 'tinkoff', 'cash', 'mobile_balance', 'qiwi', 'apple_pay', 'google_pay', null],
     default: null
   },
   
@@ -40,7 +42,6 @@ const subscriptionSchema = new mongoose.Schema({
     default: {}
   },
   
-  // Даты подписки
   startDate: {
     type: Date,
     default: null
@@ -51,38 +52,19 @@ const subscriptionSchema = new mongoose.Schema({
     default: null
   },
   
-  // История платежей
   paymentHistory: [{
-    paymentId: {
-      type: String,
-      required: true
-    },
-    amount: {
-      type: Number,
-      required: true
-    },
-    status: {
-      type: String,
-      enum: ['succeeded', 'pending', 'canceled', 'waiting_for_capture'],
-      default: 'pending'
-    },
-    date: {
-      type: Date,
-      default: Date.now
-    },
-    receipt: {
-      type: mongoose.Schema.Types.Mixed,
-      default: {}
-    }
+    paymentId: String,
+    amount: Number,
+    status: String,
+    date: Date,
+    receipt: Object
   }],
   
-  // Настройки авто-продления
   autoRenew: {
     type: Boolean,
     default: true
   },
   
-  // Дата следующего платежа
   nextPaymentDate: {
     type: Date,
     default: null
@@ -91,25 +73,46 @@ const subscriptionSchema = new mongoose.Schema({
   timestamps: true
 });
 
-// Индексы для быстрого поиска
+// Индексы
 subscriptionSchema.index({ user: 1 });
 subscriptionSchema.index({ status: 1 });
 subscriptionSchema.index({ endDate: 1 });
+subscriptionSchema.index({ yookassaPaymentId: 1 });
 subscriptionSchema.index({ paymentId: 1 });
 
-// Методы для работы с подпиской
+// Метод проверки активности подписки
 subscriptionSchema.methods.isActive = function() {
-  return this.status === 'active' && this.endDate && new Date(this.endDate) > new Date();
+  // Если статус не active - не активна
+  if (this.status !== 'active') {
+    return false;
+  }
+  
+  // Если нет даты окончания - не активна
+  if (!this.endDate) {
+    return false;
+  }
+  
+  // Проверяем, не истекла ли дата
+  const now = new Date();
+  const endDate = new Date(this.endDate);
+  const isActive = endDate > now;
+  
+  return isActive;
 };
 
+// Метод получения оставшихся дней
 subscriptionSchema.methods.getRemainingDays = function() {
-  if (!this.endDate) return 0;
-  const diff = new Date(this.endDate) - new Date();
+  if (!this.isActive()) return 0;
+  
+  const now = new Date();
+  const endDate = new Date(this.endDate);
+  const diff = endDate.getTime() - now.getTime();
   return Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)));
 };
 
+// Метод получения цены плана
 subscriptionSchema.methods.getPlanPrice = function() {
-  return 599; // Цена премиум подписки
+  return this.plan === 'premium' ? 599 : 299;
 };
 
 // Статические методы
@@ -121,10 +124,15 @@ subscriptionSchema.statics.findByPaymentId = function(paymentId) {
   return this.findOne({ paymentId: paymentId });
 };
 
+subscriptionSchema.statics.findByYookassaPaymentId = function(yookassaPaymentId) {
+  return this.findOne({ yookassaPaymentId: yookassaPaymentId });
+};
+
 subscriptionSchema.statics.findActiveSubscriptions = function() {
+  const now = new Date();
   return this.find({
     status: 'active',
-    endDate: { $gt: new Date() }
+    endDate: { $gt: now }
   });
 };
 

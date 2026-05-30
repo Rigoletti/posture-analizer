@@ -121,31 +121,6 @@ const Home: React.FC = () => {
       position: 'relative',
       overflowX: 'hidden',
     }}>
-      {/* Header с бургер меню */}
-      <AppBar position="static" elevation={0} sx={{ bgcolor: 'transparent', pt: { xs: 1, sm: 2 } }}>
-        <Toolbar sx={{ justifyContent: 'space-between', px: { xs: 2, sm: 3 } }}>
-          <Typography sx={{ fontWeight: 700, fontSize: { xs: '1.25rem', sm: '1.5rem' }, color: COLORS.primary }}>
-            PostureAI
-          </Typography>
-          
-          {isMobile ? (
-            <IconButton onClick={() => setMobileMenuOpen(true)} sx={{ color: COLORS.text }}>
-              <MenuIcon />
-            </IconButton>
-          ) : (
-            <Stack direction="row" spacing={2}>
-              <Button color="inherit" onClick={() => navigate('/')}>Главная</Button>
-              <Button color="inherit" onClick={() => navigate('/about')}>О нас</Button>
-              <Button color="inherit" onClick={() => navigate('/reviews')}>Отзывы</Button>
-              {user ? (
-                <Button variant="contained" onClick={() => navigate('/profile')}>Профиль</Button>
-              ) : (
-                <Button variant="outlined" onClick={() => navigate('/login')}>Войти</Button>
-              )}
-            </Stack>
-          )}
-        </Toolbar>
-      </AppBar>
 
       {/* Мобильное меню */}
       <Drawer anchor="right" open={mobileMenuOpen} onClose={() => setMobileMenuOpen(false)}>
