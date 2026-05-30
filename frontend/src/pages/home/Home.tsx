@@ -60,7 +60,8 @@ const WebcamLoader = () => (
     p: { xs: 2, sm: 3 },
   }}>
     <Stack spacing={3} alignItems="center">
-      <CircularProgress size={{ xs: 40, sm: 48 }} sx={{ color: COLORS.primary }} />
+      {/* Исправлено: size теперь число, а не объект */}
+      <CircularProgress size={48} sx={{ color: COLORS.primary }} />
       <Typography sx={{ color: COLORS.textLight, fontWeight: 500, fontSize: { xs: '0.875rem', sm: '1rem' } }}>
         Инициализация камеры...
       </Typography>
