@@ -73,7 +73,7 @@ export const startSession = async (req, res) => {
 export const endSession = async (req, res) => {
   try {
     const { sessionId } = req.params;
-    const { finalMetrics } = req.body; // УБРАЛИ endSnapshots
+    const { finalMetrics } = req.body;
     
     console.log('Ending session:', sessionId, 'by user:', req.user?._id);
     
@@ -130,8 +130,6 @@ export const endSession = async (req, res) => {
       session.postureMetrics.warningPercentage = Math.round((session.postureMetrics.warningFrames / totalFrames) * 100);
       session.postureMetrics.errorPercentage = Math.round((session.postureMetrics.errorFrames / totalFrames) * 100);
     }
-    
-    // УБРАЛИ сохранение snapshots
     
     await session.save();
     
@@ -203,8 +201,6 @@ export const updateSessionMetrics = async (req, res) => {
       });
     }
     
-    // УБРАЛИ добавление снимков позы
-    
     // Пересчитываем оценку осанки
     const totalFrames = session.postureMetrics.totalFrames;
     if (totalFrames > 0) {
@@ -232,7 +228,7 @@ export const updateSessionMetrics = async (req, res) => {
   }
 };
 
-// Получить историю сеансов
+// Получить историю сеансов (С ОГРАНИЧЕНИЕМ ДЛЯ БЕСПЛАТНЫХ ПОЛЬЗОВАТЕЛЕЙ)
 export const getSessionsHistory = async (req, res) => {
   try {
     const page = parseInt(req.query.page) || 1;
@@ -272,11 +268,42 @@ export const getSessionsHistory = async (req, res) => {
       sort = { duration: req.query.sortOrder === 'asc' ? 1 : -1 };
     }
     
-    const sessions = await Session.find(filter)
-      .select('sessionId startTime endTime duration postureMetrics status')
-      .sort(sort)
-      .skip(skip)
-      .limit(limit);
+    // ПРОВЕРКА ПОДПИСКИ ДЛЯ ОГРАНИЧЕНИЯ ИСТОРИИ
+    const hasPremiumAccess = req.user.hasPremiumAccess && 
+                            req.user.subscriptionEndsAt && 
+                            new Date(req.user.subscriptionEndsAt) > new Date();
+    
+    // Максимальное количество сеансов для бесплатных пользователей
+    const FREE_SESSIONS_LIMIT = 10;
+    
+    let sessions;
+    let total;
+    
+    if (hasPremiumAccess) {
+      // Для премиум пользователей - все сеансы с пагинацией
+      sessions = await Session.find(filter)
+        .select('sessionId startTime endTime duration postureMetrics status')
+        .sort(sort)
+        .skip(skip)
+        .limit(limit);
+      
+      total = await Session.countDocuments(filter);
+    } else {
+      // Для бесплатных пользователей - только последние 10 сеансов
+      // Получаем последние 10 сеансов без пагинации
+      const allSessions = await Session.find(filter)
+        .select('sessionId startTime endTime duration postureMetrics status')
+        .sort(sort)
+        .limit(FREE_SESSIONS_LIMIT);
+      
+      sessions = allSessions;
+      total = Math.min(await Session.countDocuments(filter), FREE_SESSIONS_LIMIT);
+      
+      // Добавляем информацию об ограничении в ответ
+      res.setHeader('X-Sessions-Limited', 'true');
+      res.setHeader('X-Sessions-Limit', FREE_SESSIONS_LIMIT.toString());
+      res.setHeader('X-Has-Premium', 'false');
+    }
     
     // Обогащаем данные для фронтенда
     const enrichedSessions = sessions.map(session => {
@@ -317,11 +344,13 @@ export const getSessionsHistory = async (req, res) => {
       };
     });
     
-    const total = await Session.countDocuments(filter);
+    // Статистика (для бесплатных пользователей - только по последним 10 сеансам)
+    const sessionsForStats = hasPremiumAccess 
+      ? await Session.find({ userId: req.user._id })
+      : sessions;
     
-    // Статистика
     const statistics = {
-      totalSessions: await Session.countDocuments({ userId: req.user._id }),
+      totalSessions: total,
       totalDuration: 0,
       avgScore: 0,
       bestScore: 0,
@@ -333,14 +362,14 @@ export const getSessionsHistory = async (req, res) => {
       totalErrorFrames: 0,
       totalShoulderErrors: 0,
       totalHeadErrors: 0,
-      totalHipErrors: 0
+      totalHipErrors: 0,
+      isLimited: !hasPremiumAccess,
+      limit: FREE_SESSIONS_LIMIT
     };
     
     // Вычисляем агрегированную статистику
-    const allSessions = await Session.find({ userId: req.user._id });
-    
-    if (allSessions.length > 0) {
-      allSessions.forEach(session => {
+    if (sessionsForStats.length > 0) {
+      sessionsForStats.forEach(session => {
         const metrics = session.postureMetrics || {};
         
         statistics.totalDuration += session.duration || 0;
@@ -365,8 +394,8 @@ export const getSessionsHistory = async (req, res) => {
         }
       });
       
-      statistics.avgScore = Math.round(statistics.avgScore / allSessions.length);
-      statistics.avgDuration = Math.round(statistics.totalDuration / allSessions.length);
+      statistics.avgScore = Math.round(statistics.avgScore / sessionsForStats.length);
+      statistics.avgDuration = Math.round(statistics.totalDuration / sessionsForStats.length);
     }
     
     res.status(200).json({
@@ -375,11 +404,19 @@ export const getSessionsHistory = async (req, res) => {
         sessions: enrichedSessions,
         pagination: {
           page,
-          limit,
+          limit: hasPremiumAccess ? limit : FREE_SESSIONS_LIMIT,
           total,
-          pages: Math.ceil(total / limit)
+          pages: hasPremiumAccess ? Math.ceil(total / limit) : 1,
+          isLimited: !hasPremiumAccess,
+          limitReached: total >= FREE_SESSIONS_LIMIT && !hasPremiumAccess
         },
-        statistics
+        statistics,
+        subscriptionInfo: {
+          hasPremiumAccess,
+          canViewAllSessions: hasPremiumAccess,
+          freeSessionsLimit: FREE_SESSIONS_LIMIT,
+          currentSessionsCount: total
+        }
       }
     });
   } catch (error) {

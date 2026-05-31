@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
   Box,
@@ -34,158 +34,183 @@ const SubscriptionSuccessPage: React.FC = () => {
   const [status, setStatus] = useState<'checking' | 'success' | 'error' | 'waiting'>('checking');
   const [error, setError] = useState<string | null>(null);
   const [activeStep, setActiveStep] = useState(0);
-  const [paymentId, setPaymentId] = useState<string | null>(null);
-  const [checkCount, setCheckCount] = useState(0);
   const navigate = useNavigate();
   const location = useLocation();
   const theme = useTheme();
-  const { refreshUserData, hasPremiumAccess } = useAuthStore();
+  const { refreshUserData, hasPremiumAccess, user } = useAuthStore();
+  const checkIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   const steps = ['Создание платежа', 'Проверка платежа', 'Активация подписки'];
 
-  useEffect(() => {
-    // Парсим URL-параметры
-    const params = new URLSearchParams(location.search);
-    
-    // ЮKassa может вернуть paymentId в разных параметрах
-    const possibleParams = ['paymentId', 'order_id', 'payment_id', 'id'];
-    let foundPaymentId: string | null = null;
-    
-    for (const param of possibleParams) {
-      const value = params.get(param);
-      if (value) {
-        foundPaymentId = value;
-        break;
+  // Функция для проверки статуса подписки
+  const checkSubscriptionDirectly = useCallback(async () => {
+    try {
+      console.log('Checking subscription directly...');
+      
+      // Получаем свежие данные подписки
+      const response = await subscriptionApi.getMySubscription();
+      console.log('Subscription data:', response.data);
+      
+      const hasActive = response.data?.hasActiveSubscription;
+      const subscriptionStatus = response.data?.subscription?.status;
+      const isActive = response.data?.subscription?.isActive;
+      
+      console.log('Has active subscription:', hasActive);
+      console.log('Subscription status:', subscriptionStatus);
+      console.log('Is active:', isActive);
+      
+      // Если подписка активна - успех
+      if (hasActive === true || subscriptionStatus === 'active' || isActive === true) {
+        console.log('Subscription is active!');
+        setActiveStep(2);
+        setStatus('success');
+        return true;
       }
-    }
-
-    // Также проверяем весь URL на наличие UUID
-    if (!foundPaymentId) {
-      const urlPath = location.pathname + location.search;
-      const uuidRegex = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
-      const match = urlPath.match(uuidRegex);
-      if (match) {
-        foundPaymentId = match[0];
-      }
-    }
-
-    console.log('Payment ID from URL:', foundPaymentId);
-
-    if (foundPaymentId) {
-      setPaymentId(foundPaymentId);
-      setActiveStep(1);
-      checkPaymentStatus(foundPaymentId);
-    } else {
-      // Если paymentId не найден, проверяем статус подписки
-      checkSubscriptionStatus();
+      
+      return false;
+    } catch (error) {
+      console.error('Error checking subscription directly:', error);
+      return false;
     }
   }, []);
 
-  const checkPaymentStatus = async (id: string) => {
+  // Функция для принудительной синхронизации
+  const forceSyncAndCheck = useCallback(async () => {
     try {
-      console.log('Checking payment status for ID:', id);
+      console.log('Forcing sync and check...');
       
-      const response = await subscriptionApi.checkPaymentStatus(id);
-      console.log('Payment status response:', response);
+      // Синхронизируем подписку
+      await subscriptionApi.syncSubscription();
       
-      if (response.success) {
-        const data = response.data;
-        
-        // Проверяем различные статусы успеха
-        if (data.paymentStatus === 'succeeded' || 
-            data.subscriptionStatus === 'active' ||
-            (data.paymentStatus === 'waiting_for_capture' && data.subscriptionStatus === 'active')) {
-          
-          setActiveStep(2);
-          await refreshUserData();
-          
-          // Небольшая задержка для обновления данных
-          setTimeout(() => {
-            setStatus('success');
-          }, 1000);
-          
-        } else if (data.paymentStatus === 'pending' || 
-                   data.paymentStatus === 'waiting_for_capture') {
-          
-          setStatus('waiting');
-          setError('Платеж обрабатывается. Пожалуйста, подождите...');
-          
-          // Автоматически проверяем статус еще несколько раз
-          if (checkCount < 10) {
-            setTimeout(() => {
-              setCheckCount(prev => prev + 1);
-              checkPaymentStatus(id);
-            }, 3000);
-          } else {
-            setStatus('error');
-            setError('Время ожидания истекло. Проверьте статус подписки в профиле.');
-          }
-          
-        } else {
-          setStatus('error');
-          setError(`Статус платежа: ${data.paymentStatus || 'неизвестен'}`);
-        }
-      } else {
-        setStatus('error');
-        setError('Платеж не был завершен. Пожалуйста, проверьте статус подписки в профиле.');
-      }
-    } catch (error: any) {
-      console.error('Error checking payment:', error);
-      
-      // Если ошибка, но подписка могла активироваться
-      try {
-        await refreshUserData();
-        if (hasPremiumAccess()) {
-          setActiveStep(2);
-          setStatus('success');
-          return;
-        }
-      } catch (e) {
-        // Игнорируем
-      }
-      
-      setStatus('error');
-      setError(error.message || 'Ошибка при проверке платежа');
-    }
-  };
-
-  const checkSubscriptionStatus = async () => {
-    try {
-      setActiveStep(1);
-      console.log('Checking subscription status directly');
-      
+      // Обновляем данные пользователя
       await refreshUserData();
       
-      if (hasPremiumAccess()) {
+      // Проверяем статус
+      const hasAccess = hasPremiumAccess();
+      const hasEndDate = user?.subscriptionEndsAt && new Date(user.subscriptionEndsAt) > new Date();
+      
+      console.log('After sync - hasPremiumAccess:', hasAccess);
+      console.log('After sync - subscriptionEndsAt:', user?.subscriptionEndsAt);
+      
+      if (hasAccess && hasEndDate) {
         setActiveStep(2);
         setStatus('success');
-      } else {
-        setStatus('waiting');
-        setError('Платеж обрабатывается. Пожалуйста, подождите...');
-        
-        // Проверяем еще несколько раз
-        if (checkCount < 10) {
-          setTimeout(() => {
-            setCheckCount(prev => prev + 1);
-            checkSubscriptionStatus();
-          }, 3000);
-        }
+        return true;
       }
-    } catch (error: any) {
-      console.error('Error checking subscription:', error);
-      setStatus('error');
-      setError(error.message || 'Ошибка при проверке подписки');
+      
+      // Дополнительная проверка через API подписки
+      const subResponse = await subscriptionApi.getMySubscription();
+      if (subResponse.data?.hasActiveSubscription === true) {
+        setActiveStep(2);
+        setStatus('success');
+        return true;
+      }
+      
+      return false;
+    } catch (error) {
+      console.error('Force sync error:', error);
+      return false;
     }
-  };
+  }, [refreshUserData, hasPremiumAccess, user]);
 
-  const handleRetry = () => {
-    setCheckCount(0);
+  useEffect(() => {
+    let attempts = 0;
+    const maxAttempts = 10; // 10 попыток по 2 секунды = 20 секунд максимум
+    
+    const startChecking = async () => {
+      console.log('Starting subscription check...');
+      setActiveStep(1);
+      
+      // Сначала проверяем напрямую
+      const isActive = await checkSubscriptionDirectly();
+      
+      if (isActive) {
+        console.log('Subscription already active, success!');
+        return;
+      }
+      
+      // Если не активна, запускаем интервал проверки
+      checkIntervalRef.current = setInterval(async () => {
+        attempts++;
+        console.log(`Check attempt ${attempts}/${maxAttempts}`);
+        
+        // Пробуем синхронизировать и проверить
+        const success = await forceSyncAndCheck();
+        
+        if (success) {
+          console.log('Subscription activated successfully!');
+          if (checkIntervalRef.current) {
+            clearInterval(checkIntervalRef.current);
+            checkIntervalRef.current = null;
+          }
+          return;
+        }
+        
+        if (attempts >= maxAttempts) {
+          console.log('Max attempts reached, showing error');
+          if (checkIntervalRef.current) {
+            clearInterval(checkIntervalRef.current);
+            checkIntervalRef.current = null;
+          }
+          setStatus('error');
+          setError('Время ожидания истекло. Подписка не активирована. Пожалуйста, проверьте статус в профиле.');
+        } else {
+          setStatus('waiting');
+          setError('Платеж обрабатывается. Пожалуйста, подождите...');
+        }
+      }, 2000); // Проверяем каждые 2 секунды
+    };
+    
+    startChecking();
+    
+    // Очистка интервала при размонтировании
+    return () => {
+      if (checkIntervalRef.current) {
+        clearInterval(checkIntervalRef.current);
+        checkIntervalRef.current = null;
+      }
+    };
+  }, [checkSubscriptionDirectly, forceSyncAndCheck]);
+
+  const handleRetry = async () => {
     setStatus('checking');
     setActiveStep(1);
-    if (paymentId) {
-      checkPaymentStatus(paymentId);
+    setError(null);
+    
+    // Принудительно синхронизируем
+    await forceSyncAndCheck();
+    
+    // Проверяем статус
+    const isActive = await checkSubscriptionDirectly();
+    
+    if (isActive) {
+      setStatus('success');
+      setActiveStep(2);
     } else {
-      checkSubscriptionStatus();
+      // Запускаем новый цикл проверки
+      let attempts = 0;
+      const maxAttempts = 10;
+      
+      const interval = setInterval(async () => {
+        attempts++;
+        const success = await forceSyncAndCheck();
+        
+        if (success) {
+          clearInterval(interval);
+          setStatus('success');
+          setActiveStep(2);
+        } else if (attempts >= maxAttempts) {
+          clearInterval(interval);
+          setStatus('error');
+          setError('Не удалось активировать подписку. Пожалуйста, проверьте статус в профиле.');
+        } else {
+          setStatus('waiting');
+          setError('Платеж обрабатывается. Пожалуйста, подождите...');
+        }
+      }, 2000);
+      
+      // Сохраняем интервал для очистки
+      return () => clearInterval(interval);
     }
   };
 
@@ -232,17 +257,17 @@ const SubscriptionSuccessPage: React.FC = () => {
                   }}
                 >
                   <Typography variant="caption" component="div" sx={{ fontSize: '1rem', fontWeight: 600 }}>
-                    {Math.round((activeStep / steps.length) * 100)}%
+                    50%
                   </Typography>
                 </Box>
               </Box>
 
               <Typography variant="h4" gutterBottom sx={{ fontWeight: 700 }}>
-                Проверка платежа
+                Проверка статуса подписки
               </Typography>
               
               <Typography variant="body1" sx={{ color: theme.palette.text.secondary }} paragraph>
-                Пожалуйста, подождите, мы проверяем статус вашего платежа
+                Пожалуйста, подождите, мы проверяем статус вашей подписки
               </Typography>
 
               <Stepper 
@@ -267,12 +292,6 @@ const SubscriptionSuccessPage: React.FC = () => {
                   </Step>
                 ))}
               </Stepper>
-
-              {paymentId && (
-                <Typography variant="caption" sx={{ color: theme.palette.text.disabled, mt: 2, display: 'block' }}>
-                  ID платежа: {paymentId.slice(0, 8)}...{paymentId.slice(-4)}
-                </Typography>
-              )}
             </Box>
           </Fade>
         )}
@@ -283,7 +302,7 @@ const SubscriptionSuccessPage: React.FC = () => {
               <PaymentIcon sx={{ fontSize: 80, color: theme.palette.warning.main, mb: 3 }} />
               
               <Typography variant="h4" gutterBottom sx={{ fontWeight: 700 }}>
-                Ожидание подтверждения платежа
+                Ожидание активации подписки
               </Typography>
               
               <Typography variant="body1" sx={{ color: theme.palette.text.secondary }} paragraph>
@@ -313,7 +332,7 @@ const SubscriptionSuccessPage: React.FC = () => {
                   onClick={handleRetry}
                   startIcon={<RefreshIcon />}
                 >
-                  Проверить снова
+                  Проверить сейчас
                 </Button>
                 <Button
                   variant="outlined"
@@ -345,11 +364,11 @@ const SubscriptionSuccessPage: React.FC = () => {
                 WebkitTextFillColor: 'transparent',
                 fontWeight: 800
               }}>
-                Оплата прошла успешно!
+                Подписка успешно активирована!
               </Typography>
               
               <Typography variant="h6" sx={{ color: theme.palette.text.secondary }} paragraph>
-                Ваша премиум подписка активирована. Теперь вам доступны все функции приложения.
+                Ваша подписка активна. Теперь вам доступны все функции приложения.
               </Typography>
 
               <Card sx={{ 
@@ -444,7 +463,7 @@ const SubscriptionSuccessPage: React.FC = () => {
               </Box>
 
               <Typography variant="h3" gutterBottom sx={{ color: theme.palette.error.main, fontWeight: 700 }}>
-                Ошибка при обработке платежа
+                Не удалось активировать подписку
               </Typography>
               
               <Alert 
@@ -460,7 +479,11 @@ const SubscriptionSuccessPage: React.FC = () => {
               </Alert>
 
               <Typography variant="body1" sx={{ color: theme.palette.text.secondary }} paragraph>
-                Пожалуйста, проверьте статус подписки в профиле или попробуйте снова.
+                Пожалуйста, проверьте статус подписки в профиле. Возможно, платеж уже прошел успешно.
+              </Typography>
+
+              <Typography variant="body2" sx={{ color: theme.palette.text.secondary, mb: 3 }}>
+                Вы можете проверить статус подписки на странице "Мои подписки" или обратиться в поддержку.
               </Typography>
 
               <Box sx={{ display: 'flex', gap: 2, justifyContent: 'center', flexWrap: 'wrap', mt: 3 }}>
@@ -469,16 +492,15 @@ const SubscriptionSuccessPage: React.FC = () => {
                   onClick={handleGoToSubscription}
                   sx={{ px: 4 }}
                 >
-                  Перейти к подпискам
+                  Проверить статус подписки
                 </Button>
                 
                 <Button
                   variant="outlined"
-                  onClick={handleRetry}
-                  startIcon={<RefreshIcon />}
+                  onClick={handleGoToProfile}
                   sx={{ px: 4 }}
                 >
-                  Попробовать снова
+                  Перейти в профиль
                 </Button>
                 
                 <Button

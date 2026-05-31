@@ -23,6 +23,56 @@ const getYookassaAuth = () => {
   };
 };
 
+// Функция для активации подписки
+const activateSubscription = async (subscription, paymentData) => {
+  const now = new Date();
+  const endDate = new Date(now);
+  endDate.setDate(endDate.getDate() + 30);
+  
+  const oldStatus = subscription.status;
+  
+  subscription.status = 'active';
+  subscription.startDate = now;
+  subscription.endDate = endDate;
+  
+  if (!subscription.paymentHistory) {
+    subscription.paymentHistory = [];
+  }
+  
+  subscription.paymentHistory.push({
+    paymentId: paymentData.id || subscription.yookassaPaymentId,
+    amount: paymentData.amount?.value || PLAN_PRICES[subscription.plan],
+    status: 'succeeded',
+    date: now,
+    receipt: paymentData.receipt_registration || {}
+  });
+  
+  await subscription.save();
+  console.log('Subscription activated:', {
+    id: subscription._id,
+    oldStatus,
+    newStatus: subscription.status,
+    endDate
+  });
+  
+  // Обновляем пользователя
+  const user = await User.findById(subscription.user);
+  if (user) {
+    user.hasPremiumAccess = true;
+    user.subscriptionEndsAt = endDate;
+    user.subscription = subscription._id;
+    await user.save();
+    console.log('User updated:', {
+      userId: user._id,
+      email: user.email,
+      hasPremiumAccess: user.hasPremiumAccess,
+      subscriptionEndsAt: user.subscriptionEndsAt
+    });
+  }
+  
+  return true;
+};
+
 // Создание платежа для подписки
 export const createPayment = async (req, res) => {
   try {
@@ -130,12 +180,17 @@ export const yookassaWebhook = async (req, res) => {
   try {
     const event = req.body;
     
-    console.log('YooKassa webhook received:', event.object?.id, 'status:', event.object?.status);
+    console.log('YooKassa webhook received:', JSON.stringify(event, null, 2));
     
-    if (event.object && event.object.status === 'succeeded') {
-      const yookassaPaymentId = event.object.id;
-      const metadata = event.object.metadata || {};
+    // Обрабатываем разные типы событий
+    if (event.type === 'payment.succeeded' || (event.object && event.object.status === 'succeeded')) {
+      const payment = event.object || event;
+      const yookassaPaymentId = payment.id;
+      const metadata = payment.metadata || {};
       
+      console.log('Processing successful payment:', yookassaPaymentId);
+      
+      // Ищем подписку по разным полям
       let subscription = await Subscription.findOne({ yookassaPaymentId: yookassaPaymentId });
       
       if (!subscription && metadata.internalPaymentId) {
@@ -146,45 +201,78 @@ export const yookassaWebhook = async (req, res) => {
         subscription = await Subscription.findById(metadata.subscriptionId);
       }
       
-      if (subscription && subscription.status !== 'active' && subscription.status !== 'cancelled') {
-        const now = new Date();
-        const endDate = new Date(now);
-        endDate.setDate(endDate.getDate() + 30);
-        
-        subscription.status = 'active';
-        subscription.startDate = now;
-        subscription.endDate = endDate;
-        
-        if (!subscription.paymentHistory) {
-          subscription.paymentHistory = [];
-        }
-        
-        subscription.paymentHistory.push({
-          paymentId: yookassaPaymentId,
-          amount: event.object.amount?.value || PLAN_PRICES[subscription.plan],
-          status: 'succeeded',
-          date: now,
-          receipt: event.object.receipt_registration || {}
+      if (!subscription && metadata.userId) {
+        subscription = await Subscription.findOne({ user: metadata.userId });
+      }
+      
+      if (!subscription) {
+        // Пробуем найти по paymentId в истории
+        subscription = await Subscription.findOne({
+          'paymentHistory.paymentId': yookassaPaymentId
         });
+      }
+      
+      if (subscription) {
+        console.log('Found subscription:', subscription._id, 'Current status:', subscription.status);
         
-        await subscription.save();
-        console.log('Subscription activated via webhook:', subscription._id);
+        // Активируем подписку только если она не активна и не отменена
+        if (subscription.status !== 'active' && subscription.status !== 'cancelled') {
+          await activateSubscription(subscription, payment);
+          console.log('Subscription activated successfully via webhook');
+        } else {
+          console.log('Subscription already active or cancelled, skipping activation');
+        }
+      } else {
+        console.log('No subscription found for payment:', yookassaPaymentId);
         
-        const user = await User.findById(subscription.user);
-        if (user) {
-          user.hasPremiumAccess = true;
-          user.subscriptionEndsAt = endDate;
-          user.subscription = subscription._id;
-          await user.save();
-          console.log('User updated:', user.email);
+        // Если подписка не найдена, но есть userId в metadata, создаем новую
+        if (metadata.userId) {
+          console.log('Creating new subscription for user:', metadata.userId);
+          
+          const user = await User.findById(metadata.userId);
+          if (user) {
+            const plan = metadata.plan || 'premium';
+            const newSubscription = new Subscription({
+              user: metadata.userId,
+              plan: plan,
+              status: 'active',
+              yookassaPaymentId: yookassaPaymentId,
+              paymentId: metadata.internalPaymentId || crypto.randomUUID(),
+              startDate: new Date(),
+              endDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+              paymentHistory: [{
+                paymentId: yookassaPaymentId,
+                amount: payment.amount?.value || PLAN_PRICES[plan],
+                status: 'succeeded',
+                date: new Date(),
+                receipt: {}
+              }]
+            });
+            
+            await newSubscription.save();
+            
+            user.hasPremiumAccess = true;
+            user.subscriptionEndsAt = newSubscription.endDate;
+            user.subscription = newSubscription._id;
+            await user.save();
+            
+            console.log('Created new subscription from webhook');
+          }
         }
       }
+    } else if (event.type === 'payment.waiting_for_capture') {
+      console.log('Payment waiting for capture:', event.object?.id);
+      // Опционально: можно обработать ожидание подтверждения
+    } else {
+      console.log('Unhandled webhook event type:', event.type);
     }
     
+    // Всегда возвращаем 200, даже при ошибках
     res.status(200).json({ received: true });
   } catch (error) {
     console.error('Webhook error:', error);
-    res.status(200).json({ received: true });
+    // Всегда возвращаем 200, чтобы ЮKassa не повторял отправку
+    res.status(200).json({ received: true, error: error.message });
   }
 };
 
@@ -193,6 +281,8 @@ export const checkPaymentStatus = async (req, res) => {
   try {
     const { paymentId } = req.params;
     const userId = req.user._id;
+    
+    console.log('Checking payment status for:', paymentId, 'User:', userId);
     
     let subscription = await Subscription.findOne({ 
       $or: [
@@ -209,6 +299,9 @@ export const checkPaymentStatus = async (req, res) => {
       });
     }
     
+    console.log('Found subscription:', subscription._id, 'Status:', subscription.status);
+    
+    // Проверяем статус в ЮKassa, если подписка не активна
     if (subscription.yookassaPaymentId && subscription.status !== 'active' && subscription.status !== 'cancelled') {
       try {
         const response = await axios.get(
@@ -217,38 +310,23 @@ export const checkPaymentStatus = async (req, res) => {
         );
         
         const yookassaPayment = response.data;
+        console.log('YooKassa payment status:', yookassaPayment.status);
         
+        // Обрабатываем разные статусы
         if (yookassaPayment.status === 'succeeded') {
-          const now = new Date();
-          const endDate = new Date(now);
-          endDate.setDate(endDate.getDate() + 30);
-          
-          subscription.status = 'active';
-          subscription.startDate = now;
-          subscription.endDate = endDate;
-          
-          subscription.paymentHistory.push({
-            paymentId: subscription.yookassaPaymentId,
-            amount: yookassaPayment.amount.value,
-            status: 'succeeded',
-            date: now,
-            receipt: {}
-          });
-          
-          await subscription.save();
-          
-          const user = await User.findById(subscription.user);
-          if (user) {
-            user.hasPremiumAccess = true;
-            user.subscriptionEndsAt = endDate;
-            user.subscription = subscription._id;
-            await user.save();
-          }
+          await activateSubscription(subscription, yookassaPayment);
+          console.log('Subscription activated via status check');
+        } else if (yookassaPayment.status === 'waiting_for_capture') {
+          // Платеж ожидает подтверждения, возможно нужно подождать
+          console.log('Payment waiting for capture, will check again later');
         }
       } catch (yookassaError) {
         console.error('Error checking YooKassa payment:', yookassaError.message);
       }
     }
+    
+    // Обновляем подписку после возможной активации
+    subscription = await Subscription.findById(subscription._id);
     
     const isActive = subscription.isActive();
     const remainingDays = subscription.getRemainingDays();
@@ -273,14 +351,13 @@ export const checkPaymentStatus = async (req, res) => {
   }
 };
 
-// Получение информации о подписке (с принудительной синхронизацией, но НЕ перезаписываем cancelled)
+// Получение информации о подписке
 export const getMySubscription = async (req, res) => {
   try {
     const userId = req.user._id;
     
     console.log('Getting subscription for user:', userId);
     
-    // Находим пользователя
     let user = await User.findById(userId);
     
     if (!user) {
@@ -290,11 +367,27 @@ export const getMySubscription = async (req, res) => {
       });
     }
     
-    // Находим подписку
     let subscription = await Subscription.findOne({ user: userId });
-    
     const now = new Date();
-    let needsUserSave = false;
+    let needsUpdate = false;
+    
+    // Проверяем и обновляем статус подписки через ЮKassa если нужно
+    if (subscription && subscription.yookassaPaymentId && subscription.status === 'pending') {
+      try {
+        const response = await axios.get(
+          `${YOOKASSA_API_URL}/payments/${subscription.yookassaPaymentId}`,
+          { headers: getYookassaAuth() }
+        );
+        
+        if (response.data.status === 'succeeded') {
+          await activateSubscription(subscription, response.data);
+          subscription = await Subscription.findById(subscription._id);
+          console.log('Subscription activated during getMySubscription');
+        }
+      } catch (error) {
+        console.error('Error checking payment during getMySubscription:', error.message);
+      }
+    }
     
     if (subscription) {
       console.log('Found subscription:', {
@@ -304,86 +397,47 @@ export const getMySubscription = async (req, res) => {
         plan: subscription.plan
       });
       
-      // НЕ меняем статус cancelled на active!
-      // Если подписка отменена, оставляем её отмененной
-      if (subscription.status === 'cancelled') {
-        console.log('Subscription is cancelled, keeping status cancelled');
-        
-        // Но проверяем, активна ли она по дате для отображения
+      // Синхронизируем статус
+      if (subscription.status !== 'cancelled') {
         const isActiveByDate = subscription.endDate && new Date(subscription.endDate) > now;
         
-        if (isActiveByDate && user.hasPremiumAccess !== true) {
-          // Пользователь должен иметь доступ до окончания срока
-          user.hasPremiumAccess = true;
-          needsUserSave = true;
-          console.log('Setting user premium access to true for cancelled subscription (still active until end date)');
-        }
-      } 
-      // Для неотмененных подписок выполняем синхронизацию
-      else if (subscription.status !== 'cancelled') {
-        // Проверяем, активна ли подписка по дате
-        const isActiveByDate = subscription.endDate && new Date(subscription.endDate) > now;
-        
-        // Если подписка активна по дате, но статус не active - исправляем
         if (isActiveByDate && subscription.status !== 'active') {
           subscription.status = 'active';
-          await subscription.save();
+          needsUpdate = true;
           console.log('Fixed subscription status to active');
         }
         
-        // Если подписка не активна по дате, но статус active - исправляем
         if (!isActiveByDate && subscription.status === 'active') {
           subscription.status = 'expired';
-          await subscription.save();
+          needsUpdate = true;
           console.log('Fixed subscription status to expired');
         }
       }
       
-      // СИНХРОНИЗАЦИЯ С ПОЛЬЗОВАТЕЛЕМ (только если подписка не отменена или отменена но активна)
-      if (subscription.endDate && new Date(subscription.endDate) > now) {
-        if (!user.hasPremiumAccess || !user.subscriptionEndsAt || new Date(user.subscriptionEndsAt).getTime() !== new Date(subscription.endDate).getTime()) {
+      if (needsUpdate) {
+        await subscription.save();
+      }
+      
+      // Синхронизируем с пользователем
+      if (subscription.endDate && new Date(subscription.endDate) > now && subscription.status !== 'cancelled') {
+        if (!user.hasPremiumAccess || !user.subscriptionEndsAt || 
+            new Date(user.subscriptionEndsAt).getTime() !== new Date(subscription.endDate).getTime()) {
           user.hasPremiumAccess = true;
           user.subscriptionEndsAt = subscription.endDate;
           user.subscription = subscription._id;
-          needsUserSave = true;
-          console.log('Synced user from subscription: hasPremiumAccess=true, endDate=', subscription.endDate);
+          await user.save();
+          console.log('Synced user from subscription');
         }
       } else if (subscription.endDate && new Date(subscription.endDate) <= now && subscription.status !== 'cancelled') {
-        // Если подписка истекла и не отменена, отключаем доступ
         if (user.hasPremiumAccess) {
           user.hasPremiumAccess = false;
-          needsUserSave = true;
-          console.log('Subscription expired, disabling user premium access');
+          await user.save();
+          console.log('Disabled user premium access');
         }
       }
-    } else {
-      console.log('No subscription found in DB');
     }
     
-    // Проверяем пользователя на наличие активной подписки без объекта в БД
-    if (!subscription && user.hasPremiumAccess && user.subscriptionEndsAt && new Date(user.subscriptionEndsAt) > now) {
-      // Создаем подписку из данных пользователя
-      subscription = new Subscription({
-        user: userId,
-        plan: 'premium',
-        status: 'active',
-        startDate: new Date(),
-        endDate: user.subscriptionEndsAt,
-        paymentHistory: []
-      });
-      await subscription.save();
-      user.subscription = subscription._id;
-      await user.save();
-      console.log('Created missing subscription from user data');
-      needsUserSave = false;
-    }
-    
-    // Сохраняем изменения пользователя
-    if (needsUserSave) {
-      await user.save();
-    }
-    
-    // Обновляем пользователя в ответе (перезагружаем из БД)
+    // Обновляем пользователя
     const updatedUser = await User.findById(userId).populate('subscription');
     subscription = updatedUser.subscription;
     
@@ -392,14 +446,12 @@ export const getMySubscription = async (req, res) => {
     let currentPlan = null;
     
     if (subscription) {
-      // Для отмененной подписки проверяем только дату
       if (subscription.status === 'cancelled') {
         if (subscription.endDate) {
           const endDate = new Date(subscription.endDate);
           if (endDate > now) {
             hasActiveSubscription = true;
             remainingDays = Math.ceil((endDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
-            console.log('Cancelled subscription still active until', endDate);
           }
         }
         currentPlan = subscription.plan;
@@ -410,7 +462,7 @@ export const getMySubscription = async (req, res) => {
       }
     }
     
-    // ФИНАЛЬНАЯ ПРОВЕРКА через пользователя
+    // Финальная проверка через пользователя
     const finalUserHasAccess = updatedUser.hasPremiumAccess === true && 
       updatedUser.subscriptionEndsAt && new Date(updatedUser.subscriptionEndsAt) > now;
     
@@ -420,31 +472,6 @@ export const getMySubscription = async (req, res) => {
       currentPlan = subscription?.plan || 'premium';
       console.log('User has premium access, forcing hasActiveSubscription=true');
     }
-    
-    console.log('Final state:', {
-      hasActiveSubscription,
-      remainingDays,
-      currentPlan,
-      subscriptionStatus: subscription?.status,
-      userHasPremiumAccess: updatedUser.hasPremiumAccess,
-      userSubscriptionEndsAt: updatedUser.subscriptionEndsAt
-    });
-    
-    const subscriptionData = subscription ? {
-      id: subscription._id,
-      plan: subscription.plan,
-      status: subscription.status,
-      startDate: subscription.startDate,
-      endDate: subscription.endDate,
-      paymentHistory: subscription.paymentHistory || [],
-      autoRenew: subscription.autoRenew,
-      remainingDays: remainingDays,
-      hasActiveSubscription: hasActiveSubscription
-    } : {
-      hasActiveSubscription: hasActiveSubscription,
-      remainingDays: remainingDays,
-      endDate: updatedUser.subscriptionEndsAt
-    };
     
     const availablePlans = [
       {
@@ -480,7 +507,17 @@ export const getMySubscription = async (req, res) => {
     res.status(200).json({
       success: true,
       data: {
-        subscription: subscriptionData,
+        subscription: subscription ? {
+          id: subscription._id,
+          plan: subscription.plan,
+          status: subscription.status,
+          startDate: subscription.startDate,
+          endDate: subscription.endDate,
+          paymentHistory: subscription.paymentHistory || [],
+          autoRenew: subscription.autoRenew,
+          remainingDays: remainingDays,
+          hasActiveSubscription: hasActiveSubscription
+        } : null,
         availablePlans: availablePlans,
         hasActiveSubscription: hasActiveSubscription,
         currentPlan: currentPlan
@@ -495,35 +532,23 @@ export const getMySubscription = async (req, res) => {
   }
 };
 
-// Отмена подписки 
+// Отмена подписки
 export const cancelSubscription = async (req, res) => {
   try {
     const userId = req.user._id;
     
-    console.log('=== CANCEL SUBSCRIPTION REQUEST ===');
-    console.log('User ID:', userId);
+    console.log('Cancel subscription for user:', userId);
     
-    // Находим подписку пользователя
     let subscription = await Subscription.findOne({ user: userId });
     
     if (!subscription) {
-      console.log('No subscription found for user');
       return res.status(404).json({
         success: false,
         error: 'Подписка не найдена'
       });
     }
     
-    console.log('Subscription found:', {
-      id: subscription._id,
-      status: subscription.status,
-      endDate: subscription.endDate,
-      plan: subscription.plan
-    });
-    
-    // Если подписка уже отменена
     if (subscription.status === 'cancelled') {
-      console.log('Subscription already cancelled');
       return res.status(200).json({
         success: true,
         alreadyCancelled: true,
@@ -535,7 +560,6 @@ export const cancelSubscription = async (req, res) => {
       });
     }
     
-    // Находим пользователя
     const user = await User.findById(userId);
     
     if (!user) {
@@ -548,17 +572,8 @@ export const cancelSubscription = async (req, res) => {
     const now = new Date();
     let canCancel = false;
     
-    // Проверяем, можно ли отменить подписку
-    if (subscription.status === 'active') {
-      // Активная подписка - можно отменить
+    if (subscription.status === 'active' || subscription.status === 'pending') {
       canCancel = true;
-      console.log('Active subscription - can cancel');
-    } else if (subscription.status === 'pending') {
-      // Ожидающая подписка - можно отменить
-      canCancel = true;
-      console.log('Pending subscription - can cancel');
-    } else {
-      console.log('Subscription status:', subscription.status, '- cannot cancel');
     }
     
     if (!canCancel) {
@@ -573,24 +588,12 @@ export const cancelSubscription = async (req, res) => {
       });
     }
     
-    // Отменяем подписку
-    const oldStatus = subscription.status;
     subscription.status = 'cancelled';
     subscription.autoRenew = false;
     await subscription.save();
     
-    console.log('Subscription cancelled:', {
-      id: subscription._id,
-      oldStatus: oldStatus,
-      newStatus: subscription.status,
-      endDate: subscription.endDate
-    });
-    
-    // Обновляем пользователя - отключаем премиум доступ
-    // НО оставляем subscriptionEndsAt, чтобы пользователь знал до какого числа был доступ
-    user.hasPremiumAccess = false;
-    await user.save();
-    console.log('User updated - premium access disabled, endDate remains:', user.subscriptionEndsAt);
+    // Не отключаем доступ сразу, только отключаем автопродление
+    // user.hasPremiumAccess оставляем true до окончания срока
     
     const endDateStr = subscription.endDate 
       ? new Date(subscription.endDate).toLocaleDateString('ru-RU')
@@ -623,7 +626,25 @@ export const syncUserSubscription = async (req, res) => {
     console.log('Syncing subscription for user:', userId);
     
     const user = await User.findById(userId);
-    const subscription = await Subscription.findOne({ user: userId });
+    let subscription = await Subscription.findOne({ user: userId });
+    
+    // Если подписка в статусе pending, проверяем платеж
+    if (subscription && subscription.status === 'pending' && subscription.yookassaPaymentId) {
+      try {
+        const response = await axios.get(
+          `${YOOKASSA_API_URL}/payments/${subscription.yookassaPaymentId}`,
+          { headers: getYookassaAuth() }
+        );
+        
+        if (response.data.status === 'succeeded') {
+          await activateSubscription(subscription, response.data);
+          subscription = await Subscription.findById(subscription._id);
+          console.log('Subscription activated during sync');
+        }
+      } catch (error) {
+        console.error('Error checking payment during sync:', error.message);
+      }
+    }
     
     if (!subscription) {
       return res.status(404).json({
@@ -634,11 +655,9 @@ export const syncUserSubscription = async (req, res) => {
     
     const now = new Date();
     
-    // Для отмененной подписки не меняем hasPremiumAccess
     if (subscription.status === 'cancelled') {
       const isActiveByDate = subscription.endDate && new Date(subscription.endDate) > now;
       user.hasPremiumAccess = isActiveByDate;
-      console.log('Cancelled subscription - hasPremiumAccess set to:', isActiveByDate);
     } else {
       const isActive = subscription.endDate && new Date(subscription.endDate) > now && subscription.status === 'active';
       user.hasPremiumAccess = isActive;
@@ -660,7 +679,8 @@ export const syncUserSubscription = async (req, res) => {
       data: {
         hasPremiumAccess: user.hasPremiumAccess,
         subscriptionEndsAt: user.subscriptionEndsAt,
-        subscriptionStatus: subscription.status
+        subscriptionStatus: subscription.status,
+        subscription: subscription
       }
     });
   } catch (error) {

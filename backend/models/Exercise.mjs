@@ -8,7 +8,7 @@ const exerciseSchema = new mongoose.Schema({
     maxlength: [100, 'Название не может превышать 100 символов']
   },
   
-  description: {
+  description: { 
     type: String,
     required: [true, 'Описание обязательно'],
     trim: true,

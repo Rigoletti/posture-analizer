@@ -58,7 +58,7 @@ export const subscriptionApi = {
     }
   },
 
-  // Синхронизация подписки
+// Синхронизация подписки
 syncSubscription: async () => {
   try {
     const response = await api.post('/subscription/sync');
@@ -67,7 +67,21 @@ syncSubscription: async () => {
     console.error('Sync subscription error:', error);
     throw error.response?.data || error;
   }
+},
+// Получение подписки с принудительной проверкой
+getMySubscriptionWithForceCheck: async () => {
+  try {
+    // Сначала синхронизируем
+    await api.post('/subscription/sync');
+    // Затем получаем данные
+    const response = await api.get('/subscription/my-subscription');
+    return response.data;
+  } catch (error: any) {
+    console.error('Get subscription with force check error:', error);
+    throw error.response?.data || error;
+  }
 }
+
 };
 
-export default subscriptionApi;
+export default subscriptionApi; 
