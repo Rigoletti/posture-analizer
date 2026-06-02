@@ -76,6 +76,7 @@ export const endSession = async (req, res) => {
     const { finalMetrics } = req.body;
     
     console.log('Ending session:', sessionId, 'by user:', req.user?._id);
+    console.log('Final metrics received:', JSON.stringify(finalMetrics, null, 2));
     
     const session = await Session.findOne({ 
       sessionId: sessionId, 
@@ -90,48 +91,57 @@ export const endSession = async (req, res) => {
       });
     }
     
+    // Обновляем время окончания и длительность
+    session.endTime = new Date();
+    session.duration = Math.floor((session.endTime - session.startTime) / 1000);
+    
     if (finalMetrics) {
-      session.postureMetrics = {
-        ...session.postureMetrics,
-        ...finalMetrics
-      };
+      // Обновляем метрики
+      session.postureMetrics.totalFrames = finalMetrics.totalFrames || 0;
+      session.postureMetrics.goodPostureFrames = finalMetrics.goodPostureFrames || 0;
+      session.postureMetrics.warningFrames = finalMetrics.warningFrames || 0;
+      session.postureMetrics.errorFrames = finalMetrics.errorFrames || 0;
       
-      // Пересчитываем процентное соотношение
-      const totalFrames = session.postureMetrics.totalFrames || 1;
-      session.postureMetrics.goodPercentage = Math.round((session.postureMetrics.goodPostureFrames / totalFrames) * 100);
-      session.postureMetrics.warningPercentage = Math.round((session.postureMetrics.warningFrames / totalFrames) * 100);
-      session.postureMetrics.errorPercentage = Math.round((session.postureMetrics.errorFrames / totalFrames) * 100);
-      
-      // Также рассчитываем проценты для ошибок по зонам
-      const duration = session.duration || 1;
-      if (session.postureMetrics.errorsByZone) {
-        Object.keys(session.postureMetrics.errorsByZone).forEach(zone => {
-          if (session.postureMetrics.errorsByZone[zone]) {
-            session.postureMetrics.errorsByZone[zone].percentage = 
-              Math.round((session.postureMetrics.errorsByZone[zone].duration / duration) * 1000) / 10;
-          }
-        });
+      // Обновляем errorsByZone
+      if (finalMetrics.errorsByZone) {
+        if (finalMetrics.errorsByZone.shoulders) {
+          session.postureMetrics.errorsByZone.shoulders = {
+            count: finalMetrics.errorsByZone.shoulders.count || 0,
+            duration: finalMetrics.errorsByZone.shoulders.duration || 0
+          };
+        }
+        if (finalMetrics.errorsByZone.head) {
+          session.postureMetrics.errorsByZone.head = {
+            count: finalMetrics.errorsByZone.head.count || 0,
+            duration: finalMetrics.errorsByZone.head.duration || 0
+          };
+        }
+        if (finalMetrics.errorsByZone.hips) {
+          session.postureMetrics.errorsByZone.hips = {
+            count: finalMetrics.errorsByZone.hips.count || 0,
+            duration: finalMetrics.errorsByZone.hips.duration || 0
+          };
+        }
       }
     }
     
-    session.endTime = new Date();
-    session.duration = Math.floor((session.endTime - session.startTime) / 1000);
     session.status = 'completed';
     
-    if (finalMetrics) {
-      session.postureMetrics = {
-        ...session.postureMetrics,
-        ...finalMetrics
-      };
-      
-      // Пересчитываем процентное соотношение
-      const totalFrames = session.postureMetrics.totalFrames || 1;
-      session.postureMetrics.goodPercentage = Math.round((session.postureMetrics.goodPostureFrames / totalFrames) * 100);
-      session.postureMetrics.warningPercentage = Math.round((session.postureMetrics.warningFrames / totalFrames) * 100);
-      session.postureMetrics.errorPercentage = Math.round((session.postureMetrics.errorFrames / totalFrames) * 100);
-    }
-    
+    // Сохраняем сеанс - pre-save хук сам рассчитает все проценты
     await session.save();
+    
+    console.log('Session completed with metrics:', {
+      totalFrames: session.postureMetrics.totalFrames,
+      goodFrames: session.postureMetrics.goodPostureFrames,
+      warningFrames: session.postureMetrics.warningFrames,
+      errorFrames: session.postureMetrics.errorFrames,
+      goodPercentage: session.postureMetrics.goodPercentage,
+      warningPercentage: session.postureMetrics.warningPercentage,
+      errorPercentage: session.postureMetrics.errorPercentage,
+      postureScore: session.postureMetrics.postureScore,
+      sessionDuration: session.duration,
+      errorsByZone: session.postureMetrics.errorsByZone
+    });
     
     res.status(200).json({
       success: true,
@@ -157,7 +167,7 @@ export const updateSessionMetrics = async (req, res) => {
     const { sessionId } = req.params;
     const { frameData, timestamp, currentStatus, issues = [] } = req.body;
     
-    console.log('Updating session metrics for:', sessionId, 'by user:', req.user?._id);
+    console.log('Updating session metrics for:', sessionId);
     
     const session = await Session.findOne({ 
       sessionId: sessionId,
@@ -172,6 +182,15 @@ export const updateSessionMetrics = async (req, res) => {
       });
     }
 
+    // Инициализируем errorsByZone если его нет
+    if (!session.postureMetrics.errorsByZone) {
+      session.postureMetrics.errorsByZone = {
+        shoulders: { count: 0, duration: 0 },
+        head: { count: 0, duration: 0 },
+        hips: { count: 0, duration: 0 }
+      };
+    }
+
     // Обновляем метрики
     session.postureMetrics.totalFrames = (session.postureMetrics.totalFrames || 0) + 1;
     
@@ -184,19 +203,28 @@ export const updateSessionMetrics = async (req, res) => {
     }
     
     // Обновляем ошибки по зонам
+    // Предполагаем, что кадр длится примерно 0.1 секунды (10 FPS)
+    const frameDuration = 0.1;
+    
     if (issues.length > 0) {
       issues.forEach(issue => {
-        if (issue.includes('shoulder') && session.postureMetrics.errorsByZone.shoulders) {
-          session.postureMetrics.errorsByZone.shoulders.count += 1;
-          session.postureMetrics.errorsByZone.shoulders.duration += 0.1;
+        if (issue.includes('shoulder') || issue === 'shoulders') {
+          if (session.postureMetrics.errorsByZone.shoulders) {
+            session.postureMetrics.errorsByZone.shoulders.count += 1;
+            session.postureMetrics.errorsByZone.shoulders.duration += frameDuration;
+          }
         }
-        if (issue.includes('head') && session.postureMetrics.errorsByZone.head) {
-          session.postureMetrics.errorsByZone.head.count += 1;
-          session.postureMetrics.errorsByZone.head.duration += 0.1;
+        if (issue.includes('head') || issue === 'head') {
+          if (session.postureMetrics.errorsByZone.head) {
+            session.postureMetrics.errorsByZone.head.count += 1;
+            session.postureMetrics.errorsByZone.head.duration += frameDuration;
+          }
         }
-        if (issue.includes('hip') && session.postureMetrics.errorsByZone.hips) {
-          session.postureMetrics.errorsByZone.hips.count += 1;
-          session.postureMetrics.errorsByZone.hips.duration += 0.1;
+        if (issue.includes('hip') || issue === 'hips') {
+          if (session.postureMetrics.errorsByZone.hips) {
+            session.postureMetrics.errorsByZone.hips.count += 1;
+            session.postureMetrics.errorsByZone.hips.duration += frameDuration;
+          }
         }
       });
     }
@@ -461,6 +489,17 @@ export const getSessionDetails = async (req, res) => {
     }
     
     console.log('Session found:', session.sessionId);
+    console.log('Session metrics:', {
+      totalFrames: session.postureMetrics.totalFrames,
+      goodFrames: session.postureMetrics.goodPostureFrames,
+      warningFrames: session.postureMetrics.warningFrames,
+      errorFrames: session.postureMetrics.errorFrames,
+      goodPercentage: session.postureMetrics.goodPercentage,
+      warningPercentage: session.postureMetrics.warningPercentage,
+      errorPercentage: session.postureMetrics.errorPercentage,
+      postureScore: session.postureMetrics.postureScore,
+      errorsByZone: session.postureMetrics.errorsByZone
+    });
     
     // Форматируем данные для фронтенда
     const formattedSession = {

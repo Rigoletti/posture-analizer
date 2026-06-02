@@ -702,14 +702,6 @@ const SessionProgress: React.FC<SessionProgressProps> = ({ sessions, loading = f
             Анализ вашего прогресса за {sessions.length} сеансов
           </Typography>
         </Box>
-        <Stack direction="row" spacing={1}>
-          <Button startIcon={pdfGenerating ? <CircularProgress size={20} /> : <PictureAsPdf />} onClick={generatePDF} variant="contained" disabled={pdfGenerating} sx={{ bgcolor: '#ef4444', '&:hover': { bgcolor: '#dc2626' } }}>
-            {!isMobile && 'Отчет'}
-          </Button>
-          <IconButton onClick={() => setForceUpdate(prev => prev + 1)} sx={{ bgcolor: alpha(theme.palette.primary.main, 0.1) }}>
-            <Refresh />
-          </IconButton>
-        </Stack>
       </Stack>
 
       {/* Панель управления */}

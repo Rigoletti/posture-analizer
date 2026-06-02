@@ -13,13 +13,11 @@ import {
   Divider,
   LinearProgress,
   Paper,
-  Avatar,
   alpha,
   useTheme,
   Alert,
   Skeleton,
   IconButton,
-  Tooltip,
   Breadcrumbs,
   Link
 } from '@mui/material';
@@ -33,21 +31,13 @@ import {
   Warning,
   Error as ErrorIcon,
   CheckCircle,
-  Whatshot,
-  Speed,
   Timer,
-  FitnessCenter,
-  PictureAsPdf,
-  Share,
-  Download,
-  Info
+  FitnessCenter
 } from '@mui/icons-material';
 import { format, parseISO } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import { sessionsApi } from '../../api/sessions';
-import { PDFExport } from '../../components/sessions/PDFExport';
 import SessionRecommendations from '../../components/sessions/SessionRecommendations';
-// УБРАЛИ импорт SnapshotGallery
 
 interface Session {
   _id: string;
@@ -109,7 +99,12 @@ const SessionDetail: React.FC = () => {
       setLoading(true);
       setError(null);
       const response = await sessionsApi.getSessionDetails(sessionId);
-      setSession(response.data.session);
+      const sessionData = response.data.session;
+      
+      console.log('Session data:', sessionData);
+      console.log('Posture metrics:', sessionData.postureMetrics);
+      
+      setSession(sessionData);
     } catch (err: any) {
       console.error('Failed to load session:', err);
       setError(err.message || 'Ошибка при загрузке сеанса');
@@ -132,7 +127,7 @@ const SessionDetail: React.FC = () => {
   };
 
   const formatDuration = (seconds: number) => {
-    if (!seconds) return '0 мин';
+    if (!seconds || seconds === 0) return '0 мин';
     const minutes = Math.floor(seconds / 60);
     const secs = seconds % 60;
     
@@ -154,12 +149,6 @@ const SessionDetail: React.FC = () => {
     if (score >= 60) return 'Удовлетворительно';
     if (score >= 40) return 'Требует внимания';
     return 'Критично';
-  };
-
-  const getTrendIcon = (value: number) => {
-    if (value > 5) return <TrendingUp sx={{ color: theme.palette.success.main }} />;
-    if (value < -5) return <TrendingDown sx={{ color: theme.palette.error.main }} />;
-    return <TrendingFlat sx={{ color: theme.palette.warning.main }} />;
   };
 
   if (loading) {
@@ -192,15 +181,43 @@ const SessionDetail: React.FC = () => {
   }
 
   const metrics = session.postureMetrics;
-  const totalFrames = metrics.totalFrames || 1;
-  const goodPercentage = metrics.goodPercentage || 
-    Math.round((metrics.goodPostureFrames / totalFrames) * 100);
-  const warningPercentage = metrics.warningPercentage || 
-    Math.round((metrics.warningFrames / totalFrames) * 100);
-  const errorPercentage = metrics.errorPercentage || 
-    Math.round((metrics.errorFrames / totalFrames) * 100);
-  const postureScore = metrics.postureScore || 0;
+  
+  // Используем реальные данные из метрик
+  const totalFrames = metrics?.totalFrames || 0;
+  const goodFrames = metrics?.goodPostureFrames || 0;
+  const warningFrames = metrics?.warningFrames || 0;
+  const errorFrames = metrics?.errorFrames || 0;
+  
+  // Рассчитываем проценты на основе реальных кадров
+  const goodPercentage = totalFrames > 0 ? Math.round((goodFrames / totalFrames) * 100) : 0;
+  const warningPercentage = totalFrames > 0 ? Math.round((warningFrames / totalFrames) * 100) : 0;
+  const errorPercentage = totalFrames > 0 ? Math.round((errorFrames / totalFrames) * 100) : 0;
+  
+  // Используем postureScore из метрик или рассчитываем
+  const postureScore = metrics?.postureScore || 
+    (totalFrames > 0 ? Math.round((goodFrames / totalFrames) * 100) : 0);
+  
   const scoreColor = getScoreColor(postureScore);
+  
+  // Проверяем, есть ли проблемы на основе errorsByZone
+  const hasProblems = metrics?.errorsByZone && (
+    (metrics.errorsByZone.shoulders?.duration > 0) ||
+    (metrics.errorsByZone.head?.duration > 0) ||
+    (metrics.errorsByZone.hips?.duration > 0)
+  );
+
+  console.log('Display data:', {
+    totalFrames,
+    goodFrames,
+    warningFrames,
+    errorFrames,
+    goodPercentage,
+    warningPercentage,
+    errorPercentage,
+    postureScore,
+    hasProblems,
+    errorsByZone: metrics?.errorsByZone
+  });
 
   return (
     <Container maxWidth="lg" sx={{ py: 4 }}>
@@ -262,11 +279,16 @@ const SessionDetail: React.FC = () => {
                       size="small"
                       variant="outlined"
                     />
+                    <Chip
+                      icon={<Timer />}
+                      label={`${totalFrames.toLocaleString('ru-RU')} кадров`}
+                      size="small"
+                      variant="outlined"
+                    />
                   </Stack>
                 </Box>
                 
                 <Stack direction="row" spacing={1}>
-                  <PDFExport session={session} buttonVariant="outlined" />
                   <Button
                     startIcon={<FitnessCenter />}
                     variant="contained"
@@ -322,7 +344,7 @@ const SessionDetail: React.FC = () => {
                 {getScoreLabel(postureScore)}
               </Typography>
               <Typography variant="body2" color="text.secondary">
-                На основе {metrics.totalFrames.toLocaleString('ru-RU')} кадров
+                На основе {totalFrames.toLocaleString('ru-RU')} кадров
               </Typography>
             </CardContent>
           </Card>
@@ -360,7 +382,7 @@ const SessionDetail: React.FC = () => {
                     }}
                   />
                   <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
-                    {metrics.goodPostureFrames.toLocaleString('ru-RU')} кадров
+                    {goodFrames.toLocaleString('ru-RU')} кадров
                   </Typography>
                 </Box>
 
@@ -388,7 +410,7 @@ const SessionDetail: React.FC = () => {
                     }}
                   />
                   <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
-                    {metrics.warningFrames.toLocaleString('ru-RU')} кадров
+                    {warningFrames.toLocaleString('ru-RU')} кадров
                   </Typography>
                 </Box>
 
@@ -416,10 +438,24 @@ const SessionDetail: React.FC = () => {
                     }}
                   />
                   <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
-                    {metrics.errorFrames.toLocaleString('ru-RU')} кадров
+                    {errorFrames.toLocaleString('ru-RU')} кадров
                   </Typography>
                 </Box>
               </Stack>
+
+              {/* Предупреждение о противоречии данных */}
+              {hasProblems && postureScore >= 80 && (
+                <Alert 
+                  severity="info" 
+                  sx={{ mt: 2 }}
+                  icon={<Warning />}
+                >
+                  <Typography variant="body2">
+                    Несмотря на высокую общую оценку осанки, были обнаружены проблемы в отдельных зонах.
+                    Рекомендуем обратить внимание на упражнения ниже.
+                  </Typography>
+                </Alert>
+              )}
             </CardContent>
           </Card>
         </Grid>
@@ -435,7 +471,6 @@ const SessionDetail: React.FC = () => {
             </CardContent>
           </Card>
         </Grid>
-
       </Grid>
     </Container>
   );

@@ -55,15 +55,18 @@ const SessionSchema = new mongoose.Schema({
     errorsByZone: {
       shoulders: {
         count: { type: Number, default: 0 },
-        duration: { type: Number, default: 0 } // в секундах
+        duration: { type: Number, default: 0 }, // в секундах
+        percentage: { type: Number, default: 0 } // ДОБАВЛЯЕМ поле percentage
       },
       head: {
         count: { type: Number, default: 0 },
-        duration: { type: Number, default: 0 }
+        duration: { type: Number, default: 0 },
+        percentage: { type: Number, default: 0 } // ДОБАВЛЯЕМ поле percentage
       },
       hips: {
         count: { type: Number, default: 0 },
-        duration: { type: Number, default: 0 }
+        duration: { type: Number, default: 0 },
+        percentage: { type: Number, default: 0 } // ДОБАВЛЯЕМ поле percentage
       }
     },
     
@@ -113,8 +116,6 @@ const SessionSchema = new mongoose.Schema({
     data: mongoose.Schema.Types.Mixed
   }],
   
-  // УДАЛЕНО поле postureSnapshots
-  
   // Настройки сеанса
   settings: {
     confidenceThreshold: Number,
@@ -139,42 +140,46 @@ const SessionSchema = new mongoose.Schema({
   timestamps: true
 });
 
-
+// Единый pre-save хук (убираем дублирование)
 SessionSchema.pre('save', function(next) {
-  // Если сеанс завершен, обновляем длительность
+  // Если сеанс завершен и duration не установлен, вычисляем его
   if (this.endTime && !this.duration) {
     this.duration = Math.floor((this.endTime - this.startTime) / 1000);
   }
   
-  // Если есть метрики, рассчитываем оценку и проценты
+  // Если duration все еще 0, используем текущую длительность для расчетов
+  const effectiveDuration = this.duration || 1;
+  
+  // Если есть метрики и кадры, рассчитываем оценку и проценты
   if (this.postureMetrics.totalFrames > 0) {
-    this.postureMetrics.postureScore = Math.round(
-      (this.postureMetrics.goodPostureFrames / this.postureMetrics.totalFrames) * 100
-    );
+    const totalFrames = this.postureMetrics.totalFrames;
     
-    // Рассчитываем проценты
+    // Рассчитываем проценты для общей осанки
     this.postureMetrics.goodPercentage = Math.round(
-      (this.postureMetrics.goodPostureFrames / this.postureMetrics.totalFrames) * 100
+      (this.postureMetrics.goodPostureFrames / totalFrames) * 100
     );
     
     this.postureMetrics.warningPercentage = Math.round(
-      (this.postureMetrics.warningFrames / this.postureMetrics.totalFrames) * 100
+      (this.postureMetrics.warningFrames / totalFrames) * 100
     );
     
     this.postureMetrics.errorPercentage = Math.round(
-      (this.postureMetrics.errorFrames / this.postureMetrics.totalFrames) * 100
+      (this.postureMetrics.errorFrames / totalFrames) * 100
     );
+    
+    // Рассчитываем общую оценку осанки
+    this.postureMetrics.postureScore = this.postureMetrics.goodPercentage;
   }
   
-  // Рассчитываем проценты для ошибок по зонам
-  const duration = this.duration || 1;
+  // Рассчитываем проценты для ошибок по зонам на основе длительности
   if (this.postureMetrics.errorsByZone) {
     Object.keys(this.postureMetrics.errorsByZone).forEach(zone => {
-      if (this.postureMetrics.errorsByZone[zone] && this.postureMetrics.errorsByZone[zone].duration > 0) {
-        this.postureMetrics.errorsByZone[zone].percentage = 
-          Math.round((this.postureMetrics.errorsByZone[zone].duration / duration) * 1000) / 10;
-      } else {
-        this.postureMetrics.errorsByZone[zone].percentage = 0;
+      const zoneData = this.postureMetrics.errorsByZone[zone];
+      if (zoneData && zoneData.duration > 0) {
+        // Процент времени, когда была проблема в этой зоне
+        zoneData.percentage = Math.round((zoneData.duration / effectiveDuration) * 1000) / 10;
+      } else if (zoneData) {
+        zoneData.percentage = 0;
       }
     });
   }
@@ -182,23 +187,22 @@ SessionSchema.pre('save', function(next) {
   next();
 });
 
-
 // Метод для расчета итоговой статистики
 SessionSchema.methods.calculateFinalStats = function() {
   const totalFrames = this.postureMetrics.totalFrames;
-  if (totalFrames === 0) return;
+  if (totalFrames === 0) return this;
   
   // Расчет процента хорошей осанки
   this.postureMetrics.postureScore = Math.round(
     (this.postureMetrics.goodPostureFrames / totalFrames) * 100
   );
   
-  // Расчет средней длительности ошибок
+  // Расчет процентов по зонам
+  const effectiveDuration = this.duration || 1;
   Object.keys(this.postureMetrics.errorsByZone).forEach(zone => {
-    if (this.postureMetrics.errorsByZone[zone].count > 0) {
-      this.postureMetrics.errorsByZone[zone].averageDuration = 
-        this.postureMetrics.errorsByZone[zone].duration / 
-        this.postureMetrics.errorsByZone[zone].count;
+    const zoneData = this.postureMetrics.errorsByZone[zone];
+    if (zoneData && zoneData.count > 0) {
+      zoneData.percentage = Math.round((zoneData.duration / effectiveDuration) * 1000) / 10;
     }
   });
   
@@ -218,23 +222,6 @@ SessionSchema.virtual('currentDuration').get(function() {
   return Math.floor((Date.now() - this.startTime) / 1000);
 });
 
-// Предварительная обработка перед сохранением
-SessionSchema.pre('save', function(next) {
-  // Если сеанс завершен, обновляем длительность
-  if (this.endTime && !this.duration) {
-    this.duration = Math.floor((this.endTime - this.startTime) / 1000);
-  }
-  
-  // Если есть метрики, рассчитываем оценку
-  if (this.postureMetrics.totalFrames > 0) {
-    this.postureMetrics.postureScore = Math.round(
-      (this.postureMetrics.goodPostureFrames / this.postureMetrics.totalFrames) * 100
-    );
-  }
-  
-  next();
-});
-
 // Индексы для быстрого поиска
 SessionSchema.index({ userId: 1, startTime: -1 });
 SessionSchema.index({ 'postureMetrics.postureScore': 1 });
@@ -245,8 +232,6 @@ SessionSchema.index({ startTime: -1 });
 SessionSchema.index({ 'postureMetrics.postureScore': -1 });
 SessionSchema.index({ duration: -1 });
 SessionSchema.index({ 'postureMetrics.errorsByZone.shoulders.count': -1 });
-
-
 
 const Session = mongoose.model('Session', SessionSchema);
 

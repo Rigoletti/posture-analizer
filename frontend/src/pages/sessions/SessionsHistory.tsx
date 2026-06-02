@@ -40,11 +40,8 @@ import {
   ToggleButtonGroup,
   Tab,
   Tabs,
-  Fade,
   useMediaQuery,
   Skeleton,
-  debounce,
-  Badge,
   Divider
 } from '@mui/material';
 import {
@@ -58,40 +55,29 @@ import {
   CalendarToday,
   Delete,
   Visibility,
-  Sort,
-  Search,
   Clear,
   ExpandMore,
   ExpandLess,
   TableRows,
   GridView,
-  Timeline,
+  Timeline as TimelineIcon,
   CompareArrows,
   AccessTime,
   Star,
   Analytics,
-  Timeline as TimelineIcon,
   PlayCircleOutline,
-  CheckCircleOutline,
   WarningAmber,
-  ErrorOutline,
   CheckCircle as CheckCircleIcon,
-  Close,
   Dangerous,
-  DateRange,
   TrendingUp,
-  TrendingDown,
-  Whatshot,
-  EmojiEvents,
-  Speed,
-  FitnessCenter
+   Search 
 } from '@mui/icons-material';
 import { sessionsApi } from '../../api/sessions';
 import { useAuthStore } from '../../store/auth';
-import { format, parseISO, formatDistanceToNow, intervalToDuration } from 'date-fns';
+import { format, parseISO, formatDistanceToNow } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import { useNavigate } from 'react-router-dom';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 
 const MotionPaper = motion(Paper);
 const MotionBox = motion(Box);
@@ -129,6 +115,23 @@ interface Statistics {
   warningPercentage?: number;
   errorPercentage?: number;
 }
+
+// Функция для преобразования типа проблемы на русский язык
+const getProblemTypeLabel = (problemType: string): string => {
+  const labels: Record<string, string> = {
+    'shoulders': 'Плечи',
+    'head': 'Голова',
+    'hips': 'Таз',
+    'general_posture': 'Осанка',
+    'balance': 'Баланс',
+    'flexibility': 'Гибкость',
+    'posture': 'Осанка',
+    'neck': 'Шея',
+    'back': 'Спина',
+    'lower_back': 'Поясница'
+  };
+  return labels[problemType] || problemType;
+};
 
 // Красивая карточка статистики
 const StatsCard = memo(({ stats, theme }: any) => {
@@ -434,7 +437,7 @@ const SessionCard = memo(({
                     {session.problems.slice(0, 2).map((problem: string, idx: number) => (
                       <Chip
                         key={idx}
-                        label={problem}
+                        label={getProblemTypeLabel(problem)}
                         size="small"
                         sx={{
                           background: alpha(theme.palette.error.main, 0.1),
@@ -803,7 +806,6 @@ const SessionsHistory: React.FC = () => {
 
   // Валидация оценки (только положительные числа, не больше 100)
   const handleScoreChange = useCallback((field: 'minScore' | 'maxScore', value: string) => {
-    // Убираем минус и ограничиваем значение
     let numValue = value.replace(/[^-0-9]/g, '');
     if (numValue === '') {
       handleFilterChange(field, '');
@@ -816,7 +818,6 @@ const SessionsHistory: React.FC = () => {
       return;
     }
     
-    // Ограничиваем от 0 до 100
     intValue = Math.min(100, Math.max(0, intValue));
     handleFilterChange(field, intValue.toString());
   }, [handleFilterChange]);
@@ -930,7 +931,7 @@ const SessionsHistory: React.FC = () => {
     ));
   }, [sessions, expandedSessions, selectedSessions, toggleSessionExpand, toggleSessionSelection, handleViewSession, openDeleteDialog, getScoreColor, getScoreGradient, getScoreLabel, formatSessionDate, getTimeSince, formatSessionDuration, formatPercentage, theme]);
 
-  // Таблица
+  // Таблица с русскими названиями проблем
   const tableRows = useMemo(() => {
     return sessions.map((session) => {
       const score = session.postureMetrics?.postureScore || 0;
@@ -956,16 +957,57 @@ const SessionsHistory: React.FC = () => {
             <Typography variant="caption">{formatPercentage(session.postureMetrics?.goodPercentage || 0)}</Typography>
           </TableCell>
           <TableCell>
-            {hasProblems ? (
-              <Chip label={session.problems?.length > 0 ? `${session.problems.length} проблем` : "Есть ошибки"} size="small" color="warning" variant="outlined" />
+            {session.problems && session.problems.length > 0 ? (
+              <Stack direction="row" spacing={0.5} flexWrap="wrap" gap={0.5}>
+                {session.problems.slice(0, 2).map((problem: string, idx: number) => (
+                  <Chip
+                    key={idx}
+                    label={getProblemTypeLabel(problem)}
+                    size="small"
+                    sx={{
+                      height: 24,
+                      fontSize: '0.7rem',
+                      background: alpha(theme.palette.warning.main, 0.1),
+                      color: theme.palette.warning.main
+                    }}
+                  />
+                ))}
+                {session.problems.length > 2 && (
+                  <Chip
+                    label={`+${session.problems.length - 2}`}
+                    size="small"
+                    sx={{ height: 24, fontSize: '0.7rem' }}
+                  />
+                )}
+              </Stack>
+            ) : hasProblems ? (
+              <Chip 
+                label="Есть ошибки" 
+                size="small" 
+                color="warning" 
+                variant="outlined" 
+              />
             ) : (
-              <Chip label="Нет проблем" size="small" color="success" variant="outlined" />
+              <Chip 
+                label="Нет проблем" 
+                size="small" 
+                color="success" 
+                variant="outlined" 
+              />
             )}
           </TableCell>
           <TableCell align="center">
             <Stack direction="row" spacing={0.5} justifyContent="center">
-              <IconButton size="small" onClick={() => handleViewSession(session.sessionId)}><Visibility fontSize="small" /></IconButton>
-              <IconButton size="small" onClick={() => openDeleteDialog(session.sessionId, session.startTime, score, session.duration || 0)} sx={{ color: theme.palette.error.main }}><Delete fontSize="small" /></IconButton>
+              <IconButton size="small" onClick={() => handleViewSession(session.sessionId)}>
+                <Visibility fontSize="small" />
+              </IconButton>
+              <IconButton 
+                size="small" 
+                onClick={() => openDeleteDialog(session.sessionId, session.startTime, score, session.duration || 0)} 
+                sx={{ color: theme.palette.error.main }}
+              >
+                <Delete fontSize="small" />
+              </IconButton>
             </Stack>
           </TableCell>
         </TableRow>
