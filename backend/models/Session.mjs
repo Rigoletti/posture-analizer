@@ -70,7 +70,7 @@ const SessionSchema = new mongoose.Schema({
       }
     },
     
-    // Процент хорошей осанки - это и есть ОЦЕНКА
+    // Процент хорошей осанки 
     goodPercentage: {
       type: Number,
       default: 0
@@ -86,7 +86,6 @@ const SessionSchema = new mongoose.Schema({
       default: 0
     },
     
-    // ОЦЕНКА - это просто goodPercentage
     postureScore: {
       type: Number,
       min: 0,
@@ -141,14 +140,13 @@ const SessionSchema = new mongoose.Schema({
   timestamps: true
 });
 
-// Единый pre-save хук
 SessionSchema.pre('save', function(next) {
-  // Если сеанс завершен и duration не установлен, вычисляем его
+  // Если сеанс завершен и продолжительность не установлена, вычисляем его
   if (this.endTime && !this.duration) {
     this.duration = Math.floor((this.endTime - this.startTime) / 1000);
   }
   
-  // Если duration все еще 0, используем текущую длительность для расчетов
+  // Если продолжительность все еще 0, используем текущую длительность для расчетов
   const effectiveDuration = this.duration || 1;
   
   // Если есть метрики и кадры, рассчитываем проценты
@@ -164,7 +162,6 @@ SessionSchema.pre('save', function(next) {
     this.postureMetrics.warningPercentage = warningPct;
     this.postureMetrics.errorPercentage = errorPct;
     
-    // ВАЖНО: postureScore = goodPercentage (процент времени с хорошей осанкой)
     this.postureMetrics.postureScore = goodPct;
   }
   

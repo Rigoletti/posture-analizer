@@ -591,10 +591,7 @@ export const cancelSubscription = async (req, res) => {
     subscription.status = 'cancelled';
     subscription.autoRenew = false;
     await subscription.save();
-    
-    // Не отключаем доступ сразу, только отключаем автопродление
-    // user.hasPremiumAccess оставляем true до окончания срока
-    
+
     const endDateStr = subscription.endDate 
       ? new Date(subscription.endDate).toLocaleDateString('ru-RU')
       : 'неизвестно';

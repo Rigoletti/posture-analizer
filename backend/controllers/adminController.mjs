@@ -354,7 +354,7 @@ export const getExerciseById = async (req, res) => {
 
 export const createExercise = async (req, res) => {
   try {
-    console.log('=== CREATE EXERCISE START ===');
+    console.log('=== создание упражнения ===');
     console.log('User:', req.user?._id);
     console.log('Request headers:', req.headers);
     console.log('Content-Type:', req.headers['content-type']);
@@ -480,7 +480,7 @@ export const createExercise = async (req, res) => {
     
     await exercise.populate('createdBy', 'firstName lastName email');
     
-    console.log('=== CREATE EXERCISE SUCCESS ===');
+    console.log(' упражнение успешно создано');
     
     res.status(201).json({
       success: true,
@@ -489,7 +489,7 @@ export const createExercise = async (req, res) => {
     });
     
   } catch (error) {
-    console.error('=== CREATE EXERCISE ERROR ===');
+    console.error(' Ошибка создания упражнения');
     console.error('Error name:', error.name);
     console.error('Error message:', error.message);
     console.error('Error stack:', error.stack);
@@ -915,7 +915,7 @@ export const getAnalyticsData = async (req, res) => {
       startDate.setFullYear(startDate.getFullYear() - 1);
     }
     
-    // 1. ДИНАМИКА СЕССИЙ - реальные данные по дням
+
     const sessionTimeline = await Session.aggregate([
       {
         $match: {
@@ -963,7 +963,7 @@ export const getAnalyticsData = async (req, res) => {
       });
     }
     
-    // 2. АКТИВНОСТЬ ПО ЧАСАМ - уникальные пользователи за последние 30 дней
+    //  уникальные пользователи за последние 30 дней
     const hourlyActivity = await Session.aggregate([
       {
         $match: {
@@ -998,7 +998,6 @@ export const getAnalyticsData = async (req, res) => {
       activeUsers: hourMap.get(i) || 0
     }));
     
-    // 3. ПОПУЛЯРНЫЕ УПРАЖНЕНИЯ - из сессий
     const popularExercises = await Session.aggregate([
       {
         $match: {
@@ -1038,14 +1037,13 @@ export const getAnalyticsData = async (req, res) => {
       };
     });
     
-    // 4. КАЧЕСТВО ТРЕНИРОВОК - средний балл по дням
+
     const sessionTrends = timelineData.map(item => ({
       date: item.date,
       avgScore: item.avgScore,
       totalSessions: item.sessions
     }));
-    
-    // 5. ТИПЫ УПРАЖНЕНИЙ - статистика из базы
+
     const exerciseTypesStats = await Exercise.aggregate([
       {
         $group: {
@@ -1059,8 +1057,7 @@ export const getAnalyticsData = async (req, res) => {
       acc[type._id] = type.count;
       return acc;
     }, {});
-    
-    // 6. ГЕОГРАФИЧЕСКОЕ РАСПРЕДЕЛЕНИЕ
+
     let geoDistribution = [];
     try {
       geoDistribution = await User.aggregate([

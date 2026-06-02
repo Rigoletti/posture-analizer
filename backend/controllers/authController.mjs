@@ -32,7 +32,7 @@ export const register = async (req, res) => {
 
     console.log(`📧 Generated verification code for ${email}: ${verificationCode}`);
 
-    // Отправляем email с кодом АСИНХРОННО
+    // Отправляем email с кодом 
     emailSender.sendVerificationCodeEmail(email, verificationCode, firstName)
       .then(emailSent => {
         if (emailSent) {
@@ -45,7 +45,7 @@ export const register = async (req, res) => {
         console.error(`❌ Error sending verification code email:`, err);
       });
 
-    // Возвращаем ответ НЕМЕДЛЕННО
+    // Возвращаем ответ 
     const userResponse = {
       _id: user._id,
       lastName: user.lastName,
@@ -234,7 +234,7 @@ export const resendVerificationCode = async (req, res) => {
 
     console.log(`📧 Resending verification code to ${email}: ${verificationCode}`);
 
-    // Отправляем email с кодом АСИНХРОННО
+    // Отправляем email с кодом 
     emailSender.sendVerificationCodeEmail(email, verificationCode, user.firstName)
       .then(emailSent => {
         if (emailSent) {
@@ -323,7 +323,7 @@ export const login = async (req, res) => {
     // Генерируем токен
     const token = generateToken(user._id);
     
-    // Устанавливаем токен в HttpOnly куку
+    // Устанавливаем токен в HttpOnly куки
     setTokenCookie(res, token);
     
     const userResponse = {

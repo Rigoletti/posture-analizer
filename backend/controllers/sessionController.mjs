@@ -240,7 +240,7 @@ export const updateSessionMetrics = async (req, res) => {
       session.postureMetrics.warningPercentage = Math.round((session.postureMetrics.warningFrames / totalFrames) * 100);
       session.postureMetrics.errorPercentage = Math.round((session.postureMetrics.errorFrames / totalFrames) * 100);
       
-      // ОЦЕНКА = процент хорошей осанки
+      // Оценка = процент хорошей осанки
       session.postureMetrics.postureScore = goodPct;
     }
     

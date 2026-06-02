@@ -1,7 +1,7 @@
 import * as poseDetection from '@tensorflow-models/pose-detection';
 import * as tf from '@tensorflow/tfjs';
 
-// ─── Константы 
+// Константы 
 
 const VIDEO_WIDTH = 320;
 const VIDEO_HEIGHT = 320;
@@ -81,7 +81,6 @@ const normalizePoints = (kps: poseDetection.Keypoint[]) => {
   return kps.map(kp => ({ ...kp, x: kp.x / sw, y: kp.y / sw }));
 };
 
-// ─── Встроенный Web Worker для таймера 
 
 function createTimerWorker(): Worker | null {
   try {
@@ -159,7 +158,7 @@ class PostureAnalysisService {
     }
   }
 
-  // ─── Публичные методы ──────────────────────────────────────────────────
+  // Публичные методы 
 
   getState(): Readonly<PostureAnalysisState> { return { ...this.state }; }
   getVideoElement(): HTMLVideoElement | null { return this.videoElement; }
@@ -176,21 +175,14 @@ class PostureAnalysisService {
     this.listeners.forEach(fn => fn(snap));
   }
 
-  // ─── Загрузка модели ────────────────────────────────────────────────────
+  // Загрузка модели 
 
-  /**
-   * Загрузка модели TensorFlow.js с поддержкой:
-   * - Множественных бэкендов (webgl → cpu → wasm)
-   * - Retry при сетевых ошибках
-   * - Альтернативных зеркал для загрузки модели
-   */
   async loadModel(): Promise<boolean> {
     if (this.detector && this.state.isModelReady) return true;
     if (this.modelBusy) return false;
     this.modelBusy = true;
     this.emit({ isModelLoading: true, error: null });
 
-    // Проверка сети: tfhub.dev должен резолвиться
     try {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 5000);
@@ -202,7 +194,6 @@ class PostureAnalysisService {
       // В Electron продолжаем — модель может загрузиться через настроенную сессию
     }
 
-    // Пытаемся инициализировать TF.js с разными бэкендами
     const backends = [
       { name: 'webgl', priority: 0 },
       { name: 'cpu', priority: 1 },
@@ -231,7 +222,6 @@ class PostureAnalysisService {
       return false;
     }
 
-    // Загрузка модели с retry
     const MAX_RETRIES = 3;
     const RETRY_DELAY = 1000;
 
@@ -274,7 +264,7 @@ class PostureAnalysisService {
     return false;
   }
 
-  // ─── Камера ──────────────────────────────────────────────────────────────
+  //  Камера 
 
   private ensureContainer(): HTMLDivElement {
     if (!this.hiddenContainer) {
@@ -353,7 +343,7 @@ class PostureAnalysisService {
     this.cameraInitPromise = null;
   }
 
-  // ─── Захват кадра (ключевой метод для фоновой работы) 
+  // Захват кадра (ключевой метод для фоновой работы) 
 
   private async grabFrame(): Promise<HTMLVideoElement | HTMLCanvasElement | ImageBitmap | null> {
     // Приоритет 1: ImageCapture (работает в фоне!)
@@ -366,17 +356,15 @@ class PostureAnalysisService {
           if (bitmap) return bitmap;
         }
       } catch (e) {
-        // ImageCapture может быть недоступен в некоторых режимах
+     
         console.warn('[PAS] ImageCapture fail, fallback to video:', e);
       }
     }
 
-    // Приоритет 2: <video> (быстро, но не работает в фоне)
     if (this.videoElement && this.videoElement.readyState >= 2) {
       return this.videoElement;
     }
 
-    // Приоритет 3: Canvas fallback (если видео есть, но не готово)
     if (this.videoElement && this.mediaStream) {
       try {
         const { canvas, ctx } = this.ensureCanvas();
@@ -388,7 +376,7 @@ class PostureAnalysisService {
     return null;
   }
 
-  // ─── Калибровка 
+  // Калибровка 
 
   async calibrate(): Promise<boolean> {
     if (!this.detector || !this.state.isModelReady) {
@@ -437,7 +425,7 @@ class PostureAnalysisService {
     this.emit({ isCalibrated: false, currentStatus: 'Ожидание анализа...', postureHistory: [], issues: [] });
   }
 
-  // ─── Запуск / Остановка 
+  // Запуск / Остановка 
 
   async start(forceRestart?: boolean): Promise<boolean> {
     if (this.state.isRunning) {
@@ -488,9 +476,8 @@ class PostureAnalysisService {
     this.emit({ totalFrames: 0, goodPostureFrames: 0, warningFrames: 0, postureScore: 0, sessionDuration: 0, postureHistory: [] });
   }
 
-  // ─── Таймеры 
+  //  Таймеры 
 
-  /** Активный таймер (setInterval, для видимой вкладки) */
   private startActiveTimer(): void {
     this.stopActiveTimer();
     this.activeTimerId = setInterval(() => this.runDetection(), DETECTION_INTERVAL_ACTIVE);
@@ -499,15 +486,14 @@ class PostureAnalysisService {
     if (this.activeTimerId !== null) { clearInterval(this.activeTimerId); this.activeTimerId = null; }
   }
 
-  /** Web Worker таймер (работает в фоновых вкладках без throttle) */
+ 
   private startWorkerTimer(): void {
     this.stopWorkerTimer();
     const worker = createTimerWorker();
     if (!worker) return;
     this.workerTimer = worker;
     worker.onmessage = () => {
-      // worker тикает всегда, но мы используем его только в фоновом режиме
-      // В активном режиме приоритет у setInterval
+
       if (this.isBackgroundMode()) this.runDetection();
     };
     worker.postMessage({ type: 'start', interval: DETECTION_INTERVAL_BACKGROUND });
@@ -530,11 +516,9 @@ class PostureAnalysisService {
   private onVisibilityChange = (): void => {
     if (!this.state.isRunning) return;
     if (!this.isBackgroundMode()) {
-      // Стали видимы — переключаемся на активный таймер + catch-up
       this.startActiveTimer();
-      this.runDetection(); // catch-up
+      this.runDetection(); 
     }
-    // Worker timer работает всегда, ничего менять не нужно
   };
 
 
@@ -549,7 +533,7 @@ class PostureAnalysisService {
     if (this.durationTimerId !== null) { clearInterval(this.durationTimerId); this.durationTimerId = null; }
   }
 
-  // ─── Детекция 
+  // Детекция 
 
   private async runDetection(): Promise<void> {
     if (!this.detector || !this.referenceNormalized) return;
@@ -633,7 +617,7 @@ class PostureAnalysisService {
     } else { this.lastAlertKey = ''; }
   }
 
-  // ─── Уведомления 
+  // Уведомления 
 
   private requestNotifyPermission(): void {
     if ('Notification' in window && Notification.permission === 'default') Notification.requestPermission();
@@ -669,7 +653,7 @@ class PostureAnalysisService {
     }
   }
 
-  // ─── Метрики сессии ────────────────────────────────────────────────────
+  // Метрики сессии 
 
   getSessionMetrics() {
     const s = this.state;

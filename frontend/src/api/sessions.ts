@@ -247,8 +247,6 @@ export const sessionsApi = {
     }
   },
 
-  // ============ ДОПОЛНИТЕЛЬНЫЕ МЕТОДЫ ============
-
   // Получение истории сеансов
   getSessionsHistory: async (page: number = 1, limit: number = 20, filters?: {
     sortBy?: string;

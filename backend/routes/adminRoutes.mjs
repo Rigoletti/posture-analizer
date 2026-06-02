@@ -24,11 +24,11 @@ const router = express.Router();
 router.get('/exercises/public', getExercises);
 router.get('/exercises/public/:id', getExerciseById);
 
-// Для получения упражнений с фильтрацией (доступно всем)
+// Для получения упражнений с фильтрацией 
 router.get('/exercises', getExercises);
 router.get('/exercises/:id', getExerciseById);
 
-// Защищенные маршруты (требуют авторизации)
+// Защищенные маршруты 
 router.use(protect);
 
 // Маршруты для админов 

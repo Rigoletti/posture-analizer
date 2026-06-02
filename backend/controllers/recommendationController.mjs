@@ -6,7 +6,7 @@ import Session from '../models/Session.mjs';
 // Получить все рекомендации (для админки)
 export const getRecommendations = async (req, res) => {
   try {
-    console.log('GET recommendations called with query:', req.query);
+    console.log('Выдает рекомендации:', req.query);
     
     const { 
       page = 1, 
@@ -64,7 +64,7 @@ export const getRecommendations = async (req, res) => {
 // Создать новую рекомендацию
 export const createRecommendation = async (req, res) => {
   try {
-    console.log('CREATE recommendation called with body:', req.body);
+    console.log('Create recommendation called with body:', req.body);
     console.log('User:', req.user);
     
     const { problemType, exerciseId, priority = 1, description = '', isActive = true } = req.body;

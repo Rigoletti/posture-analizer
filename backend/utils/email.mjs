@@ -56,9 +56,9 @@ class EmailSender {
           to: email,
           subject: 'Email verification code',
           html: `
-            <h3>Hello ${firstName || 'user'}!</h3>
-            <p>Your verification code: <strong>${code}</strong></p>
-            <p>Code expires in 15 minutes.</p>
+            <h3>Приветствую ${firstName || 'user'}!</h3>
+            <p>Твой код: <strong>${code}</strong></p>
+            <p>Код действует 15 минут.</p>
           `,
           text: `Your verification code: ${code}\n\nExpires in 15 minutes.`
         });
@@ -78,12 +78,12 @@ class EmailSender {
       await this.transporter.sendMail({
         from: '"Posture Analyzer" <banthill@yandex.ru>',
         to: email,
-        subject: 'Welcome to Posture Analyzer!',
-        html: `<h3>Welcome ${firstName || 'user'}!</h3><p>Your account has been activated.</p>`,
-        text: `Welcome ${firstName || 'user'}! Your account has been activated.`
+        subject: 'Добро пожаловать на Posture Analyzer!',
+        html: `<h3>Здравствуйте ${firstName || 'user'}!</h3><p>Твой аккаунт активирован.</p>`,
+        text: `Здравствуйте ${firstName || 'user'}! Твой аккаунт активирован.`
       });
     } catch (err) {
-      // silent
+
     }
 
     return true;

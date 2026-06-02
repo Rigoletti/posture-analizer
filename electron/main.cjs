@@ -1,7 +1,7 @@
 const { app, BrowserWindow, Tray, Menu, Notification, ipcMain, nativeImage, session } = require('electron');
 const path = require('path');
 
-// ─── Константы ───────────────────────────────────────────────────────────────
+// Константы 
 
 const isDev = process.env.NODE_ENV === 'development';
 const DEV_URL = 'http://localhost:5173';
@@ -11,9 +11,7 @@ let mainWindow = null;
 let tray = null;
 let isQuitting = false;
 
-// ─── Командные переключатели Chromium ────────────────────────────────────────
-
-// Разрешаем загрузку моделей TensorFlow.js по HTTPS (tfhub.dev, googleapis.com)
+// Разрешаем загрузку моделей TensorFlow.js по HTTPS 
 app.commandLine.appendSwitch('ignore-certificate-errors');
 app.commandLine.appendSwitch('disable-web-security');
 app.commandLine.appendSwitch('disable-features', 'OutOfBlinkCors,ChromeWhatsNewUI');
@@ -21,7 +19,7 @@ app.commandLine.appendSwitch('cors-exempt-headers', 'x-goog-*');
 // Отключаем DNS-предзагрузку, чтобы избежать конфликтов
 app.commandLine.appendSwitch('disable-dns-prefetch');
 
-// ─── Настройки сессии ────────────────────────────────────────────────────────
+// Настройки сессии 
 
 function setupSession() {
   const ses = session.defaultSession;
@@ -47,7 +45,7 @@ function setupSession() {
   ses.setCacheSize(200 * 1024 * 1024); // 200 MB
 }
 
-// ─── Создание окна ──────────────────────────────────────────────────────────
+// Создание окна 
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -61,13 +59,12 @@ function createWindow() {
       preload: path.join(__dirname, 'preload.cjs'),
       nodeIntegration: false,
       contextIsolation: true,
-      // ⚠️ Отключаем webSecurity для загрузки моделей TensorFlow.js из внешних источников
+      // Отключаем webSecurity для загрузки моделей TensorFlow.js из внешних источников
       // Это необходимо, т.к. @tensorflow-models/pose-detection загружает модель с tfhub.dev
       webSecurity: false,
-      // Разрешаем getUserMedia в renderer
       allowRunningInsecureContent: true,
     },
-    show: false, // Показываем после готовности
+    show: false, 
   });
 
   // Загружаем приложение
@@ -136,7 +133,7 @@ function updateTrayMenu(status) {
     },
     { type: 'separator' },
     {
-      label: status === 'running' ? '🔴 Анализ активен' : '⏸ Анализ остановлен',
+      label: status === 'running' ? ' Анализ активен' : '⏸ Анализ остановлен',
       enabled: false,
     },
     { type: 'separator' },
@@ -153,8 +150,6 @@ function updateTrayMenu(status) {
     tray.setContextMenu(contextMenu);
   }
 }
-
-// ─── IPC Handlers ───────────────────────────────────────────────────────────
 
 function setupIPC() {
   // Отправка нативного уведомления
@@ -202,7 +197,7 @@ function setupIPC() {
   });
 }
 
-// ─── Жизненный цикл приложения ──────────────────────────────────────────────
+//  Жизненный цикл приложения 
 
 app.whenReady().then(() => {
   setupSession();

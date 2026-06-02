@@ -109,7 +109,6 @@ const userSchema = new mongoose.Schema({
     }
   },
   
-  // Упрощенная система подписки - только 1 тип
   subscription: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Subscription',
@@ -146,7 +145,6 @@ const userSchema = new mongoose.Schema({
   toJSON: { 
     virtuals: true,
     transform: function(doc, ret) {
-      // Добавляем виртуальные поля в JSON
       ret.avatarUrl = doc.avatarUrl;
       ret.avatarThumbnailUrl = doc.avatarThumbnailUrl;
       return ret;

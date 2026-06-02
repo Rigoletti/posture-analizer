@@ -75,7 +75,6 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = React.memo
     }
   });
 
-  // Используем ref для debounce
   const timeoutRef = useRef<NodeJS.Timeout>();
 
   // Сохранение темы при изменении с debounce
@@ -126,8 +125,7 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = React.memo
         timeoutId = undefined as any;
       }, 50);
     };
-    
-    // Используем addEventListener с passive: true для производительности
+
     mediaQuery.addEventListener('change', handleChange);
     return () => {
       mediaQuery.removeEventListener('change', handleChange);

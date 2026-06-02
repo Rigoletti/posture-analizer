@@ -331,7 +331,6 @@ export const useSessionManager = (props?: UseSessionManagerProps) => {
     return () => {
       if (isSessionActive && currentSession && !currentSession.ended) {
         stopMetricsUpdate();
-        // Финальный flush при размонтировании
         flushMetricsBuffer();
       }
     };

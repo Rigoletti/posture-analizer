@@ -9,33 +9,25 @@ import React, {
 import { postureAnalysisService, type PostureAnalysisState } from '../services/postureAnalysisService';
 
 interface PostureAnalysisContextValue {
-  /** Текущее состояние анализа */
   state: PostureAnalysisState;
 }
 
 interface PostureControlContextValue {
-  /** Запустить анализ (требуется калибровка) */
   start: () => Promise<boolean>;
-  /** Остановить анализ */
   stop: () => void;
-  /** Полная остановка с освобождением ресурсов */
   dispose: () => void;
-  /** Выполнить калибровку */
   calibrate: () => Promise<boolean>;
-  /** Сбросить калибровку */
   resetCalibration: () => void;
-  /** Получить referencen на video-элемент для отображения в WebcamFeed */
   getVideoElement: () => HTMLVideoElement | null;
-  /** Сбросить статистику сессии */
   resetSessionStats: () => void;
 }
 
-// ─── Создание контекстов 
+// Создание контекстов 
 
 const PostureAnalysisCtx = createContext<PostureAnalysisContextValue | null>(null);
 const PostureControlCtx = createContext<PostureControlContextValue | null>(null);
 
-// ─── Провайдер 
+// Провайдер 
 
 interface PostureAnalysisProviderProps {
   children: ReactNode;
@@ -48,7 +40,6 @@ export const PostureAnalysisProvider: React.FC<PostureAnalysisProviderProps> = (
   useEffect(() => {
     const unsubscribe = postureAnalysisService.addListener((newState) => {
       // Используем функциональное обновление, чтобы избежать лишних ререндеров
-      // Сервис всегда присылает полный объект (Object.assign в emit)
       setState(newState as PostureAnalysisState);
     });
 
@@ -105,14 +96,9 @@ export const PostureAnalysisProvider: React.FC<PostureAnalysisProviderProps> = (
   );
 };
 
-// ─── Хуки 
+//  Хуки 
 
-/**
- * usePostureAnalysis — доступ к состоянию анализа осанки.
- * Компонент будет перерендериваться при любом изменении состояния.
- *
- * @returns PostureAnalysisState — полное состояние анализа
- */
+
 export function usePostureAnalysis(): PostureAnalysisState {
   const ctx = useContext(PostureAnalysisCtx);
   if (!ctx) {
@@ -123,12 +109,6 @@ export function usePostureAnalysis(): PostureAnalysisState {
   return ctx.state;
 }
 
-/**
- * usePostureControl — доступ к методам управления анализом осанки.
- * Возвращаемые функции стабильны (не меняются между рендерами).
- *
- * @returns { start, stop, dispose, calibrate, resetCalibration, getVideoElement, resetSessionStats }
- */
 export function usePostureControl(): PostureControlContextValue {
   const ctx = useContext(PostureControlCtx);
   if (!ctx) {

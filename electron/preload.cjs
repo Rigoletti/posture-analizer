@@ -1,22 +1,22 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('electronAPI', {
-  // ─── Уведомления ────────────────────────────────────────────────────────
+  // Уведомления 
   showNotification: (title, body) => {
     ipcRenderer.send('show-notification', { title, body });
   },
 
-  // ─── Трей ───────────────────────────────────────────────────────────────
+  // Трей ─
   updateTrayStatus: (status) => {
     ipcRenderer.send('update-tray-status', status);
   },
 
-  // ─── Платформа ──────────────────────────────────────────────────────────
+  // Платформа 
   getPlatform: () => {
     return ipcRenderer.invoke('get-platform');
   },
 
-  // ─── События от main процесса ───────────────────────────────────────────
+  // События от main процесса
   onNotification: (callback) => {
     const handler = (event, data) => callback(data);
     ipcRenderer.on('notification-from-main', handler);

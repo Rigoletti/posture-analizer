@@ -222,9 +222,6 @@ export const replyToReview = async (req, res) => {
       });
     }
 
-    // Проверяем, что пользователь является администратором (так как в схеме нет targetUserId)
-    // Или автор отзыва может отвечать? В зависимости от бизнес-логики
-    // Обычно на отзывы отвечает только администратор
     if (req.user.role !== 'admin') {
       return res.status(403).json({
         success: false,
@@ -298,7 +295,7 @@ export const updateReview = async (req, res) => {
 
     await review.save();
 
-    // Получаем обновленный отзыв (убрали ненужный populate)
+    // Получаем обновленный отзыв 
     const updatedReview = await Review.findById(reviewId)
       .populate('user', 'firstName lastName fullName shortName')
       .populate('replier', 'firstName lastName fullName shortName');
@@ -335,7 +332,6 @@ export const deleteReview = async (req, res) => {
     const isAuthor = review.userId.toString() === userId.toString();
     const isAdmin = req.user.role === 'admin';
 
-    // В текущей схеме нет targetUserId, поэтому проверяем только автора и админа
     if (!isAuthor && !isAdmin) {
       return res.status(403).json({
         success: false,
@@ -343,7 +339,6 @@ export const deleteReview = async (req, res) => {
       });
     }
 
-    // Для автора или целевого пользователя скрываем отзыв
     // Админ может полностью удалить
     if (isAdmin) {
       await review.deleteOne();
@@ -415,15 +410,13 @@ export const markHelpful = async (req, res) => {
 export const getMyReviews = async (req, res) => {
   try {
     const userId = req.user._id;
-    const { type = 'given' } = req.query; // Изменено: по умолчанию показываем оставленные отзывы
+    const { type = 'given' } = req.query; 
 
     let query = { status: 'active' };
 
     if (type === 'given') {
       query.userId = userId;
     }
-    // В текущей схеме нет targetUserId, поэтому не можем фильтровать по полученным отзывам
-    // Можно добавить это поле в будущем
 
     const reviews = await Review.find(query)
       .populate('user', 'firstName lastName fullName shortName')

@@ -17,6 +17,7 @@ import {
   Paper,
   Divider,
   Avatar,
+  AvatarGroup,
   Tooltip
 } from '@mui/material';
 import {
@@ -35,6 +36,7 @@ import {
   LocalFireDepartment,
   Description,
   Info,
+  FitnessCenter,
   Star
 } from '@mui/icons-material';
 import { sessionsApi } from '../../api/sessions';
@@ -45,45 +47,29 @@ interface SessionRecommendationsProps {
   compact?: boolean;
 }
 
-interface Exercise {
-  _id: string;
-  title: string;
-  description: string;
-  type: string;
-  difficulty: string;
-  duration: number;
-  instructions: string[];
-  benefits: string[];
-  has3dModel?: boolean;
-  modelType?: string;
-  videoUrl?: string;
-  imageUrl?: string;
-  muscleGroups?: string[];
-  caloriesBurned?: number;
-}
-
 interface Recommendation {
   _id?: string;
   problemType: string;
   problemSeverity: 'low' | 'medium' | 'high';
   problemPercentage?: number;
-  exercise: Exercise;
+  exercise: {
+    _id: string;
+    title: string;
+    description: string;
+    type: string;
+    difficulty: string;
+    duration: number;
+    instructions: string[];
+    benefits: string[];
+    has3dModel?: boolean;
+    modelType?: string;
+    videoUrl?: string;
+    imageUrl?: string;
+    muscleGroups?: string[];
+    caloriesBurned?: number;
+  };
   recommendation: string;
   priority: number;
-}
-
-interface Problem {
-  type: string;
-  severity: 'low' | 'medium' | 'high';
-  percentage: number;
-}
-
-interface SessionRecommendationsData {
-  sessionId: string;
-  postureScore: number;
-  problems: Problem[];
-  recommendations: Recommendation[];
-  timestamp: string;
 }
 
 const SessionRecommendations: React.FC<SessionRecommendationsProps> = ({ 
@@ -94,8 +80,6 @@ const SessionRecommendations: React.FC<SessionRecommendationsProps> = ({
   const navigate = useNavigate();
   
   const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
-  const [problems, setProblems] = useState<Problem[]>([]);
-  const [postureScore, setPostureScore] = useState<number>(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [expandedProblems, setExpandedProblems] = useState<string[]>([]);
@@ -115,48 +99,16 @@ const SessionRecommendations: React.FC<SessionRecommendationsProps> = ({
       setLoading(true);
       setError(null);
       const response = await sessionsApi.getSessionRecommendations(sessionId);
+      setRecommendations(response.data.recommendations);
       
-      console.log('Full API response:', response);
-      
-      // Правильный доступ к данным в зависимости от структуры ответа
-      let recommendationsData: Recommendation[] = [];
-      let problemsData: Problem[] = [];
-      let postureScoreValue: number = 0;
-      
-      // Проверяем различные возможные структуры ответа
-      if (response.data?.data?.recommendations) {
-        recommendationsData = response.data.data.recommendations;
-        problemsData = response.data.data.problems || [];
-        postureScoreValue = response.data.data.postureScore || 0;
-      } else if (response.data?.recommendations) {
-        recommendationsData = response.data.recommendations;
-        problemsData = response.data.problems || [];
-        postureScoreValue = response.data.postureScore || 0;
-      } else if (Array.isArray(response.data)) {
-        recommendationsData = response.data;
-      } else if (response.data?.data && Array.isArray(response.data.data)) {
-        recommendationsData = response.data.data;
-      }
-      
-      console.log('Extracted recommendations:', recommendationsData);
-      console.log('Extracted problems:', problemsData);
-      
-      setRecommendations(recommendationsData);
-      setProblems(problemsData);
-      setPostureScore(postureScoreValue);
-      
-      // Calculate stats based on actual problems
-      const highCount = problemsData.filter(p => p.severity === 'high').length;
-      const mediumCount = problemsData.filter(p => p.severity === 'medium').length;
-      const lowCount = problemsData.filter(p => p.severity === 'low').length;
-      
-      setStats({
-        totalProblems: problemsData.length,
-        highSeverity: highCount,
-        mediumSeverity: mediumCount,
-        lowSeverity: lowCount
-      });
-      
+      // Calculate stats
+      const stats = {
+        totalProblems: response.data.problems?.length || 0,
+        highSeverity: response.data.problems?.filter((p: any) => p.severity === 'high').length || 0,
+        mediumSeverity: response.data.problems?.filter((p: any) => p.severity === 'medium').length || 0,
+        lowSeverity: response.data.problems?.filter((p: any) => p.severity === 'low').length || 0
+      };
+      setStats(stats);
     } catch (err: any) {
       console.error('Failed to load recommendations:', err);
       setError(err.message || 'Ошибка при загрузке рекомендаций');
@@ -178,7 +130,7 @@ const SessionRecommendations: React.FC<SessionRecommendationsProps> = ({
   };
 
   const getProblemTypeIcon = (type: string) => {
-    const icons: Record<string, string> = {
+    const icons: Record<string, React.ReactNode> = {
       'shoulders': '👥',
       'head': '🧠',
       'hips': '🦵',
@@ -225,6 +177,17 @@ const SessionRecommendations: React.FC<SessionRecommendationsProps> = ({
     }
   };
 
+  const getExerciseTypeIcon = (type: string) => {
+    switch (type) {
+      case 'stretching': return '🧘';
+      case 'strength': return '💪';
+      case 'cardio': return '🏃';
+      case 'posture': return '🚶';
+      case 'flexibility': return '🤸';
+      default: return '🏋️';
+    }
+  };
+
   const toggleProblemExpansion = (problemType: string) => {
     if (expandedProblems.includes(problemType)) {
       setExpandedProblems(expandedProblems.filter(p => p !== problemType));
@@ -260,7 +223,7 @@ const SessionRecommendations: React.FC<SessionRecommendationsProps> = ({
     );
   }
 
-  if (recommendations.length === 0 && problems.length === 0) {
+  if (recommendations.length === 0) {
     return (
       <Card sx={{ 
         bgcolor: alpha(theme.palette.success.main, 0.05),
@@ -280,14 +243,6 @@ const SessionRecommendations: React.FC<SessionRecommendationsProps> = ({
           </Stack>
         </CardContent>
       </Card>
-    );
-  }
-
-  if (recommendations.length === 0 && problems.length > 0) {
-    return (
-      <Alert severity="info" sx={{ mb: 2 }}>
-        Для выявленных проблем пока нет рекомендаций. Скоро они появятся.
-      </Alert>
     );
   }
 
@@ -388,29 +343,6 @@ const SessionRecommendations: React.FC<SessionRecommendationsProps> = ({
           <Typography variant="h6" sx={{ mb: 2, fontWeight: 600 }}>
             📊 Обнаруженные проблемы
           </Typography>
-          
-          {/* Общая оценка осанки */}
-          {postureScore > 0 && (
-            <Paper sx={{ 
-              p: 2, 
-              mb: 2,
-              bgcolor: alpha(theme.palette.primary.main, 0.05),
-              border: `1px solid ${alpha(theme.palette.primary.main, 0.1)}`
-            }}>
-              <Stack direction="row" alignItems="center" spacing={2}>
-                <TrendingUp sx={{ color: theme.palette.primary.main }} />
-                <Box>
-                  <Typography variant="body2" color="text.secondary">
-                    Общая оценка осанки
-                  </Typography>
-                  <Typography variant="h4" sx={{ fontWeight: 700, color: theme.palette.primary.main }}>
-                    {postureScore}%
-                  </Typography>
-                </Box>
-              </Stack>
-            </Paper>
-          )}
-          
           <Grid container spacing={2}>
             <Grid item xs={12} sm={6} md={3}>
               <Paper sx={{ 
@@ -495,10 +427,6 @@ const SessionRecommendations: React.FC<SessionRecommendationsProps> = ({
           const severityIcon = getSeverityIcon(severity);
           const problemIcon = getProblemTypeIcon(problemType);
           
-          // Находим процент проблемы из списка problems
-          const problemData = problems.find(p => p.type === problemType);
-          const problemPercentage = problemData?.percentage || recs[0].problemPercentage;
-          
           return (
             <Card key={problemType} sx={{ 
               border: `1px solid ${alpha(severityColor, 0.2)}`,
@@ -507,7 +435,7 @@ const SessionRecommendations: React.FC<SessionRecommendationsProps> = ({
               overflow: 'hidden'
             }}>
               <CardContent sx={{ p: 0 }}>
-                {/* Заголовок проблемы - исправлено: убран h5 внутри h2 */}
+                {/* Заголовок проблемы */}
                 <Box 
                   sx={{ 
                     p: 2,
@@ -526,7 +454,7 @@ const SessionRecommendations: React.FC<SessionRecommendationsProps> = ({
                         width: 44,
                         height: 44
                       }}>
-                        <Typography variant="h5" component="span">
+                        <Typography variant="h5">
                           {problemIcon}
                         </Typography>
                       </Avatar>
@@ -537,9 +465,9 @@ const SessionRecommendations: React.FC<SessionRecommendationsProps> = ({
                         }}>
                           {getProblemTypeLabel(problemType)}
                         </Typography>
-                        <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
+                        <Stack direction="row" spacing={1} alignItems="center">
                           <Chip
-                            icon={severityIcon as any}
+                            icon={severityIcon}
                             label={severity === 'high' ? 'Высокая важность' : 
                                    severity === 'medium' ? 'Средняя важность' : 'Низкая важность'}
                             size="small"
@@ -550,9 +478,9 @@ const SessionRecommendations: React.FC<SessionRecommendationsProps> = ({
                               height: 24
                             }}
                           />
-                          {problemPercentage !== undefined && (
+                          {recs[0].problemPercentage && (
                             <Typography variant="caption" sx={{ color: theme.palette.text.secondary }}>
-                              {problemPercentage.toFixed(1)}% времени сеанса
+                              {recs[0].problemPercentage.toFixed(1)}% времени сеанса
                             </Typography>
                           )}
                         </Stack>
@@ -583,8 +511,6 @@ const SessionRecommendations: React.FC<SessionRecommendationsProps> = ({
                           {problemType === 'general_posture' && 'Общие проблемы с осанкой требуют регулярных корректирующих упражнений для укрепления мышц кора и спины.'}
                           {problemType === 'balance' && 'Нарушение баланса может указывать на слабость мышц кора и проблемы с координацией.'}
                           {problemType === 'flexibility' && 'Недостаточная гибкость ограничивает диапазон движений и может привести к травмам.'}
-                          {!['shoulders', 'head', 'hips', 'general_posture', 'balance', 'flexibility'].includes(problemType) && 
-                            recs[0]?.recommendation || 'Регулярное выполнение упражнений поможет улучшить осанку и предотвратить проблемы со спиной.'}
                         </Typography>
                       </Stack>
                     </Paper>
@@ -652,9 +578,7 @@ const SessionRecommendations: React.FC<SessionRecommendationsProps> = ({
                                 <Chip
                                   label={rec.exercise.type === 'stretching' ? 'Растяжка' :
                                          rec.exercise.type === 'strength' ? 'Силовое' :
-                                         rec.exercise.type === 'cardio' ? 'Кардио' : 
-                                         rec.exercise.type === 'posture' ? 'Осанка' : 
-                                         rec.exercise.type === 'flexibility' ? 'Гибкость' : rec.exercise.type}
+                                         rec.exercise.type === 'cardio' ? 'Кардио' : rec.exercise.type}
                                   size="small"
                                   variant="outlined"
                                   sx={{ height: 24 }}
