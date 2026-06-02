@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo, memo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../store/auth';
 import { authApi } from '../../api/auth';
@@ -29,8 +29,6 @@ import {
   DialogActions,
   CircularProgress,
   useTheme,
-  Fade,
-  Zoom,
   Badge,
   LinearProgress
 } from '@mui/material';
@@ -48,7 +46,6 @@ import {
   PhotoCamera as PhotoCameraIcon,
   Delete as DeleteIcon,
   CloudUpload as CloudUploadIcon,
-  CheckCircle as CheckCircleIcon,
   Info as InfoIcon,
   Refresh as RefreshIcon,
   Diamond as DiamondIcon,
@@ -69,7 +66,46 @@ interface SubscriptionInfo {
   hasActiveSubscription: boolean;
 }
 
-const ProfileView: React.FC = () => {
+// ========== ВЫНЕСЕННЫЕ STYLED КОМПОНЕНТЫ (оптимизация) ==========
+const DarkPaper = styled(Paper)(({ theme }) => ({
+  padding: theme.spacing(3),
+  backgroundColor: theme.palette.mode === 'light' 
+    ? alpha(theme.palette.background.paper, 0.8)
+    : '#14181f',
+  borderRadius: 16,
+  border: `1px solid ${theme.palette.divider}`,
+  boxShadow: theme.palette.mode === 'light'
+    ? '0 4px 20px rgba(0, 0, 0, 0.05)'
+    : '0 4px 20px rgba(0, 0, 0, 0.5)',
+  transition: 'border-color 0.2s ease',
+  backdropFilter: theme.palette.mode === 'light' ? 'blur(10px)' : 'none',
+  '&:hover': {
+    borderColor: theme.palette.primary.main
+  }
+}));
+
+const ActionButton = styled(Button)(({ theme }) => ({
+  borderRadius: 10,
+  padding: '10px 16px',
+  textTransform: 'none',
+  fontSize: '0.95rem',
+  fontWeight: 500,
+  backgroundColor: theme.palette.mode === 'light'
+    ? alpha(theme.palette.background.paper, 0.6)
+    : '#1e242c',
+  borderColor: theme.palette.divider,
+  color: theme.palette.text.primary,
+  justifyContent: 'space-between',
+  '&:hover': {
+    backgroundColor: theme.palette.mode === 'light'
+      ? alpha(theme.palette.background.paper, 0.8)
+      : '#262e38',
+    borderColor: theme.palette.primary.main
+  }
+}));
+
+// ========== КОМПОНЕНТ ==========
+const ProfileView: React.FC = memo(() => {
   const { user, isLoading, error, clearError, refreshUserData } = useAuthStore();
   const navigate = useNavigate();
   const theme = useTheme();
@@ -91,36 +127,54 @@ const ProfileView: React.FC = () => {
   const [subscriptionInfo, setSubscriptionInfo] = useState<SubscriptionInfo | null>(null);
   const [isSubscriptionLoading, setIsSubscriptionLoading] = useState(true);
 
-  useEffect(() => {
-    clearError();
-    loadAllData();
-  }, [clearError]);
+  // Мемоизированные функции форматирования
+  const formatDate = useCallback((dateString: string | null) => {
+    if (!dateString) return '—';
+    const date = new Date(dateString);
+    return date.toLocaleDateString('ru-RU', {
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric'
+    });
+  }, []);
 
-  // Загрузка всех данных (пользователь + подписка)
-  const loadAllData = async () => {
-    try {
-      setIsSubscriptionLoading(true);
-      
-      // Сначала обновляем данные пользователя
-      await refreshUserData();
-      
-      // Затем загружаем информацию о подписке
-      await loadSubscriptionInfo();
-      
-    } catch (error) {
-      console.error('Error loading data:', error);
-    } finally {
-      setIsSubscriptionLoading(false);
-    }
-  };
+  const formatDateTime = useCallback((dateString: string) => {
+    const date = new Date(dateString);
+    return date.toLocaleDateString('ru-RU', {
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  }, []);
+
+  // Мемоизированные функции для подписки
+  const getPlanIcon = useCallback((plan: string) => {
+    return plan === 'premium' ? <DiamondIcon sx={{ fontSize: 20 }} /> : <StarIcon sx={{ fontSize: 20 }} />;
+  }, []);
+
+  const getPlanName = useCallback((plan: string) => {
+    return plan === 'premium' ? 'Премиум' : 'Базовый';
+  }, []);
+
+  const getPlanColor = useCallback((plan: string) => {
+    return plan === 'premium' ? theme.palette.warning.main : theme.palette.info.main;
+  }, [theme.palette.warning.main, theme.palette.info.main]);
+
+  // Показ уведомления
+  const showNotification = useCallback((message: string, type: 'success' | 'error' = 'success') => {
+    setAlertMessage(message);
+    setAlertType(type);
+    setShowAlert(true);
+    setTimeout(() => setShowAlert(false), 3000);
+  }, []);
 
   // Загрузка информации о подписке
-  const loadSubscriptionInfo = async () => {
+  const loadSubscriptionInfo = useCallback(async () => {
     try {
       const response = await subscriptionApi.getMySubscription();
       const data = response.data;
-      
-      console.log('Subscription data from API:', data);
       
       if (data.subscription && data.hasActiveSubscription) {
         const sub = data.subscription;
@@ -133,12 +187,10 @@ const ProfileView: React.FC = () => {
           hasActiveSubscription: true
         });
       } else {
-        // Проверяем также через user данные
         const userHasAccess = user?.hasPremiumAccess === true;
         const userHasEndDate = user?.subscriptionEndsAt && new Date(user.subscriptionEndsAt) > new Date();
         
         if (userHasAccess && userHasEndDate) {
-          console.log('User has premium access from user data');
           setSubscriptionInfo({
             id: '',
             plan: 'premium',
@@ -154,7 +206,6 @@ const ProfileView: React.FC = () => {
     } catch (error) {
       console.error('Error loading subscription info:', error);
       
-      // Если ошибка, проверяем через user данные
       const userHasAccess = user?.hasPremiumAccess === true;
       const userHasEndDate = user?.subscriptionEndsAt && new Date(user.subscriptionEndsAt) > new Date();
       
@@ -171,47 +222,44 @@ const ProfileView: React.FC = () => {
         setSubscriptionInfo(null);
       }
     }
-  };
+  }, [user?.hasPremiumAccess, user?.subscriptionEndsAt]);
 
-  // Обновление данных (после изменения подписки)
-  const handleRefreshData = async () => {
+  // Загрузка всех данных
+  const loadAllData = useCallback(async () => {
+    try {
+      setIsSubscriptionLoading(true);
+      await refreshUserData();
+      await loadSubscriptionInfo();
+    } catch (error) {
+      console.error('Error loading data:', error);
+    } finally {
+      setIsSubscriptionLoading(false);
+    }
+  }, [refreshUserData, loadSubscriptionInfo]);
+
+  // Обновление данных
+  const handleRefreshData = useCallback(async () => {
     await loadAllData();
     showNotification('Данные обновлены', 'success');
-  };
+  }, [loadAllData, showNotification]);
 
-  // Логируем изменения user
-  useEffect(() => {
-    if (user) {
-      console.log('=== USER DATA IN PROFILE VIEW ===');
-      console.log('hasPremiumAccess:', user.hasPremiumAccess);
-      console.log('subscriptionEndsAt:', user.subscriptionEndsAt);
-      console.log('subscription:', user.subscription);
-    }
-  }, [user]);
-
-  const showNotification = (message: string, type: 'success' | 'error' = 'success') => {
-    setAlertMessage(message);
-    setAlertType(type);
-    setShowAlert(true);
-    setTimeout(() => setShowAlert(false), 3000);
-  };
-
-  const handleCopyEmail = () => {
+  // Обработчики аватара
+  const handleCopyEmail = useCallback(() => {
     if (user?.email) {
       navigator.clipboard.writeText(user.email);
       showNotification('Email скопирован', 'success');
     }
-  };
+  }, [user?.email, showNotification]);
 
-  const handleAvatarClick = (event: React.MouseEvent<HTMLElement>) => {
+  const handleAvatarClick = useCallback((event: React.MouseEvent<HTMLElement>) => {
     setAvatarMenuAnchor(event.currentTarget);
-  };
+  }, []);
 
-  const handleAvatarMenuClose = () => {
+  const handleAvatarMenuClose = useCallback(() => {
     setAvatarMenuAnchor(null);
-  };
+  }, []);
 
-  const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileSelect = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
 
@@ -234,9 +282,9 @@ const ProfileView: React.FC = () => {
     setSelectedFile(file);
     setUploadDialogOpen(true);
     handleAvatarMenuClose();
-  };
+  }, [showNotification, handleAvatarMenuClose]);
 
-  const handleUploadAvatar = async () => {
+  const handleUploadAvatar = useCallback(async () => {
     if (!selectedFile) return;
 
     try {
@@ -257,9 +305,9 @@ const ProfileView: React.FC = () => {
     } finally {
       setIsUploading(false);
     }
-  };
+  }, [selectedFile, refreshUserData, showNotification]);
 
-  const handleDeleteAvatar = async () => {
+  const handleDeleteAvatar = useCallback(async () => {
     try {
       setIsDeleting(true);
       const response = await authApi.deleteAvatar();
@@ -274,117 +322,67 @@ const ProfileView: React.FC = () => {
     } finally {
       setIsDeleting(false);
     }
-  };
+  }, [refreshUserData, showNotification]);
 
-  const handleUploadDialogClose = () => {
+  const handleUploadDialogClose = useCallback(() => {
     setUploadDialogOpen(false);
     setSelectedFile(null);
     setPreviewUrl(null);
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
-  };
+  }, []);
 
-  const getAvatarSource = () => {
-    if (!user) {
-      return undefined;
-    }
-    
-    if (user.avatarUrl) {
-      return user.avatarUrl;
-    }
-    
-    if (user.authProvider === 'yandex' && user.yandexAvatar) {
-      return user.yandexAvatar;
-    }
-    
+  // Мемоизированные вычисления
+  const avatarSource = useMemo(() => {
+    if (!user) return undefined;
+    if (user.avatarUrl) return user.avatarUrl;
+    if (user.authProvider === 'yandex' && user.yandexAvatar) return user.yandexAvatar;
     return undefined;
-  };
+  }, [user?.avatarUrl, user?.authProvider, user?.yandexAvatar]);
 
-  const formatDate = (dateString: string | null) => {
-    if (!dateString) return '—';
-    const date = new Date(dateString);
-    return date.toLocaleDateString('ru-RU', {
-      day: 'numeric',
-      month: 'long',
-      year: 'numeric'
-    });
-  };
-
-  const formatDateTime = (dateString: string) => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString('ru-RU', {
-      day: 'numeric',
-      month: 'long',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
-  };
-
-  const getUserInitials = () => {
+  const getUserInitials = useMemo(() => {
     const first = user?.firstName?.charAt(0) || '';
     const last = user?.lastName?.charAt(0) || '';
     return `${first}${last}`.toUpperCase() || 'U';
-  };
+  }, [user?.firstName, user?.lastName]);
 
-  // Получение иконки для плана подписки
-  const getPlanIcon = (plan: string) => {
-    return plan === 'premium' ? <DiamondIcon sx={{ fontSize: 20 }} /> : <StarIcon sx={{ fontSize: 20 }} />;
-  };
+  const hasActiveSubscriptionFromUser = useMemo(() => {
+    return user?.hasPremiumAccess === true && 
+      user?.subscriptionEndsAt && new Date(user.subscriptionEndsAt) > new Date();
+  }, [user?.hasPremiumAccess, user?.subscriptionEndsAt]);
 
-  // Получение названия плана
-  const getPlanName = (plan: string) => {
-    return plan === 'premium' ? 'Премиум' : 'Базовый';
-  };
+  const showSubscriptionBlock = useMemo(() => {
+    return hasActiveSubscriptionFromUser || (subscriptionInfo?.hasActiveSubscription === true);
+  }, [hasActiveSubscriptionFromUser, subscriptionInfo?.hasActiveSubscription]);
 
-  // Получение цвета для плана
-  const getPlanColor = (plan: string) => {
-    return plan === 'premium' ? theme.palette.warning.main : theme.palette.info.main;
-  };
+  const activePlan = useMemo(() => {
+    return subscriptionInfo?.plan || (hasActiveSubscriptionFromUser ? 'premium' : null);
+  }, [subscriptionInfo?.plan, hasActiveSubscriptionFromUser]);
 
-  // Проверяем активность подписки через user данные
-  const hasActiveSubscriptionFromUser = user?.hasPremiumAccess === true && 
-    user?.subscriptionEndsAt && new Date(user.subscriptionEndsAt) > new Date();
+  const activeEndDate = useMemo(() => {
+    return subscriptionInfo?.endDate || user?.subscriptionEndsAt;
+  }, [subscriptionInfo?.endDate, user?.subscriptionEndsAt]);
 
-  const avatarSource = getAvatarSource();
+  const activeRemainingDays = useMemo(() => {
+    return subscriptionInfo?.remainingDays || 
+      (user?.subscriptionEndsAt ? Math.ceil((new Date(user.subscriptionEndsAt).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)) : 0);
+  }, [subscriptionInfo?.remainingDays, user?.subscriptionEndsAt]);
 
-  const DarkPaper = styled(Paper)(({ theme: t }) => ({
-    padding: t.spacing(3),
-    backgroundColor: t.palette.mode === 'light' 
-      ? alpha(t.palette.background.paper, 0.8)
-      : '#14181f',
-    borderRadius: 16,
-    border: `1px solid ${t.palette.divider}`,
-    boxShadow: t.palette.mode === 'light'
-      ? '0 4px 20px rgba(0, 0, 0, 0.05)'
-      : '0 4px 20px rgba(0, 0, 0, 0.5)',
-    transition: 'border-color 0.2s ease',
-    backdropFilter: t.palette.mode === 'light' ? 'blur(10px)' : 'none',
-    '&:hover': {
-      borderColor: t.palette.primary.main
+  // Эффекты
+  useEffect(() => {
+    clearError();
+    loadAllData();
+  }, [clearError, loadAllData]);
+
+  useEffect(() => {
+    if (user) {
+      console.log('=== USER DATA IN PROFILE VIEW ===');
+      console.log('hasPremiumAccess:', user.hasPremiumAccess);
+      console.log('subscriptionEndsAt:', user.subscriptionEndsAt);
+      console.log('subscription:', user.subscription);
     }
-  }));
-
-  const ActionButton = styled(Button)(({ theme: t }) => ({
-    borderRadius: 10,
-    padding: '10px 16px',
-    textTransform: 'none',
-    fontSize: '0.95rem',
-    fontWeight: 500,
-    backgroundColor: t.palette.mode === 'light'
-      ? alpha(t.palette.background.paper, 0.6)
-      : '#1e242c',
-    borderColor: t.palette.divider,
-    color: t.palette.text.primary,
-    justifyContent: 'space-between',
-    '&:hover': {
-      backgroundColor: t.palette.mode === 'light'
-        ? alpha(t.palette.background.paper, 0.8)
-        : '#262e38',
-      borderColor: t.palette.primary.main
-    }
-  }));
+  }, [user]);
 
   if (isLoading) {
     return (
@@ -410,13 +408,6 @@ const ProfileView: React.FC = () => {
     return null;
   }
 
-  // Определяем, показывать ли блок с подпиской
-  const showSubscriptionBlock = hasActiveSubscriptionFromUser || (subscriptionInfo?.hasActiveSubscription === true);
-  const activePlan = subscriptionInfo?.plan || (hasActiveSubscriptionFromUser ? 'premium' : null);
-  const activeEndDate = subscriptionInfo?.endDate || user?.subscriptionEndsAt;
-  const activeRemainingDays = subscriptionInfo?.remainingDays || 
-    (user?.subscriptionEndsAt ? Math.ceil((new Date(user.subscriptionEndsAt).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)) : 0);
-
   return (
     <Box
       sx={{
@@ -429,55 +420,49 @@ const ProfileView: React.FC = () => {
     >
       <Container maxWidth="lg" sx={{ position: 'relative', zIndex: 1 }}>
         {/* Заголовок */}
-        <Fade in={true} timeout={800}>
-          <Box sx={{ mb: 4 }}>
-            <Typography
-              variant="h4"
-              sx={{
-                fontWeight: 700,
-                color: theme.palette.text.primary,
-                mb: 1,
-                letterSpacing: '-0.02em',
-                background: `linear-gradient(135deg, ${theme.palette.primary.light} 0%, ${theme.palette.secondary.light} 100%)`,
-                WebkitBackgroundClip: 'text',
-                WebkitTextFillColor: 'transparent',
-                display: 'inline-block'
-              }}
-            >
-              Профиль
-            </Typography>
-            <Typography
-              variant="body2"
-              sx={{
-                color: theme.palette.text.secondary
-              }}
-            >
-              Управление аккаунтом и персональными данными
-            </Typography>
-          </Box>
-        </Fade>
+        <Box sx={{ mb: 4 }}>
+          <Typography
+            variant="h4"
+            sx={{
+              fontWeight: 700,
+              color: theme.palette.text.primary,
+              mb: 1,
+              letterSpacing: '-0.02em',
+              background: `linear-gradient(135deg, ${theme.palette.primary.light} 0%, ${theme.palette.secondary.light} 100%)`,
+              WebkitBackgroundClip: 'text',
+              WebkitTextFillColor: 'transparent',
+              display: 'inline-block'
+            }}
+          >
+            Профиль
+          </Typography>
+          <Typography
+            variant="body2"
+            sx={{
+              color: theme.palette.text.secondary
+            }}
+          >
+            Управление аккаунтом и персональными данными
+          </Typography>
+        </Box>
 
         {/* Ошибки */}
         {error && (
-          <Zoom in={true}>
-            <Box sx={{ mb: 3 }}>
-              <Alert type="error" message={error} onClose={clearError} />
-            </Box>
-          </Zoom>
+          <Box sx={{ mb: 3 }}>
+            <Alert type="error" message={error} onClose={clearError} />
+          </Box>
         )}
 
         {/* Уведомления */}
         {showAlert && (
-          <Zoom in={true}>
-            <Box sx={{ mb: 3 }}>
-              <Alert
-                type={alertType}
-                message={alertMessage}
-                onClose={() => setShowAlert(false)}
-                autoClose
-              />
-            </Box>
-          </Zoom>
+          <Box sx={{ mb: 3 }}>
+            <Alert
+              type={alertType}
+              message={alertMessage}
+              onClose={() => setShowAlert(false)}
+              autoClose
+            />
+          </Box>
         )}
 
         {/* Основная карточка профиля */}
@@ -526,7 +511,7 @@ const ProfileView: React.FC = () => {
                         }
                       }}
                     >
-                      {!avatarSource && getUserInitials()}
+                      {!avatarSource && getUserInitials}
                     </Avatar>
                   </Badge>
                 </Box>
@@ -649,7 +634,7 @@ const ProfileView: React.FC = () => {
           </Grid>
         </DarkPaper>
 
-        {/* Блок с информацией о подписке - показываем если есть активная подписка */}
+        {/* Блок с информацией о подписке */}
         {showSubscriptionBlock && activePlan && (
           <DarkPaper sx={{ mb: 3 }}>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 3 }}>
@@ -768,7 +753,7 @@ const ProfileView: React.FC = () => {
           </DarkPaper>
         )}
 
-        {/* Если нет активной подписки, показываем предложение */}
+        {/* Если нет активной подписки */}
         {!showSubscriptionBlock && (
           <DarkPaper sx={{ mb: 3 }}>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 2 }}>
@@ -813,7 +798,6 @@ const ProfileView: React.FC = () => {
           anchorEl={avatarMenuAnchor}
           open={Boolean(avatarMenuAnchor)}
           onClose={handleAvatarMenuClose}
-          TransitionComponent={Fade}
         >
           <input
             type="file"
@@ -937,6 +921,8 @@ const ProfileView: React.FC = () => {
       </Container>
     </Box>
   );
-};
+});
+
+ProfileView.displayName = 'ProfileView';
 
 export default ProfileView;

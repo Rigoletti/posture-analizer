@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Box,
@@ -19,7 +19,6 @@ import {
   useMediaQuery,
   Tabs,
   Tab,
-  Fade,
   Drawer,
   SwipeableDrawer,
   Divider,
@@ -120,11 +119,8 @@ const AdminDashboard: React.FC = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [mobileBottomNav, setMobileBottomNav] = useState(0);
 
-  useEffect(() => {
-    fetchAllData();
-  }, [period]);
-
-  const fetchAllData = async () => {
+  // Загрузка данных
+  const fetchAllData = useCallback(async () => {
     try {
       setError(null);
       setLoading(true);
@@ -152,50 +148,31 @@ const AdminDashboard: React.FC = () => {
       setLoading(false);
       setRefreshing(false);
     }
-  };
+  }, [period]);
 
-  const handleRefresh = () => {
+  useEffect(() => {
+    fetchAllData();
+  }, [fetchAllData]);
+
+  const handleRefresh = useCallback(() => {
     setRefreshing(true);
     fetchAllData();
-  };
+  }, [fetchAllData]);
 
-  const getPercentage = (value: number, total: number) => {
+  const getPercentage = useCallback((value: number, total: number) => {
     return total > 0 ? Math.round((value / total) * 100) : 0;
-  };
+  }, []);
 
-  const quickActions = [
-    {
-      title: 'Создать упражнение',
-      description: 'Добавить новое упражнение в базу данных',
-      icon: <NoteAddIcon />,
-      color: '#10b981',
-      onClick: () => navigate('/admin/exercises/create')
-    },
-    {
-      title: 'Управление пользователями',
-      description: 'Просмотр и редактирование всех пользователей',
-      icon: <GroupsIcon />,
-      color: '#3b82f6',
-      onClick: () => navigate('/admin/users')
-    },
-    {
-      title: 'Управление упражнениями',
-      description: 'Редактирование упражнений и категорий',
-      icon: <SportsGymnasticsIcon />,
-      color: '#f59e0b',
-      onClick: () => navigate('/admin/exercises')
-    }
-  ];
-
-  const getAverageScore = () => {
+  // Мемоизированные вычисления
+  const getAverageScore = useCallback(() => {
     if (!analytics?.sessionTrends || analytics.sessionTrends.length === 0) {
       return 0;
     }
     const sum = analytics.sessionTrends.reduce((acc, curr) => acc + curr.avgScore, 0);
     return Math.round(sum / analytics.sessionTrends.length);
-  };
+  }, [analytics]);
 
-  const statCards = [
+  const statCards = useMemo(() => [
     {
       title: 'Всего пользователей',
       value: stats?.users.total || 0,
@@ -227,9 +204,34 @@ const AdminDashboard: React.FC = () => {
       icon: <TrendingUpIcon />,
       color: '#8b5cf6'
     }
-  ];
+  ], [stats, getPercentage, getAverageScore, navigate]);
 
-  const MobileMenuDrawer = () => (
+  const quickActions = useMemo(() => [
+    {
+      title: 'Создать упражнение',
+      description: 'Добавить новое упражнение в базу данных',
+      icon: <NoteAddIcon />,
+      color: '#10b981',
+      onClick: () => navigate('/admin/exercises/create')
+    },
+    {
+      title: 'Управление пользователями',
+      description: 'Просмотр и редактирование всех пользователей',
+      icon: <GroupsIcon />,
+      color: '#3b82f6',
+      onClick: () => navigate('/admin/users')
+    },
+    {
+      title: 'Управление упражнениями',
+      description: 'Редактирование упражнений и категорий',
+      icon: <SportsGymnasticsIcon />,
+      color: '#f59e0b',
+      onClick: () => navigate('/admin/exercises')
+    }
+  ], [navigate]);
+
+  // Мобильное меню
+  const MobileMenuDrawer = useMemo(() => () => (
     <SwipeableDrawer
       anchor="left"
       open={mobileMenuOpen}
@@ -291,9 +293,10 @@ const AdminDashboard: React.FC = () => {
         </List>
       </Box>
     </SwipeableDrawer>
-  );
+  ), [mobileMenuOpen, theme, navigate]);
 
-  const renderSessionChart = () => (
+  // График сессий
+  const renderSessionChart = useCallback(() => (
     <Card sx={{ 
       bgcolor: alpha(theme.palette.background.paper, 0.8),
       border: `1px solid ${alpha(theme.palette.divider, 0.1)}`,
@@ -328,9 +331,10 @@ const AdminDashboard: React.FC = () => {
         </Box>
       </CardContent>
     </Card>
-  );
+  ), [analytics, isMobile, theme]);
 
-  const renderActivityChart = () => (
+  // График активности
+  const renderActivityChart = useCallback(() => (
     <Card sx={{ 
       bgcolor: alpha(theme.palette.background.paper, 0.8),
       border: `1px solid ${alpha(theme.palette.divider, 0.1)}`,
@@ -359,7 +363,7 @@ const AdminDashboard: React.FC = () => {
         </Box>
       </CardContent>
     </Card>
-  );
+  ), [analytics, isMobile, theme]);
 
   if (loading && !stats && !analytics) {
     return (
@@ -444,10 +448,8 @@ const AdminDashboard: React.FC = () => {
                   border: `1px solid ${alpha(theme.palette.divider, 0.1)}`,
                   borderRadius: 2,
                   cursor: card.onClick ? 'pointer' : 'default',
-                  transition: 'all 0.3s ease',
                   '&:hover': !isMobile && card.onClick ? {
-                    transform: 'translateY(-4px)',
-                    boxShadow: `0 12px 30px ${alpha(card.color, 0.2)}`,
+                    boxShadow: `0 8px 24px ${alpha(card.color, 0.15)}`,
                     borderColor: card.color
                   } : {}
                 }}
@@ -533,13 +535,11 @@ const AdminDashboard: React.FC = () => {
                   sx={{ 
                     width: '100%',
                     cursor: 'pointer',
-                    transition: 'all 0.3s ease',
                     bgcolor: alpha(theme.palette.background.paper, 0.8),
                     backdropFilter: 'blur(10px)',
                     border: `1px solid ${alpha(action.color, 0.3)}`,
                     '&:hover': !isMobile && {
-                      transform: 'translateY(-4px)',
-                      boxShadow: `0 12px 30px ${alpha(action.color, 0.2)}`
+                      boxShadow: `0 8px 24px ${alpha(action.color, 0.15)}`
                     }
                   }}
                   onClick={action.onClick}
@@ -587,6 +587,7 @@ const AdminDashboard: React.FC = () => {
       </Container>
 
       <MobileMenuDrawer />
+      
       {isMobile && (
         <Paper
           sx={{

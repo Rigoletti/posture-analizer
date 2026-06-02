@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   Box,
   Card,
@@ -35,8 +35,6 @@ import {
   CircularProgress,
   TablePagination,
   Divider,
-  Fade,
-  LinearProgress,
   Snackbar,
   Slider,
   useTheme,
@@ -51,10 +49,8 @@ import {
   FitnessCenter as FitnessCenterIcon,
   Search as SearchIcon,
   Refresh as RefreshIcon,
-  PriorityHigh as PriorityHighIcon,
   Description as DescriptionIcon,
   Timer as TimerIcon,
-  TrendingUp as TrendingUpIcon,
   Warning as WarningIcon,
   FilterList as FilterListIcon,
   Clear as ClearIcon
@@ -113,6 +109,32 @@ interface Statistics {
   lastUpdated: string;
 }
 
+// Вынесенные константы
+const problemTypes = [
+  { value: 'shoulders', label: 'Проблемы с плечами', color: '#ef4444', icon: '💪' },
+  { value: 'head', label: 'Проблемы с положением головы', color: '#3b82f6', icon: '👤' },
+  { value: 'hips', label: 'Проблемы с положением таза', color: '#10b981', icon: '🦵' },
+  { value: 'general_posture', label: 'Общие проблемы с осанкой', color: '#f59e0b', icon: '🚶' },
+  { value: 'balance', label: 'Нарушение баланса', color: '#8b5cf6', icon: '⚖️' },
+  { value: 'flexibility', label: 'Недостаточная гибкость', color: '#ec4899', icon: '🤸' }
+];
+
+const difficulties = {
+  beginner: { label: 'Начальный', color: '#10b981' },
+  intermediate: { label: 'Средний', color: '#f59e0b' },
+  advanced: { label: 'Продвинутый', color: '#ef4444' }
+};
+
+const exerciseTypes = {
+  stretching: { label: 'Растяжка', color: '#8b5cf6' },
+  cardio: { label: 'Кардио', color: '#ef4444' },
+  strength: { label: 'Силовые', color: '#3b82f6' },
+  posture: { label: 'Осанка', color: '#10b981' },
+  flexibility: { label: 'Гибкость', color: '#ec4899' },
+  warmup: { label: 'Разминка', color: '#f59e0b' },
+  cooldown: { label: 'Заминка', color: '#6b7280' }
+};
+
 const RecommendationsManager: React.FC = () => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
@@ -148,32 +170,8 @@ const RecommendationsManager: React.FC = () => {
   const [rowsPerPage, setRowsPerPage] = useState(10);
   const [totalCount, setTotalCount] = useState(0);
 
-  const problemTypes = [
-    { value: 'shoulders', label: 'Проблемы с плечами', color: '#ef4444', icon: '💪' },
-    { value: 'head', label: 'Проблемы с положением головы', color: '#3b82f6', icon: '👤' },
-    { value: 'hips', label: 'Проблемы с положением таза', color: '#10b981', icon: '🦵' },
-    { value: 'general_posture', label: 'Общие проблемы с осанкой', color: '#f59e0b', icon: '🚶' },
-    { value: 'balance', label: 'Нарушение баланса', color: '#8b5cf6', icon: '⚖️' },
-    { value: 'flexibility', label: 'Недостаточная гибкость', color: '#ec4899', icon: '🤸' }
-  ];
-
-  const difficulties = {
-    beginner: { label: 'Начальный', color: '#10b981' },
-    intermediate: { label: 'Средний', color: '#f59e0b' },
-    advanced: { label: 'Продвинутый', color: '#ef4444' }
-  };
-
-  const exerciseTypes = {
-    stretching: { label: 'Растяжка', color: '#8b5cf6' },
-    cardio: { label: 'Кардио', color: '#ef4444' },
-    strength: { label: 'Силовые', color: '#3b82f6' },
-    posture: { label: 'Осанка', color: '#10b981' },
-    flexibility: { label: 'Гибкость', color: '#ec4899' },
-    warmup: { label: 'Разминка', color: '#f59e0b' },
-    cooldown: { label: 'Заминка', color: '#6b7280' }
-  };
-
-  const loadRecommendations = async (pageNum: number = page, limit: number = rowsPerPage) => {
+  // Загрузка рекомендаций
+  const loadRecommendations = useCallback(async (pageNum: number = page, limit: number = rowsPerPage) => {
     try {
       setLoading(true);
       setError(null);
@@ -195,10 +193,7 @@ const RecommendationsManager: React.FC = () => {
         params.search = searchTerm.trim();
       }
       
-      console.log('Loading recommendations with params:', params);
-      
       const response = await adminApi.getRecommendations(params);
-      console.log('Recommendations response:', response);
       
       if (response.success) {
         setRecommendations(response.data.recommendations || []);
@@ -215,9 +210,9 @@ const RecommendationsManager: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [page, rowsPerPage, problemTypeFilter, statusFilter, searchTerm]);
 
-  const loadStatistics = async () => {
+  const loadStatistics = useCallback(async () => {
     try {
       const response = await adminApi.getRecommendationsStats();
       if (response.success) {
@@ -226,17 +221,15 @@ const RecommendationsManager: React.FC = () => {
     } catch (err) {
       console.error('Error loading statistics:', err);
     }
-  };
+  }, []);
 
-  const loadAllExercises = async () => {
+  const loadAllExercises = useCallback(async () => {
     try {
       setExercisesLoading(true);
       const response = await adminApi.getExercises({ 
         limit: 200,
         isActive: 'true'
       });
-      
-      console.log('All exercises response:', response);
       
       if (response.success && response.data.exercises) {
         const exercises = response.data.exercises.map((ex: any) => ({
@@ -251,10 +244,8 @@ const RecommendationsManager: React.FC = () => {
         }));
         
         setAllExercises(exercises);
-        console.log(`Loaded ${exercises.length} exercises`);
       } else {
         setAllExercises([]);
-        console.error('Failed to load exercises:', response.error);
       }
     } catch (err: any) {
       console.error('Error loading all exercises:', err);
@@ -262,15 +253,13 @@ const RecommendationsManager: React.FC = () => {
     } finally {
       setExercisesLoading(false);
     }
-  };
+  }, []);
 
-  const loadAvailableExercises = async (problemType: string) => {
+  const loadAvailableExercises = useCallback(async (problemType: string) => {
     try {
       setExercisesLoading(true);
-      console.log('Loading available exercises for problem type:', problemType);
       
       const response = await adminApi.getAvailableExercises(problemType);
-      console.log('Available exercises response:', response);
       
       let exercises: ExerciseOption[] = [];
       
@@ -300,7 +289,6 @@ const RecommendationsManager: React.FC = () => {
         }
       }
       
-      console.log(`Loaded ${exercises.length} available exercises`);
       setAvailableExercises(exercises);
       
     } catch (err: any) {
@@ -310,13 +298,13 @@ const RecommendationsManager: React.FC = () => {
     } finally {
       setExercisesLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     loadRecommendations();
     loadStatistics();
     loadAllExercises();
-  }, []);
+  }, [loadRecommendations, loadStatistics, loadAllExercises]);
 
   useEffect(() => {
     if (formData.problemType && dialogOpen) {
@@ -324,9 +312,9 @@ const RecommendationsManager: React.FC = () => {
     } else if (dialogOpen && !formData.problemType) {
       setAvailableExercises([]);
     }
-  }, [formData.problemType, dialogOpen]);
+  }, [formData.problemType, dialogOpen, loadAvailableExercises]);
 
-  const handleOpenDialog = (recommendation: Recommendation | null = null) => {
+  const handleOpenDialog = useCallback((recommendation: Recommendation | null = null) => {
     if (recommendation) {
       setCurrentRecommendation(recommendation);
       setFormData({
@@ -350,9 +338,9 @@ const RecommendationsManager: React.FC = () => {
     }
     setDialogOpen(true);
     setError(null);
-  };
+  }, []);
 
-  const handleCloseDialog = () => {
+  const handleCloseDialog = useCallback(() => {
     setDialogOpen(false);
     setCurrentRecommendation(null);
     setFormData({
@@ -364,9 +352,9 @@ const RecommendationsManager: React.FC = () => {
     });
     setAvailableExercises([]);
     setError(null);
-  };
+  }, []);
 
-  const handleSubmit = async () => {
+  const handleSubmit = useCallback(async () => {
     try {
       if (!formData.problemType.trim()) {
         setError('Пожалуйста, выберите тип проблемы');
@@ -383,8 +371,6 @@ const RecommendationsManager: React.FC = () => {
         return;
       }
       
-      console.log('Submitting form data:', formData);
-      
       let response;
       if (currentRecommendation) {
         response = await adminApi.updateRecommendation(currentRecommendation._id, formData);
@@ -393,8 +379,6 @@ const RecommendationsManager: React.FC = () => {
         response = await adminApi.createRecommendation(formData);
         setSuccess('Рекомендация успешно создана');
       }
-      
-      console.log('Submit response:', response);
       
       if (response.success) {
         handleCloseDialog();
@@ -408,14 +392,14 @@ const RecommendationsManager: React.FC = () => {
       console.error('Error saving recommendation:', err);
       setError(err.message || 'Ошибка при сохранении рекомендации');
     }
-  };
+  }, [formData, currentRecommendation, handleCloseDialog, loadRecommendations, loadStatistics]);
 
-  const handleDeleteClick = (recommendation: Recommendation) => {
+  const handleDeleteClick = useCallback((recommendation: Recommendation) => {
     setDeleteCandidate(recommendation);
     setDeleteDialogOpen(true);
-  };
+  }, []);
 
-  const handleDeleteConfirm = async () => {
+  const handleDeleteConfirm = useCallback(async () => {
     if (!deleteCandidate) return;
     
     try {
@@ -434,9 +418,9 @@ const RecommendationsManager: React.FC = () => {
       setDeleteDialogOpen(false);
       setDeleteCandidate(null);
     }
-  };
+  }, [deleteCandidate, loadRecommendations, loadStatistics]);
 
-  const handleToggleStatus = async (id: string, currentStatus: boolean) => {
+  const handleToggleStatus = useCallback(async (id: string, currentStatus: boolean) => {
     try {
       const response = await adminApi.updateRecommendation(id, { isActive: !currentStatus });
       
@@ -450,13 +434,13 @@ const RecommendationsManager: React.FC = () => {
     } catch (err: any) {
       setError(err.message || 'Ошибка при изменении статуса');
     }
-  };
+  }, [loadRecommendations, loadStatistics]);
 
-  const getProblemTypeInfo = (type: string) => {
+  const getProblemTypeInfo = useCallback((type: string) => {
     return problemTypes.find(p => p.value === type) || { label: type, color: '#6b7280', icon: '❓' };
-  };
+  }, []);
 
-  const getExerciseInfo = (exerciseId: any) => {
+  const getExerciseInfo = useCallback((exerciseId: any) => {
     if (!exerciseId) return { title: 'Удалено', type: 'unknown', difficulty: 'unknown', duration: 0 };
     
     return {
@@ -466,38 +450,38 @@ const RecommendationsManager: React.FC = () => {
       duration: exerciseId.duration || 0,
       description: exerciseId.description || ''
     };
-  };
+  }, []);
 
-  const handleSearch = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleSearch = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     setSearchTerm(e.target.value);
-  };
+  }, []);
 
-  const handleSearchSubmit = () => {
+  const handleSearchSubmit = useCallback(() => {
     setPage(0);
     loadRecommendations(0);
-  };
+  }, [loadRecommendations]);
 
-  const handleClearFilters = () => {
+  const handleClearFilters = useCallback(() => {
     setSearchTerm('');
     setProblemTypeFilter('all');
     setStatusFilter('all');
     setPage(0);
     loadRecommendations(0);
-  };
+  }, [loadRecommendations]);
 
-  const handleChangePage = (event: unknown, newPage: number) => {
+  const handleChangePage = useCallback((event: unknown, newPage: number) => {
     setPage(newPage);
     loadRecommendations(newPage);
-  };
+  }, [loadRecommendations]);
 
-  const handleChangeRowsPerPage = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleChangeRowsPerPage = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
     const newRowsPerPage = parseInt(event.target.value, 10);
     setRowsPerPage(newRowsPerPage);
     setPage(0);
     loadRecommendations(0, newRowsPerPage);
-  };
+  }, [loadRecommendations]);
 
-  const formatDate = (dateString: string) => {
+  const formatDate = useCallback((dateString: string) => {
     try {
       return new Date(dateString).toLocaleDateString('ru-RU', {
         day: 'numeric',
@@ -509,40 +493,82 @@ const RecommendationsManager: React.FC = () => {
     } catch {
       return dateString;
     }
-  };
+  }, []);
 
-  const getExerciseDisplayText = (exercise: any) => {
+  const getExerciseDisplayText = useCallback((exercise: any) => {
     if (!exercise) return 'Неизвестно';
     return `${exercise.title} (${exerciseTypes[exercise.type as keyof typeof exerciseTypes]?.label || exercise.type}, ${exercise.duration} мин)`;
-  };
+  }, []);
 
-  const filteredRecommendations = recommendations.filter(rec => {
-    const exerciseInfo = getExerciseInfo(rec.exerciseId);
-    const problemInfo = getProblemTypeInfo(rec.problemType);
-    
-    if (searchTerm) {
-      const searchLower = searchTerm.toLowerCase();
-      return (
-        exerciseInfo.title.toLowerCase().includes(searchLower) ||
-        rec.description.toLowerCase().includes(searchLower) ||
-        problemInfo.label.toLowerCase().includes(searchLower)
-      );
+  // Мемоизированные стили
+  const backgroundStyle = useMemo(() => ({
+    minHeight: '100vh',
+    background: theme.palette.mode === 'light' 
+      ? 'linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)'
+      : 'linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%)',
+    py: 4,
+    px: { xs: 2, md: 4 },
+    position: 'relative' as const,
+    overflow: 'hidden' as const
+  }), [theme.palette.mode]);
+
+  const statCardStyle = useCallback((color: string) => ({
+    bgcolor: theme.palette.mode === 'light'
+      ? alpha(theme.palette.background.paper, 0.8)
+      : alpha(theme.palette.background.paper, 0.4),
+    border: `1px solid ${alpha(color, 0.3)}`,
+    borderRadius: 2,
+    backdropFilter: 'blur(10px)'
+  }), [theme]);
+
+  const filterPaperStyle = useMemo(() => ({
+    p: { xs: 2, md: 3 },
+    mb: 3,
+    bgcolor: theme.palette.mode === 'light'
+      ? alpha(theme.palette.background.paper, 0.8)
+      : alpha(theme.palette.background.paper, 0.4),
+    border: `1px solid ${theme.palette.mode === 'light'
+      ? 'rgba(0, 0, 0, 0.1)'
+      : 'rgba(255, 255, 255, 0.1)'}`,
+    borderRadius: 2,
+    backdropFilter: 'blur(10px)'
+  }), [theme]);
+
+  const cardStyle = useMemo(() => ({
+    bgcolor: theme.palette.mode === 'light'
+      ? alpha(theme.palette.background.paper, 0.8)
+      : alpha(theme.palette.background.paper, 0.4),
+    border: `1px solid ${theme.palette.mode === 'light'
+      ? 'rgba(0, 0, 0, 0.1)'
+      : 'rgba(255, 255, 255, 0.1)'}`,
+    borderRadius: 2,
+    backdropFilter: 'blur(10px)',
+    overflow: 'hidden' as const
+  }), [theme]);
+
+  const inputStyle = useMemo(() => ({
+    bgcolor: theme.palette.mode === 'light'
+      ? alpha('#ffffff', 0.8)
+      : 'rgba(15, 23, 42, 0.8)',
+    color: theme.palette.mode === 'light' ? '#0f172a' : '#ffffff',
+    '& .MuiOutlinedInput-notchedOutline': {
+      borderColor: theme.palette.mode === 'light'
+        ? 'rgba(0, 0, 0, 0.1)'
+        : 'rgba(255, 255, 255, 0.1)'
+    },
+    '&:hover .MuiOutlinedInput-notchedOutline': {
+      borderColor: theme.palette.primary.main
+    },
+    '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
+      borderColor: theme.palette.primary.main,
+      borderWidth: 2
     }
-    return true;
-  });
+  }), [theme]);
 
   if (loading && !stats) {
     return (
-      <Box sx={{ 
-        display: 'flex', 
-        justifyContent: 'center', 
-        alignItems: 'center', 
-        minHeight: '100vh',
-        background: theme.palette.mode === 'light' 
-          ? 'linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)'
-          : 'linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%)',
-      }}>
-        <Stack alignItems="center" spacing={2}>
+      <Box sx={backgroundStyle}>
+        <Stack alignItems="center" spacing={2} sx={{ justifyContent: 'center', minHeight: '100vh' }}>
           <CircularProgress size={60} sx={{ color: theme.palette.primary.main }} />
           <Typography variant="h6" sx={{ 
             color: theme.palette.mode === 'light' ? '#475569' : '#94a3b8'
@@ -555,17 +581,8 @@ const RecommendationsManager: React.FC = () => {
   }
 
   return (
-    <Box sx={{ 
-      minHeight: '100vh',
-      background: theme.palette.mode === 'light' 
-        ? 'linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)'
-        : 'linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%)',
-      py: 4,
-      px: { xs: 2, md: 4 },
-      position: 'relative',
-      overflow: 'hidden'
-    }}>
-      {/* Фоновые элементы */}
+    <Box sx={backgroundStyle}>
+      {/* Фоновые элементы (статичные) */}
       <Box sx={{
         position: 'absolute',
         top: -100,
@@ -602,28 +619,11 @@ const RecommendationsManager: React.FC = () => {
             
             <Grid container spacing={3}>
               <Grid item xs={12} sm={6} md={3}>
-                <Card sx={{ 
-                  bgcolor: theme.palette.mode === 'light'
-                    ? alpha(theme.palette.background.paper, 0.8)
-                    : alpha(theme.palette.background.paper, 0.4),
-                  border: `1px solid ${alpha(theme.palette.primary.main, 0.3)}`,
-                  borderRadius: 2,
-                  backdropFilter: 'blur(10px)',
-                  transition: 'all 0.3s ease',
-                  '&:hover': {
-                    transform: 'translateY(-2px)',
-                    boxShadow: `0 8px 30px ${alpha(theme.palette.primary.main, 0.2)}`
-                  }
-                }}>
+                <Card sx={statCardStyle(theme.palette.primary.main)}>
                   <CardContent>
                     <Stack spacing={2}>
                       <Stack direction="row" alignItems="center" spacing={1}>
-                        <Box sx={{ 
-                          width: 8, 
-                          height: 8, 
-                          borderRadius: '50%', 
-                          bgcolor: theme.palette.primary.main 
-                        }} />
+                        <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: theme.palette.primary.main }} />
                         <Typography variant="body2" sx={{ 
                           color: theme.palette.mode === 'light' ? '#64748b' : '#94a3b8'
                         }}>
@@ -643,28 +643,11 @@ const RecommendationsManager: React.FC = () => {
               </Grid>
               
               <Grid item xs={12} sm={6} md={3}>
-                <Card sx={{ 
-                  bgcolor: theme.palette.mode === 'light'
-                    ? alpha(theme.palette.background.paper, 0.8)
-                    : alpha(theme.palette.background.paper, 0.4),
-                  border: `1px solid ${alpha(theme.palette.success.main, 0.3)}`,
-                  borderRadius: 2,
-                  backdropFilter: 'blur(10px)',
-                  transition: 'all 0.3s ease',
-                  '&:hover': {
-                    transform: 'translateY(-2px)',
-                    boxShadow: `0 8px 30px ${alpha(theme.palette.success.main, 0.2)}`
-                  }
-                }}>
+                <Card sx={statCardStyle(theme.palette.success.main)}>
                   <CardContent>
                     <Stack spacing={2}>
                       <Stack direction="row" alignItems="center" spacing={1}>
-                        <Box sx={{ 
-                          width: 8, 
-                          height: 8, 
-                          borderRadius: '50%', 
-                          bgcolor: theme.palette.success.main 
-                        }} />
+                        <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: theme.palette.success.main }} />
                         <Typography variant="body2" sx={{ 
                           color: theme.palette.mode === 'light' ? '#64748b' : '#94a3b8'
                         }}>
@@ -684,28 +667,11 @@ const RecommendationsManager: React.FC = () => {
               </Grid>
               
               <Grid item xs={12} sm={6} md={3}>
-                <Card sx={{ 
-                  bgcolor: theme.palette.mode === 'light'
-                    ? alpha(theme.palette.background.paper, 0.8)
-                    : alpha(theme.palette.background.paper, 0.4),
-                  border: `1px solid ${alpha(theme.palette.warning.main, 0.3)}`,
-                  borderRadius: 2,
-                  backdropFilter: 'blur(10px)',
-                  transition: 'all 0.3s ease',
-                  '&:hover': {
-                    transform: 'translateY(-2px)',
-                    boxShadow: `0 8px 30px ${alpha(theme.palette.warning.main, 0.2)}`
-                  }
-                }}>
+                <Card sx={statCardStyle(theme.palette.warning.main)}>
                   <CardContent>
                     <Stack spacing={2}>
                       <Stack direction="row" alignItems="center" spacing={1}>
-                        <Box sx={{ 
-                          width: 8, 
-                          height: 8, 
-                          borderRadius: '50%', 
-                          bgcolor: theme.palette.warning.main 
-                        }} />
+                        <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: theme.palette.warning.main }} />
                         <Typography variant="body2" sx={{ 
                           color: theme.palette.mode === 'light' ? '#64748b' : '#94a3b8'
                         }}>
@@ -725,28 +691,11 @@ const RecommendationsManager: React.FC = () => {
               </Grid>
               
               <Grid item xs={12} sm={6} md={3}>
-                <Card sx={{ 
-                  bgcolor: theme.palette.mode === 'light'
-                    ? alpha(theme.palette.background.paper, 0.8)
-                    : alpha(theme.palette.background.paper, 0.4),
-                  border: `1px solid ${alpha(theme.palette.secondary.main, 0.3)}`,
-                  borderRadius: 2,
-                  backdropFilter: 'blur(10px)',
-                  transition: 'all 0.3s ease',
-                  '&:hover': {
-                    transform: 'translateY(-2px)',
-                    boxShadow: `0 8px 30px ${alpha(theme.palette.secondary.main, 0.2)}`
-                  }
-                }}>
+                <Card sx={statCardStyle(theme.palette.secondary.main)}>
                   <CardContent>
                     <Stack spacing={2}>
                       <Stack direction="row" alignItems="center" spacing={1}>
-                        <Box sx={{ 
-                          width: 8, 
-                          height: 8, 
-                          borderRadius: '50%', 
-                          bgcolor: theme.palette.secondary.main 
-                        }} />
+                        <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: theme.palette.secondary.main }} />
                         <Typography variant="body2" sx={{ 
                           color: theme.palette.mode === 'light' ? '#64748b' : '#94a3b8'
                         }}>
@@ -808,8 +757,7 @@ const RecommendationsManager: React.FC = () => {
                 whiteSpace: 'nowrap',
                 '&:hover': {
                   background: `linear-gradient(135deg, ${theme.palette.primary.dark} 0%, ${theme.palette.primary.main} 100%)`,
-                  boxShadow: `0 8px 30px ${alpha(theme.palette.primary.main, 0.3)}`,
-                  transform: 'translateY(-2px)'
+                  boxShadow: `0 8px 30px ${alpha(theme.palette.primary.main, 0.3)}`
                 }
               }}
             >
@@ -818,7 +766,7 @@ const RecommendationsManager: React.FC = () => {
           </Stack>
 
           {/* Сообщения об ошибках/успехе */}
-          <Fade in={!!error || !!success}>
+          {(error || success) && (
             <Box>
               {error && (
                 <Alert 
@@ -870,21 +818,10 @@ const RecommendationsManager: React.FC = () => {
                 </Alert>
               )}
             </Box>
-          </Fade>
+          )}
 
           {/* Фильтры */}
-          <Paper sx={{ 
-            p: { xs: 2, md: 3 }, 
-            mb: 3,
-            bgcolor: theme.palette.mode === 'light'
-              ? alpha(theme.palette.background.paper, 0.8)
-              : alpha(theme.palette.background.paper, 0.4),
-            border: `1px solid ${theme.palette.mode === 'light'
-              ? 'rgba(0, 0, 0, 0.1)'
-              : 'rgba(255, 255, 255, 0.1)'}`,
-            borderRadius: 2,
-            backdropFilter: 'blur(10px)'
-          }}>
+          <Paper sx={filterPaperStyle}>
             <Grid container spacing={2} alignItems="center">
               <Grid item xs={12} md={5}>
                 <TextField
@@ -911,20 +848,7 @@ const RecommendationsManager: React.FC = () => {
                         </IconButton>
                       </InputAdornment>
                     ) : null,
-                    sx: {
-                      bgcolor: theme.palette.mode === 'light'
-                        ? alpha('#ffffff', 0.8)
-                        : 'rgba(15, 23, 42, 0.8)',
-                      color: theme.palette.mode === 'light' ? '#0f172a' : '#ffffff',
-                      '& .MuiOutlinedInput-notchedOutline': {
-                        borderColor: theme.palette.mode === 'light'
-                          ? 'rgba(0, 0, 0, 0.1)'
-                          : 'rgba(255, 255, 255, 0.1)'
-                      },
-                      '&:hover .MuiOutlinedInput-notchedOutline': {
-                        borderColor: theme.palette.primary.main
-                      }
-                    }
+                    sx: inputStyle
                   }}
                 />
               </Grid>
@@ -943,23 +867,7 @@ const RecommendationsManager: React.FC = () => {
                         <FilterListIcon sx={{ color: theme.palette.mode === 'light' ? '#64748b' : '#94a3b8', mr: 1 }} />
                       </InputAdornment>
                     }
-                    sx={{
-                      bgcolor: theme.palette.mode === 'light'
-                        ? alpha('#ffffff', 0.8)
-                        : 'rgba(15, 23, 42, 0.8)',
-                      color: theme.palette.mode === 'light' ? '#0f172a' : '#ffffff',
-                      '& .MuiOutlinedInput-notchedOutline': {
-                        borderColor: theme.palette.mode === 'light'
-                          ? 'rgba(0, 0, 0, 0.1)'
-                          : 'rgba(255, 255, 255, 0.1)'
-                      },
-                      '&:hover .MuiOutlinedInput-notchedOutline': {
-                        borderColor: theme.palette.primary.main
-                      },
-                      '& .MuiSvgIcon-root': {
-                        color: theme.palette.mode === 'light' ? '#64748b' : '#94a3b8'
-                      }
-                    }}
+                    sx={inputStyle}
                     MenuProps={{
                       PaperProps: {
                         sx: {
@@ -999,20 +907,7 @@ const RecommendationsManager: React.FC = () => {
                     value={statusFilter}
                     onChange={(e) => setStatusFilter(e.target.value)}
                     label="Статус"
-                    sx={{
-                      bgcolor: theme.palette.mode === 'light'
-                        ? alpha('#ffffff', 0.8)
-                        : 'rgba(15, 23, 42, 0.8)',
-                      color: theme.palette.mode === 'light' ? '#0f172a' : '#ffffff',
-                      '& .MuiOutlinedInput-notchedOutline': {
-                        borderColor: theme.palette.mode === 'light'
-                          ? 'rgba(0, 0, 0, 0.1)'
-                          : 'rgba(255, 255, 255, 0.1)'
-                      },
-                      '&:hover .MuiOutlinedInput-notchedOutline': {
-                        borderColor: theme.palette.primary.main
-                      }
-                    }}
+                    sx={inputStyle}
                   >
                     <MenuItem value="all">Все</MenuItem>
                     <MenuItem value="active">Активные</MenuItem>
@@ -1072,17 +967,7 @@ const RecommendationsManager: React.FC = () => {
         </Box>
 
         {/* Таблица рекомендаций */}
-        <Card sx={{ 
-          bgcolor: theme.palette.mode === 'light'
-            ? alpha(theme.palette.background.paper, 0.8)
-            : alpha(theme.palette.background.paper, 0.4),
-          border: `1px solid ${theme.palette.mode === 'light'
-            ? 'rgba(0, 0, 0, 0.1)'
-            : 'rgba(255, 255, 255, 0.1)'}`,
-          borderRadius: 2,
-          backdropFilter: 'blur(10px)',
-          overflow: 'hidden'
-        }}>
+        <Card sx={cardStyle}>
           {loading ? (
             <Box sx={{ p: 4, textAlign: 'center' }}>
               <CircularProgress size={60} sx={{ color: theme.palette.primary.main, mb: 2 }} />
@@ -1188,7 +1073,7 @@ const RecommendationsManager: React.FC = () => {
                     </TableRow>
                   </TableHead>
                   <TableBody>
-                    {filteredRecommendations.map((recommendation) => {
+                    {recommendations.map((recommendation) => {
                       const problemInfo = getProblemTypeInfo(recommendation.problemType);
                       const exerciseInfo = getExerciseInfo(recommendation.exerciseId);
                       const exerciseTypeInfo = exerciseTypes[exerciseInfo.type as keyof typeof exerciseTypes];
@@ -1364,8 +1249,7 @@ const RecommendationsManager: React.FC = () => {
                                     color: theme.palette.info.main,
                                     bgcolor: alpha(theme.palette.info.main, 0.1),
                                     '&:hover': { 
-                                      bgcolor: alpha(theme.palette.info.main, 0.2),
-                                      transform: 'scale(1.1)'
+                                      bgcolor: alpha(theme.palette.info.main, 0.2)
                                     }
                                   }}
                                 >
@@ -1387,8 +1271,7 @@ const RecommendationsManager: React.FC = () => {
                                     '&:hover': { 
                                       bgcolor: recommendation.isActive 
                                         ? alpha(theme.palette.warning.main, 0.2) 
-                                        : alpha(theme.palette.success.main, 0.2),
-                                      transform: 'scale(1.1)'
+                                        : alpha(theme.palette.success.main, 0.2)
                                     }
                                   }}
                                 >
@@ -1407,8 +1290,7 @@ const RecommendationsManager: React.FC = () => {
                                     color: theme.palette.error.main,
                                     bgcolor: alpha(theme.palette.error.main, 0.1),
                                     '&:hover': { 
-                                      bgcolor: alpha(theme.palette.error.main, 0.2),
-                                      transform: 'scale(1.1)'
+                                      bgcolor: alpha(theme.palette.error.main, 0.2)
                                     }
                                   }}
                                 >
@@ -1526,20 +1408,7 @@ const RecommendationsManager: React.FC = () => {
                 value={formData.problemType}
                 onChange={(e) => setFormData({ ...formData, problemType: e.target.value })}
                 label="Тип проблемы *"
-                sx={{
-                  bgcolor: theme.palette.mode === 'light'
-                    ? alpha('#ffffff', 0.8)
-                    : 'rgba(15, 23, 42, 0.8)',
-                  color: theme.palette.mode === 'light' ? '#0f172a' : '#ffffff',
-                  '& .MuiOutlinedInput-notchedOutline': {
-                    borderColor: theme.palette.mode === 'light'
-                      ? 'rgba(0, 0, 0, 0.1)'
-                      : 'rgba(255, 255, 255, 0.1)'
-                  },
-                  '&:hover .MuiOutlinedInput-notchedOutline': {
-                    borderColor: theme.palette.primary.main
-                  }
-                }}
+                sx={inputStyle}
                 MenuProps={{
                   PaperProps: {
                     sx: {
@@ -1605,7 +1474,6 @@ const RecommendationsManager: React.FC = () => {
                     value={(currentRecommendation ? allExercises : availableExercises)
                       .find(ex => ex._id === formData.exerciseId) || null}
                     onChange={(event, newValue) => {
-                      console.log('Selected exercise:', newValue);
                       setFormData({ 
                         ...formData, 
                         exerciseId: newValue?._id || '',
@@ -2111,17 +1979,6 @@ const RecommendationsManager: React.FC = () => {
           {success}
         </Alert>
       </Snackbar>
-
-      {/* Стили для анимации */}
-      <style>
-        {`
-          @keyframes pulse {
-            0% { opacity: 1; transform: scale(1); }
-            50% { opacity: 0.5; transform: scale(1.1); }
-            100% { opacity: 1; transform: scale(1); }
-          }
-        `}
-      </style>
     </Box>
   );
 };

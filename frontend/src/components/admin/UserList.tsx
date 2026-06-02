@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Box,
@@ -31,7 +31,6 @@ import {
   DialogActions,
   alpha,
   InputAdornment,
-  Fade,
   Tooltip,
   useTheme,
   useMediaQuery
@@ -81,6 +80,26 @@ interface Pagination {
   pages: number;
 }
 
+// Вынесенные константы
+const roleOptions = [
+  { value: 'all', label: 'Все роли' },
+  { value: 'admin', label: 'Администратор' },
+  { value: 'user', label: 'Пользователь' },
+  { value: 'guest', label: 'Гость' }
+];
+
+const statusOptions = [
+  { value: 'all', label: 'Все' },
+  { value: 'active', label: 'Активные' },
+  { value: 'inactive', label: 'Неактивные' }
+];
+
+const verificationOptions = [
+  { value: 'all', label: 'Все' },
+  { value: 'verified', label: 'Подтвержденные' },
+  { value: 'not-verified', label: 'Не подтвержденные' }
+];
+
 const UserList: React.FC = () => {
   const theme = useTheme();
   const navigate = useNavigate();
@@ -108,7 +127,8 @@ const UserList: React.FC = () => {
   const [deleteCandidate, setDeleteCandidate] = useState<User | null>(null);
   const [deleting, setDeleting] = useState(false);
 
-  const fetchUsers = async (page = 1) => {
+  // Загрузка пользователей
+  const fetchUsers = useCallback(async (page = 1) => {
     try {
       setLoading(true);
       setError(null);
@@ -151,64 +171,64 @@ const UserList: React.FC = () => {
       setLoading(false);
       setRefreshing(false);
     }
-  };
+  }, [pagination.limit, search, roleFilter, statusFilter]);
 
   useEffect(() => {
     fetchUsers();
-  }, [search, roleFilter, statusFilter, verificationFilter]);
+  }, [fetchUsers]);
 
-  const handleSearch = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleSearch = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     setSearch(e.target.value);
-  };
+  }, []);
 
-  const handleRoleFilter = (e: SelectChangeEvent) => {
+  const handleRoleFilter = useCallback((e: SelectChangeEvent) => {
     setRoleFilter(e.target.value);
-  };
+  }, []);
 
-  const handleStatusFilter = (e: SelectChangeEvent) => {
+  const handleStatusFilter = useCallback((e: SelectChangeEvent) => {
     setStatusFilter(e.target.value);
-  };
+  }, []);
 
-  const handleVerificationFilter = (e: SelectChangeEvent) => {
+  const handleVerificationFilter = useCallback((e: SelectChangeEvent) => {
     setVerificationFilter(e.target.value);
-  };
+  }, []);
 
-  const handleRefresh = () => {
+  const handleRefresh = useCallback(() => {
     setRefreshing(true);
     fetchUsers(pagination.page);
-  };
+  }, [fetchUsers, pagination.page]);
 
-  const handleClearFilters = () => {
+  const handleClearFilters = useCallback(() => {
     setSearch('');
     setRoleFilter('all');
     setStatusFilter('all');
     setVerificationFilter('all');
-  };
+  }, []);
 
-  const handlePageChange = (event: unknown, newPage: number) => {
+  const handlePageChange = useCallback((event: unknown, newPage: number) => {
     fetchUsers(newPage + 1);
-  };
+  }, [fetchUsers]);
 
-  const handleRowsPerPageChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleRowsPerPageChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
     const newLimit = parseInt(event.target.value, 10);
     setPagination(prev => ({ ...prev, limit: newLimit, page: 1 }));
     fetchUsers(1);
-  };
+  }, [fetchUsers]);
 
-  const handleEditUser = (userId: string) => {
+  const handleEditUser = useCallback((userId: string) => {
     navigate(`/admin/users/edit/${userId}`);
-  };
+  }, [navigate]);
 
-  const handleCreateUser = () => {
+  const handleCreateUser = useCallback(() => {
     navigate('/admin/users/create');
-  };
+  }, [navigate]);
 
-  const handleDeleteClick = (user: User) => {
+  const handleDeleteClick = useCallback((user: User) => {
     setDeleteCandidate(user);
     setDeleteDialogOpen(true);
-  };
+  }, []);
 
-  const handleDeleteConfirm = async () => {
+  const handleDeleteConfirm = useCallback(async () => {
     if (!deleteCandidate) return;
     
     try {
@@ -228,9 +248,9 @@ const UserList: React.FC = () => {
       setDeleteDialogOpen(false);
       setDeleteCandidate(null);
     }
-  };
+  }, [deleteCandidate, fetchUsers, pagination.page]);
 
-  const formatDate = (dateString: string) => {
+  const formatDate = useCallback((dateString: string) => {
     try {
       return new Date(dateString).toLocaleDateString('ru-RU', {
         day: 'numeric',
@@ -240,9 +260,9 @@ const UserList: React.FC = () => {
     } catch {
       return dateString;
     }
-  };
+  }, []);
 
-  const formatDateTime = (dateString: string) => {
+  const formatDateTime = useCallback((dateString: string) => {
     try {
       return new Date(dateString).toLocaleDateString('ru-RU', {
         day: 'numeric',
@@ -254,9 +274,9 @@ const UserList: React.FC = () => {
     } catch {
       return dateString;
     }
-  };
+  }, []);
 
-  const getRoleInfo = (role: string) => {
+  const getRoleInfo = useCallback((role: string) => {
     switch (role) {
       case 'admin':
         return {
@@ -283,25 +303,25 @@ const UserList: React.FC = () => {
           icon: <PersonOutlineIcon sx={{ fontSize: 16 }} />
         };
     }
-  };
+  }, []);
 
-  const getStatusInfo = (isActive: boolean) => {
+  const getStatusInfo = useCallback((isActive: boolean) => {
     return {
       label: isActive ? 'Активен' : 'Неактивен',
       color: isActive ? '#10b981' : '#ef4444',
       icon: isActive ? <CheckCircleIcon sx={{ fontSize: 16 }} /> : <CancelIcon sx={{ fontSize: 16 }} />
     };
-  };
+  }, []);
 
-  const getVerificationInfo = (emailVerified: boolean) => {
+  const getVerificationInfo = useCallback((emailVerified: boolean) => {
     return {
       label: emailVerified ? 'Подтвержден' : 'Не подтвержден',
       color: emailVerified ? '#10b981' : '#f59e0b',
       icon: emailVerified ? <CheckCircleIcon sx={{ fontSize: 16 }} /> : <WarningIcon sx={{ fontSize: 16 }} />
     };
-  };
+  }, []);
 
-  const getFilteredUsers = () => {
+  const getFilteredUsers = useCallback(() => {
     return users.filter(user => {
       if (verificationFilter === 'verified') {
         return user.emailVerified;
@@ -311,20 +331,89 @@ const UserList: React.FC = () => {
       }
       return true;
     });
-  };
+  }, [users, verificationFilter]);
+
+  // Мемоизированные стили
+  const backgroundStyle = useMemo(() => ({
+    minHeight: '100vh',
+    background: theme.palette.mode === 'light' 
+      ? 'linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)'
+      : 'linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%)',
+    py: 4,
+    position: 'relative' as const,
+    overflow: 'hidden' as const
+  }), [theme.palette.mode]);
+
+  const filterPaperStyle = useMemo(() => ({
+    p: { xs: 2, md: 3 },
+    mb: 3,
+    bgcolor: theme.palette.mode === 'light'
+      ? alpha(theme.palette.background.paper, 0.8)
+      : alpha(theme.palette.background.paper, 0.4),
+    border: `1px solid ${theme.palette.mode === 'light'
+      ? 'rgba(0, 0, 0, 0.1)'
+      : 'rgba(255, 255, 255, 0.1)'}`,
+    borderRadius: 2,
+    backdropFilter: 'blur(10px)'
+  }), [theme]);
+
+  const cardStyle = useMemo(() => ({
+    bgcolor: theme.palette.mode === 'light'
+      ? alpha(theme.palette.background.paper, 0.8)
+      : alpha(theme.palette.background.paper, 0.4),
+    border: `1px solid ${theme.palette.mode === 'light'
+      ? 'rgba(0, 0, 0, 0.1)'
+      : 'rgba(255, 255, 255, 0.1)'}`,
+    borderRadius: 2,
+    backdropFilter: 'blur(10px)',
+    overflow: 'hidden' as const
+  }), [theme]);
+
+  const inputStyle = useMemo(() => ({
+    bgcolor: theme.palette.mode === 'light'
+      ? alpha('#ffffff', 0.8)
+      : 'rgba(15, 23, 42, 0.8)',
+    color: theme.palette.mode === 'light' ? '#0f172a' : '#ffffff',
+    '& .MuiOutlinedInput-notchedOutline': {
+      borderColor: theme.palette.mode === 'light'
+        ? 'rgba(0, 0, 0, 0.1)'
+        : 'rgba(255, 255, 255, 0.1)'
+    },
+    '&:hover .MuiOutlinedInput-notchedOutline': {
+      borderColor: theme.palette.primary.main
+    },
+    '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
+      borderColor: theme.palette.primary.main,
+      borderWidth: 2
+    }
+  }), [theme]);
+
+  const selectStyle = useMemo(() => ({
+    bgcolor: theme.palette.mode === 'light'
+      ? alpha('#ffffff', 0.8)
+      : 'rgba(15, 23, 42, 0.8)',
+    color: theme.palette.mode === 'light' ? '#0f172a' : '#ffffff',
+    '& .MuiOutlinedInput-notchedOutline': {
+      borderColor: theme.palette.mode === 'light'
+        ? 'rgba(0, 0, 0, 0.1)'
+        : 'rgba(255, 255, 255, 0.1)'
+    },
+    '&:hover .MuiOutlinedInput-notchedOutline': {
+      borderColor: theme.palette.primary.main
+    },
+    '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
+      borderColor: theme.palette.primary.main,
+      borderWidth: 2
+    },
+    '& .MuiSvgIcon-root': {
+      color: theme.palette.mode === 'light' ? '#64748b' : '#94a3b8'
+    }
+  }), [theme]);
 
   if (loading && users.length === 0) {
     return (
-      <Box sx={{ 
-        display: 'flex', 
-        justifyContent: 'center', 
-        alignItems: 'center', 
-        minHeight: '100vh',
-        background: theme.palette.mode === 'light' 
-          ? 'linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)'
-          : 'linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%)',
-      }}>
-        <Stack alignItems="center" spacing={2}>
+      <Box sx={backgroundStyle}>
+        <Stack alignItems="center" spacing={2} sx={{ justifyContent: 'center', minHeight: '100vh' }}>
           <CircularProgress size={60} sx={{ color: theme.palette.primary.main }} />
           <Typography variant="h6" sx={{ 
             color: theme.palette.mode === 'light' ? '#475569' : '#94a3b8'
@@ -337,16 +426,8 @@ const UserList: React.FC = () => {
   }
 
   return (
-    <Box sx={{ 
-      minHeight: '100vh',
-      background: theme.palette.mode === 'light' 
-        ? 'linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)'
-        : 'linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%)',
-      py: 4,
-      position: 'relative',
-      overflow: 'hidden'
-    }}>
-      {/* Фоновые элементы */}
+    <Box sx={backgroundStyle}>
+      {/* Фоновые элементы (статичные) */}
       <Box sx={{
         position: 'absolute',
         top: -100,
@@ -400,8 +481,14 @@ const UserList: React.FC = () => {
               variant="contained"
               sx={{
                 background: `linear-gradient(135deg, ${theme.palette.primary.main} 0%, ${theme.palette.primary.dark} 100%)`,
+                borderRadius: 2,
+                px: 3,
+                py: 1.5,
+                textTransform: 'none',
+                fontWeight: 600,
                 '&:hover': {
-                  background: `linear-gradient(135deg, ${theme.palette.primary.dark} 0%, ${theme.palette.primary.main} 100%)`
+                  background: `linear-gradient(135deg, ${theme.palette.primary.dark} 0%, ${theme.palette.primary.main} 100%)`,
+                  boxShadow: `0 8px 30px ${alpha(theme.palette.primary.main, 0.3)}`
                 }
               }}
             >
@@ -410,7 +497,7 @@ const UserList: React.FC = () => {
           </Stack>
 
           {/* Сообщения об ошибках/успехе */}
-          <Fade in={!!error || !!success}>
+          {(error || success) && (
             <Box>
               {error && (
                 <Alert 
@@ -462,21 +549,10 @@ const UserList: React.FC = () => {
                 </Alert>
               )}
             </Box>
-          </Fade>
+          )}
 
           {/* Фильтры */}
-          <Paper sx={{ 
-            p: { xs: 2, md: 3 }, 
-            mb: 3,
-            bgcolor: theme.palette.mode === 'light'
-              ? alpha(theme.palette.background.paper, 0.8)
-              : alpha(theme.palette.background.paper, 0.4),
-            border: `1px solid ${theme.palette.mode === 'light'
-              ? 'rgba(0, 0, 0, 0.1)'
-              : 'rgba(255, 255, 255, 0.1)'}`,
-            borderRadius: 2,
-            backdropFilter: 'blur(10px)'
-          }}>
+          <Paper sx={filterPaperStyle}>
             <Stack spacing={3}>
               <Stack 
                 direction={{ xs: 'column', md: 'row' }}
@@ -506,20 +582,7 @@ const UserList: React.FC = () => {
                         </IconButton>
                       </InputAdornment>
                     ) : null,
-                    sx: {
-                      bgcolor: theme.palette.mode === 'light'
-                        ? alpha('#ffffff', 0.8)
-                        : 'rgba(15, 23, 42, 0.8)',
-                      color: theme.palette.mode === 'light' ? '#0f172a' : '#ffffff',
-                      '& .MuiOutlinedInput-notchedOutline': {
-                        borderColor: theme.palette.mode === 'light'
-                          ? 'rgba(0, 0, 0, 0.1)'
-                          : 'rgba(255, 255, 255, 0.1)'
-                      },
-                      '&:hover .MuiOutlinedInput-notchedOutline': {
-                        borderColor: theme.palette.primary.main
-                      }
-                    }
+                    sx: inputStyle
                   }}
                 />
                 
@@ -541,28 +604,13 @@ const UserList: React.FC = () => {
                           <FilterListIcon sx={{ color: theme.palette.mode === 'light' ? '#64748b' : '#94a3b8', mr: 1 }} />
                         </InputAdornment>
                       }
-                      sx={{
-                        bgcolor: theme.palette.mode === 'light'
-                          ? alpha('#ffffff', 0.8)
-                          : 'rgba(15, 23, 42, 0.8)',
-                        color: theme.palette.mode === 'light' ? '#0f172a' : '#ffffff',
-                        '& .MuiOutlinedInput-notchedOutline': {
-                          borderColor: theme.palette.mode === 'light'
-                            ? 'rgba(0, 0, 0, 0.1)'
-                            : 'rgba(255, 255, 255, 0.1)'
-                        },
-                        '&:hover .MuiOutlinedInput-notchedOutline': {
-                          borderColor: theme.palette.primary.main
-                        },
-                        '& .MuiSvgIcon-root': {
-                          color: theme.palette.mode === 'light' ? '#64748b' : '#94a3b8'
-                        }
-                      }}
+                      sx={selectStyle}
                     >
-                      <MenuItem value="all">Все роли</MenuItem>
-                      <MenuItem value="admin">Администратор</MenuItem>
-                      <MenuItem value="user">Пользователь</MenuItem>
-                      <MenuItem value="guest">Гость</MenuItem>
+                      {roleOptions.map(opt => (
+                        <MenuItem key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </MenuItem>
+                      ))}
                     </Select>
                   </FormControl>
                   
@@ -574,24 +622,13 @@ const UserList: React.FC = () => {
                       value={statusFilter}
                       onChange={handleStatusFilter}
                       label="Статус"
-                      sx={{
-                        bgcolor: theme.palette.mode === 'light'
-                          ? alpha('#ffffff', 0.8)
-                          : 'rgba(15, 23, 42, 0.8)',
-                        color: theme.palette.mode === 'light' ? '#0f172a' : '#ffffff',
-                        '& .MuiOutlinedInput-notchedOutline': {
-                          borderColor: theme.palette.mode === 'light'
-                            ? 'rgba(0, 0, 0, 0.1)'
-                            : 'rgba(255, 255, 255, 0.1)'
-                        },
-                        '&:hover .MuiOutlinedInput-notchedOutline': {
-                          borderColor: theme.palette.primary.main
-                        }
-                      }}
+                      sx={selectStyle}
                     >
-                      <MenuItem value="all">Все</MenuItem>
-                      <MenuItem value="active">Активные</MenuItem>
-                      <MenuItem value="inactive">Неактивные</MenuItem>
+                      {statusOptions.map(opt => (
+                        <MenuItem key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </MenuItem>
+                      ))}
                     </Select>
                   </FormControl>
                   
@@ -603,24 +640,13 @@ const UserList: React.FC = () => {
                       value={verificationFilter}
                       onChange={handleVerificationFilter}
                       label="Подтверждение"
-                      sx={{
-                        bgcolor: theme.palette.mode === 'light'
-                          ? alpha('#ffffff', 0.8)
-                          : 'rgba(15, 23, 42, 0.8)',
-                        color: theme.palette.mode === 'light' ? '#0f172a' : '#ffffff',
-                        '& .MuiOutlinedInput-notchedOutline': {
-                          borderColor: theme.palette.mode === 'light'
-                            ? 'rgba(0, 0, 0, 0.1)'
-                            : 'rgba(255, 255, 255, 0.1)'
-                        },
-                        '&:hover .MuiOutlinedInput-notchedOutline': {
-                          borderColor: theme.palette.primary.main
-                        }
-                      }}
+                      sx={selectStyle}
                     >
-                      <MenuItem value="all">Все</MenuItem>
-                      <MenuItem value="verified">Подтвержденные</MenuItem>
-                      <MenuItem value="not-verified">Не подтвержденные</MenuItem>
+                      {verificationOptions.map(opt => (
+                        <MenuItem key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </MenuItem>
+                      ))}
                     </Select>
                   </FormControl>
                 </Stack>
@@ -679,17 +705,7 @@ const UserList: React.FC = () => {
         </Box>
 
         {/* Таблица пользователей */}
-        <Card sx={{ 
-          bgcolor: theme.palette.mode === 'light'
-            ? alpha(theme.palette.background.paper, 0.8)
-            : alpha(theme.palette.background.paper, 0.4),
-          border: `1px solid ${theme.palette.mode === 'light'
-            ? 'rgba(0, 0, 0, 0.1)'
-            : 'rgba(255, 255, 255, 0.1)'}`,
-          borderRadius: 2,
-          backdropFilter: 'blur(10px)',
-          overflow: 'hidden'
-        }}>
+        <Card sx={cardStyle}>
           {loading ? (
             <Box sx={{ p: 4, textAlign: 'center' }}>
               <CircularProgress size={60} sx={{ color: theme.palette.primary.main, mb: 2 }} />
@@ -911,8 +927,7 @@ const UserList: React.FC = () => {
                                   color: '#3b82f6',
                                   bgcolor: alpha('#3b82f6', 0.1),
                                   '&:hover': { 
-                                    bgcolor: alpha('#3b82f6', 0.2),
-                                    transform: 'scale(1.1)'
+                                    bgcolor: alpha('#3b82f6', 0.2)
                                   }
                                 }}
                               >
@@ -928,8 +943,7 @@ const UserList: React.FC = () => {
                                   color: '#ef4444',
                                   bgcolor: alpha('#ef4444', 0.1),
                                   '&:hover': { 
-                                    bgcolor: alpha('#ef4444', 0.2),
-                                    transform: 'scale(1.1)'
+                                    bgcolor: alpha('#ef4444', 0.2)
                                   }
                                 }}
                               >
@@ -1110,16 +1124,6 @@ const UserList: React.FC = () => {
           </Button>
         </DialogActions>
       </Dialog>
-
-      <style>
-        {`
-          @keyframes pulse {
-            0% { opacity: 1; transform: scale(1); }
-            50% { opacity: 0.5; transform: scale(1.1); }
-            100% { opacity: 1; transform: scale(1); }
-          }
-        `}
-      </style>
     </Box>
   );
 };

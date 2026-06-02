@@ -91,7 +91,16 @@ export const getUserById = async (req, res) => {
 
 export const updateUser = async (req, res) => {
   try {
-    const { role, postureSettings } = req.body;
+    const { 
+      role, 
+      postureSettings,
+      lastName,
+      firstName,
+      middleName,
+      email,
+      isActive,
+      password
+    } = req.body;
     
     const existingUser = await User.findById(req.params.id);
     
@@ -104,16 +113,60 @@ export const updateUser = async (req, res) => {
     
     const updateData = {};
     
+    // Обновляем роль если передана
     if (role && ['user', 'admin'].includes(role)) {
       updateData.role = role;
     }
     
+    // Обновляем настройки осанки если переданы
     if (postureSettings) {
       updateData.postureSettings = {
         ...existingUser.postureSettings,
         ...postureSettings
       };
     }
+    
+    // Обновляем основные данные пользователя
+    if (lastName !== undefined) {
+      updateData.lastName = lastName?.trim();
+    }
+    
+    if (firstName !== undefined) {
+      updateData.firstName = firstName?.trim();
+    }
+    
+    if (middleName !== undefined) {
+      updateData.middleName = middleName?.trim();
+    }
+    
+    if (email !== undefined) {
+      // Проверяем, не занят ли email другим пользователем
+      const emailExists = await User.findOne({ 
+        email: email.toLowerCase().trim(),
+        _id: { $ne: req.params.id }
+      });
+      
+      if (emailExists) {
+        return res.status(400).json({
+          success: false,
+          error: 'Пользователь с таким email уже существует'
+        });
+      }
+      
+      updateData.email = email.toLowerCase().trim();
+    }
+    
+    if (isActive !== undefined) {
+      updateData.isActive = isActive === true || isActive === 'true';
+    }
+    
+    // Обновляем пароль если передан
+    if (password && password.trim().length >= 6) {
+      updateData.password = password;
+    }
+    
+    // Обновляем дату
+    updateData.updatedAt = Date.now();
     
     const user = await User.findByIdAndUpdate(
       req.params.id,
@@ -133,6 +186,15 @@ export const updateUser = async (req, res) => {
       return res.status(400).json({
         success: false,
         error: 'Пользователь с таким email уже существует'
+      });
+    }
+    
+    if (error.name === 'ValidationError') {
+      const errors = Object.values(error.errors).map(err => err.message);
+      return res.status(400).json({
+        success: false,
+        error: 'Ошибка валидации данных',
+        details: errors
       });
     }
     

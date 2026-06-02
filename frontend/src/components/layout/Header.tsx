@@ -52,6 +52,7 @@ import { usePostureAnalysis } from '../../contexts/PostureAnalysisContext';
 // Мемоизированный компонент навигационной кнопки
 const NavButton = memo(({ item, isActive, isMobile }: { item: any; isActive: boolean; isMobile?: boolean }) => {
   const Icon = item.icon;
+  const theme = useTheme();
   
   if (isMobile) {
     return (
@@ -65,9 +66,9 @@ const NavButton = memo(({ item, isActive, isMobile }: { item: any; isActive: boo
             mx: 1,
             my: 0.5,
             '&.Mui-selected': {
-              bgcolor: (theme) => alpha(theme.palette.primary.main, 0.08),
+              bgcolor: alpha(theme.palette.primary.main, 0.08),
               '&:hover': {
-                bgcolor: (theme) => alpha(theme.palette.primary.main, 0.12),
+                bgcolor: alpha(theme.palette.primary.main, 0.12),
               }
             }
           }}
@@ -92,9 +93,9 @@ const NavButton = memo(({ item, isActive, isMobile }: { item: any; isActive: boo
       startIcon={<Icon />}
       sx={{
         color: isActive ? 'primary.main' : 'text.secondary',
-        bgcolor: isActive ? (theme) => alpha(theme.palette.primary.main, 0.08) : 'transparent',
+        bgcolor: isActive ? alpha(theme.palette.primary.main, 0.08) : 'transparent',
         '&:hover': {
-          bgcolor: (theme) => alpha(theme.palette.primary.main, 0.12),
+          bgcolor: alpha(theme.palette.primary.main, 0.12),
           color: 'primary.main'
         },
         borderRadius: 2,
@@ -155,7 +156,7 @@ const UserAvatar = memo(({ user, size = 32 }: { user: any; size?: number }) => {
 
 UserAvatar.displayName = 'UserAvatar';
 
-// Компонент мобильного меню
+// Компонент мобильного меню (без анимаций)
 const MobileMenu = memo(({ 
   open, 
   onClose, 
@@ -199,7 +200,7 @@ const MobileMenu = memo(({
               p: 2, 
               mb: 2, 
               borderRadius: 2,
-              bgcolor: (theme) => alpha(theme.palette.primary.main, 0.04),
+              bgcolor: alpha(theme.palette.primary.main, 0.04),
               textAlign: 'center'
             }}
           >
@@ -219,7 +220,7 @@ const MobileMenu = memo(({
               p: 2, 
               mb: 2, 
               borderRadius: 2,
-              bgcolor: (theme) => alpha(theme.palette.primary.main, 0.04),
+              bgcolor: alpha(theme.palette.primary.main, 0.04),
               textAlign: 'center'
             }}
           >
@@ -228,7 +229,7 @@ const MobileMenu = memo(({
                 width: 64,
                 height: 64,
                 borderRadius: '50%',
-                background: (theme) => `linear-gradient(135deg, ${theme.palette.primary.main} 0%, ${theme.palette.secondary.main} 100%)`,
+                background: `linear-gradient(135deg, ${theme.palette.primary.main} 0%, ${theme.palette.secondary.main} 100%)`,
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
@@ -261,7 +262,7 @@ const MobileMenu = memo(({
                 startIcon={<RegisterIcon />}
                 sx={{ 
                   borderRadius: 2,
-                  background: (theme) => `linear-gradient(135deg, ${theme.palette.primary.main} 0%, ${theme.palette.secondary.main} 100%)`,
+                  background: `linear-gradient(135deg, ${theme.palette.primary.main} 0%, ${theme.palette.secondary.main} 100%)`,
                 }}
               >
                 Регистрация
@@ -286,9 +287,9 @@ const MobileMenu = memo(({
                     borderRadius: 2,
                     mb: 0.5,
                     '&.Mui-selected': {
-                      bgcolor: (theme) => alpha(theme.palette.primary.main, 0.08),
+                      bgcolor: alpha(theme.palette.primary.main, 0.08),
                       '&:hover': {
-                        bgcolor: (theme) => alpha(theme.palette.primary.main, 0.12),
+                        bgcolor: alpha(theme.palette.primary.main, 0.12),
                       }
                     }
                   }}
@@ -391,6 +392,18 @@ const Header: React.FC = () => {
     return items;
   }, [isAuthenticated, user]);
 
+  // Мемоизируем стили AppBar
+  const appBarStyle = useMemo(() => ({
+    position: 'sticky' as const,
+    color: 'default' as const,
+    elevation: 0,
+    backdropFilter: 'blur(10px)',
+    backgroundColor: theme.palette.mode === 'light' 
+      ? 'rgba(255, 255, 255, 0.9)' 
+      : 'rgba(17, 24, 39, 0.9)',
+    borderBottom: `1px solid ${theme.palette.divider}`,
+  }), [theme.palette.mode, theme.palette.divider]);
+
   const handleMenuClick = useCallback((event: React.MouseEvent<HTMLElement>) => {
     setAnchorEl(event.currentTarget);
   }, []);
@@ -440,22 +453,57 @@ const Header: React.FC = () => {
     return user.fullName || 'Пользователь';
   }, [user]);
 
+  // Мемоизированный индикатор осанки
+  const postureIndicator = useMemo(() => {
+    if (!postureState.isRunning) return null;
+    
+    const hasIssues = postureState.issues.length > 0;
+    const color = hasIssues ? 'error.main' : 'success.main';
+    const bgColor = hasIssues 
+      ? alpha(theme.palette.error.main, 0.12)
+      : alpha(theme.palette.success.main, 0.12);
+    const label = hasIssues ? 'Нарушение' : `Анализ ${postureState.postureScore}%`;
+    
+    return (
+      <Tooltip title={
+        hasIssues
+          ? `Обнаружено нарушение: ${postureState.issues.map(i => i.type).join(', ')}`
+          : 'Анализ осанки активен. Осанка в норме.'
+      }>
+        <Chip
+          component={Link}
+          to="/"
+          icon={<RecordIcon sx={{ fontSize: 14, color }} />}
+          label={label}
+          size="small"
+          clickable
+          variant="filled"
+          sx={{
+            height: 28,
+            borderRadius: 2,
+            fontWeight: 600,
+            fontSize: '0.75rem',
+            cursor: 'pointer',
+            bgcolor: bgColor,
+            color: color,
+            border: `1px solid ${alpha(hasIssues ? theme.palette.error.main : theme.palette.success.main, 0.2)}`,
+            '&:hover': {
+              bgcolor: hasIssues
+                ? alpha(theme.palette.error.main, 0.2)
+                : alpha(theme.palette.success.main, 0.2),
+            },
+            display: { xs: 'none', sm: 'inline-flex' }
+          }}
+        />
+      </Tooltip>
+    );
+  }, [postureState.isRunning, postureState.issues, postureState.postureScore, theme.palette]);
+
   // Мобильная версия
   if (isMobile) {
     return (
       <>
-        <AppBar 
-          position="sticky" 
-          color="default" 
-          elevation={0}
-          sx={{
-            backdropFilter: 'blur(10px)',
-            backgroundColor: (theme) => theme.palette.mode === 'light' 
-              ? 'rgba(255, 255, 255, 0.9)' 
-              : 'rgba(17, 24, 39, 0.9)',
-            borderBottom: (theme) => `1px solid ${theme.palette.divider}`,
-          }}
-        >
+        <AppBar sx={appBarStyle}>
           <Container maxWidth="xl">
             <Toolbar disableGutters sx={{ minHeight: 56, justifyContent: 'space-between' }}>
               {/* Логотип */}
@@ -479,7 +527,7 @@ const Header: React.FC = () => {
                     width: 32,
                     height: 32,
                     borderRadius: 1,
-                    background: (theme) => `linear-gradient(135deg, ${theme.palette.primary.main} 0%, ${theme.palette.secondary.main} 100%)`,
+                    background: `linear-gradient(135deg, ${theme.palette.primary.main} 0%, ${theme.palette.secondary.main} 100%)`,
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
@@ -499,16 +547,6 @@ const Header: React.FC = () => {
                   <Badge
                     variant="dot"
                     color={postureState.issues.length > 0 ? "error" : "success"}
-                    sx={{
-                      '& .MuiBadge-dot': {
-                        animation: 'pulse 1.5s infinite',
-                        '@keyframes pulse': {
-                          '0%': { opacity: 1, transform: 'scale(1)' },
-                          '50%': { opacity: 0.5, transform: 'scale(1.2)' },
-                          '100%': { opacity: 1, transform: 'scale(1)' },
-                        }
-                      }
-                    }}
                   >
                     <IconButton
                       component={Link}
@@ -516,8 +554,8 @@ const Header: React.FC = () => {
                       size="small"
                       sx={{ 
                         bgcolor: postureState.issues.length > 0
-                          ? (theme) => alpha(theme.palette.error.main, 0.1)
-                          : (theme) => alpha(theme.palette.success.main, 0.1),
+                          ? alpha(theme.palette.error.main, 0.1)
+                          : alpha(theme.palette.success.main, 0.1),
                       }}
                     >
                       <RecordIcon sx={{ 
@@ -573,18 +611,7 @@ const Header: React.FC = () => {
 
   // Десктопная версия
   return (
-    <AppBar 
-      position="sticky" 
-      color="default" 
-      elevation={0}
-      sx={{
-        backdropFilter: 'blur(10px)',
-        backgroundColor: (theme) => theme.palette.mode === 'light' 
-          ? 'rgba(255, 255, 255, 0.9)' 
-          : 'rgba(17, 24, 39, 0.9)',
-        borderBottom: (theme) => `1px solid ${theme.palette.divider}`,
-      }}
-    >
+    <AppBar sx={appBarStyle}>
       <Container maxWidth="xl">
         <Toolbar disableGutters sx={{ minHeight: { xs: 60, sm: 64 } }}>
           {/* Логотип */}
@@ -610,7 +637,7 @@ const Header: React.FC = () => {
                 width: 32,
                 height: 32,
                 borderRadius: 1,
-                background: (theme) => `linear-gradient(135deg, ${theme.palette.primary.main} 0%, ${theme.palette.secondary.main} 100%)`,
+                background: `linear-gradient(135deg, ${theme.palette.primary.main} 0%, ${theme.palette.secondary.main} 100%)`,
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
@@ -624,7 +651,7 @@ const Header: React.FC = () => {
             <Typography
               variant="h6"
               sx={{
-                background: (theme) => `linear-gradient(135deg, ${theme.palette.primary.main} 0%, ${theme.palette.secondary.main} 100%)`,
+                background: `linear-gradient(135deg, ${theme.palette.primary.main} 0%, ${theme.palette.secondary.main} 100%)`,
                 WebkitBackgroundClip: 'text',
                 WebkitTextFillColor: 'transparent',
                 backgroundClip: 'text',
@@ -657,60 +684,10 @@ const Header: React.FC = () => {
             })}
           </Box>
 
-          {/* Правая секция - только кнопки темы и авторизации */}
+          {/* Правая секция */}
           <Box sx={{ display: 'flex', alignItems: 'center', gap: { sm: 0.5, md: 1 } }}>
             {/* Индикатор фонового анализа осанки */}
-            {postureState.isRunning && (
-              <Tooltip title={
-                postureState.issues.length > 0
-                  ? `Обнаружено нарушение: ${postureState.issues.map(i => i.type).join(', ')}`
-                  : 'Анализ осанки активен. Осанка в норме.'
-              }>
-                <Chip
-                  component={Link}
-                  to="/"
-                  icon={<RecordIcon sx={{ fontSize: 14, color: postureState.issues.length > 0 ? '#ef4444' : '#22c55e' }} />}
-                  label={
-                    postureState.issues.length > 0
-                      ? 'Нарушение'
-                      : `Анализ ${postureState.postureScore}%`
-                  }
-                  size="small"
-                  clickable
-                  variant="filled"
-                  sx={{
-                    height: 28,
-                    borderRadius: 2,
-                    fontWeight: 600,
-                    fontSize: '0.75rem',
-                    cursor: 'pointer',
-                    animation: postureState.issues.length > 0 ? 'pulse 1.5s infinite' : 'none',
-                    bgcolor: postureState.issues.length > 0
-                      ? (theme) => alpha(theme.palette.error.main, 0.12)
-                      : (theme) => alpha(theme.palette.success.main, 0.12),
-                    color: postureState.issues.length > 0
-                      ? 'error.main'
-                      : 'success.main',
-                    border: (theme) => `1px solid ${
-                      postureState.issues.length > 0
-                        ? alpha(theme.palette.error.main, 0.2)
-                        : alpha(theme.palette.success.main, 0.2)
-                    }`,
-                    '&:hover': {
-                      bgcolor: postureState.issues.length > 0
-                        ? (theme) => alpha(theme.palette.error.main, 0.2)
-                        : (theme) => alpha(theme.palette.success.main, 0.2),
-                    },
-                    '@keyframes pulse': {
-                      '0%': { opacity: 1 },
-                      '50%': { opacity: 0.7 },
-                      '100%': { opacity: 1 },
-                    },
-                    display: { xs: 'none', sm: 'inline-flex' }
-                  }}
-                />
-              </Tooltip>
-            )}
+            {postureIndicator}
 
             <IconButton
               onClick={toggleTheme}
@@ -734,10 +711,10 @@ const Header: React.FC = () => {
                       py: 0.5,
                       px: { sm: 0.5, md: 1 },
                       borderRadius: 2,
-                      border: (theme) => `1px solid ${theme.palette.divider}`,
+                      border: `1px solid ${theme.palette.divider}`,
                       color: 'text.primary',
                       '&:hover': {
-                        bgcolor: (theme) => alpha(theme.palette.primary.main, 0.04),
+                        bgcolor: alpha(theme.palette.primary.main, 0.04),
                         borderColor: 'text.secondary'
                       }
                     }}
@@ -775,13 +752,13 @@ const Header: React.FC = () => {
                       mt: 1,
                       minWidth: 280,
                       borderRadius: 2,
-                      boxShadow: (theme) => theme.shadows[10]
+                      boxShadow: theme.shadows[10]
                     }
                   }}
                 >
                   <Box sx={{ 
                     p: 2, 
-                    bgcolor: (theme) => alpha(theme.palette.primary.main, 0.04) 
+                    bgcolor: alpha(theme.palette.primary.main, 0.04) 
                   }}>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
                       <UserAvatar user={user} size={48} />
@@ -842,7 +819,7 @@ const Header: React.FC = () => {
                   sx={{
                     borderRadius: 2,
                     px: { xs: 1.5, sm: 2 },
-                    background: (theme) => `linear-gradient(135deg, ${theme.palette.primary.main} 0%, ${theme.palette.secondary.main} 100%)`,
+                    background: `linear-gradient(135deg, ${theme.palette.primary.main} 0%, ${theme.palette.secondary.main} 100%)`,
                   }}
                 >
                   Регистрация

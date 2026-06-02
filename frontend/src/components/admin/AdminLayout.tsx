@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../store/auth';
 import {
@@ -18,7 +18,6 @@ import {
   IconButton,
   Typography,
   Container,
-  Fade,
   AppBar,
   Toolbar,
   Avatar,
@@ -60,30 +59,30 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children, title }) => {
   const { user, logout } = useAuthStore();
   const { mode, toggleTheme } = useThemeMode();
   
-  const [mobileOpen, setMobileOpen] = React.useState(false);
-  const [collapsed, setCollapsed] = React.useState(false);
-  const [anchorEl, setAnchorEl] = React.useState<null | HTMLElement>(null);
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const [collapsed, setCollapsed] = useState(true); // Изменено: теперь по умолчанию свернуто
+  const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
 
   const open = Boolean(anchorEl);
   const isLight = theme.palette.mode === 'light';
 
-  const handleDrawerToggle = () => {
-    setMobileOpen(!mobileOpen);
-  };
+  const handleDrawerToggle = useCallback(() => {
+    setMobileOpen(prev => !prev);
+  }, []);
 
-  const handleBackToApp = () => {
+  const handleBackToApp = useCallback(() => {
     navigate('/');
-  };
+  }, [navigate]);
 
-  const handleMenuClick = (event: React.MouseEvent<HTMLElement>) => {
+  const handleMenuClick = useCallback((event: React.MouseEvent<HTMLElement>) => {
     setAnchorEl(event.currentTarget);
-  };
+  }, []);
 
-  const handleMenuClose = () => {
+  const handleMenuClose = useCallback(() => {
     setAnchorEl(null);
-  };
+  }, []);
 
-  const handleLogout = async () => {
+  const handleLogout = useCallback(async () => {
     try {
       await logout();
       handleMenuClose();
@@ -91,23 +90,24 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children, title }) => {
     } catch (error) {
       console.error('Logout failed:', error);
     }
-  };
+  }, [logout, navigate, handleMenuClose]);
 
-  const getUserInitials = () => {
+  const getUserInitials = useCallback(() => {
     if (!user) return 'U';
     const first = user.firstName?.charAt(0) || '';
     const last = user.lastName?.charAt(0) || '';
     return `${first}${last}`.toUpperCase() || 'U';
-  };
+  }, [user]);
 
-  const getAvatarSrc = () => {
+  const getAvatarSrc = useCallback(() => {
     if (!user) return undefined;
     if ((user as any).avatarUrl) return (user as any).avatarUrl;
     if (user.authProvider === 'yandex' && user.yandexAvatar) return user.yandexAvatar;
     return undefined;
-  };
+  }, [user]);
 
-  const menuItems = [
+  // Мемоизированные пункты меню
+  const menuItems = useMemo(() => [
     {
       text: 'Дашборд',
       icon: <DashboardIcon />,
@@ -132,9 +132,37 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children, title }) => {
       path: '/admin/recommendations',
       active: location.pathname.startsWith('/admin/recommendations')
     }
-  ];
+  ], [location.pathname]);
 
-  const desktopDrawer = (
+  // Мемоизированные стили
+  const desktopDrawerStyle = useMemo(() => ({
+    position: 'fixed' as const,
+    top: 0,
+    left: 0,
+    width: collapsed ? collapsedDrawerWidth : drawerWidth,
+    height: '100vh',
+    zIndex: theme.zIndex.drawer,
+    bgcolor: isLight ? '#ffffff' : '#0f172a',
+    borderRight: `1px solid ${theme.palette.divider}`,
+    overflowY: 'auto' as const,
+    overflowX: 'hidden' as const,
+    transition: theme.transitions.create('width', {
+      easing: theme.transitions.easing.sharp,
+      duration: theme.transitions.duration.enteringScreen,
+    }),
+  }), [collapsed, isLight, theme]);
+
+  const mainContentStyle = useMemo(() => ({
+    flexGrow: 1,
+    minHeight: '100vh',
+    ml: !isMobile ? (collapsed ? `${collapsedDrawerWidth}px` : `${drawerWidth}px`) : 0,
+    mt: isMobile ? '56px' : 0,
+    bgcolor: theme.palette.background.default,
+    overflowX: 'hidden' as const,
+  }), [isMobile, collapsed, theme.palette.background.default]);
+
+  // Десктопный Drawer
+  const desktopDrawer = useMemo(() => (
     <Box sx={{ 
       height: '100%',
       bgcolor: isLight ? '#ffffff' : '#0f172a',
@@ -224,9 +252,10 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children, title }) => {
         </Tooltip>
       </Box>
     </Box>
-  );
+  ), [collapsed, isLight, theme, menuItems, handleBackToApp]);
 
-  const mobileDrawer = (
+  // Мобильный Drawer
+  const mobileDrawer = useMemo(() => (
     <Box sx={{ 
       width: 280,
       height: '100%',
@@ -285,8 +314,9 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children, title }) => {
         </Button>
       </Box>
     </Box>
-  );
+  ), [isLight, theme, menuItems, handleBackToApp]);
 
+  // Проверка прав администратора
   if (user?.role !== 'admin') {
     return (
       <Box sx={{ 
@@ -297,30 +327,28 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children, title }) => {
         p: 2
       }}>
         <Container maxWidth="sm">
-          <Fade in={true}>
-            <Box sx={{ 
-              textAlign: 'center',
-              p: 4,
-              borderRadius: 3,
-              bgcolor: alpha(theme.palette.background.paper, 0.8),
-              border: `1px solid ${alpha(theme.palette.error.main, 0.3)}`
-            }}>
-              <AdminPanelSettingsIcon sx={{ fontSize: 64, color: theme.palette.error.main, mb: 2 }} />
-              <Typography variant="h5" fontWeight={700} gutterBottom>
-                Доступ запрещен
-              </Typography>
-              <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-                У вас нет прав для доступа к админ-панели.
-              </Typography>
-              <Button
-                component={Link}
-                to="/"
-                variant="contained"
-              >
-                Вернуться на главную
-              </Button>
-            </Box>
-          </Fade>
+          <Box sx={{ 
+            textAlign: 'center',
+            p: 4,
+            borderRadius: 3,
+            bgcolor: alpha(theme.palette.background.paper, 0.8),
+            border: `1px solid ${alpha(theme.palette.error.main, 0.3)}`
+          }}>
+            <AdminPanelSettingsIcon sx={{ fontSize: 64, color: theme.palette.error.main, mb: 2 }} />
+            <Typography variant="h5" fontWeight={700} gutterBottom>
+              Доступ запрещен
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+              У вас нет прав для доступа к админ-панели.
+            </Typography>
+            <Button
+              component={Link}
+              to="/"
+              variant="contained"
+            >
+              Вернуться на главную
+            </Button>
+          </Box>
         </Container>
       </Box>
     );
@@ -367,24 +395,7 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children, title }) => {
 
       {/* Десктопный Drawer */}
       {!isMobile && (
-        <Box
-          sx={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            width: collapsed ? collapsedDrawerWidth : drawerWidth,
-            height: '100vh',
-            zIndex: theme.zIndex.drawer,
-            bgcolor: isLight ? '#ffffff' : '#0f172a',
-            borderRight: `1px solid ${theme.palette.divider}`,
-            overflowY: 'auto',
-            overflowX: 'hidden',
-            transition: theme.transitions.create('width', {
-              easing: theme.transitions.easing.sharp,
-              duration: theme.transitions.duration.enteringScreen,
-            }),
-          }}
-        >
+        <Box sx={desktopDrawerStyle}>
           {desktopDrawer}
         </Box>
       )}
@@ -408,18 +419,8 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children, title }) => {
         </Drawer>
       )}
 
-      {/* Основной контент - без отступов, просто с margin-left */}
-      <Box
-        component="main"
-        sx={{
-          flexGrow: 1,
-          minHeight: '100vh',
-          ml: !isMobile ? (collapsed ? `${collapsedDrawerWidth}px` : `${drawerWidth}px`) : 0,
-          mt: isMobile ? '56px' : 0,
-          bgcolor: theme.palette.background.default,
-          overflowX: 'hidden',
-        }}
-      >
+      {/* Основной контент */}
+      <Box component="main" sx={mainContentStyle}>
         <Box sx={{ p: { xs: 2, sm: 2, md: 3 } }}>
           {/* Десктопный заголовок страницы */}
           {!isMobile && (
@@ -428,11 +429,9 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children, title }) => {
             </Typography>
           )}
           
-          <Fade in={true} timeout={300}>
-            <Box sx={{ width: '100%' }}>
-              {children}
-            </Box>
-          </Fade>
+          <Box sx={{ width: '100%' }}>
+            {children}
+          </Box>
         </Box>
       </Box>
 

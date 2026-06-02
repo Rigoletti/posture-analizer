@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
   Box,
@@ -69,6 +69,34 @@ interface ExerciseFormData {
   isActive: boolean;
 }
 
+// Вынесенные константы
+const modelTypes = [
+  { value: 'custom', label: 'Кастомная модель' },
+  { value: 'arm-stretching', label: 'Растяжка рук' },
+  { value: 'jumping-jacks', label: 'Прыжки Джек' },
+  { value: 'neck-stretch', label: 'Растяжка шеи' },
+  { value: 'bicycle-crunch', label: 'Велосипед' },
+  { value: 'burpee', label: 'Берпи' },
+  { value: 'capoeira', label: 'Капоэйра' },
+  { value: 'press', label: 'Пресс' }
+];
+
+const exerciseTypes = [
+  { value: 'stretching', label: 'Растяжка' },
+  { value: 'cardio', label: 'Кардио' },
+  { value: 'strength', label: 'Силовые' },
+  { value: 'posture', label: 'Осанка' },
+  { value: 'flexibility', label: 'Гибкость' },
+  { value: 'warmup', label: 'Разминка' },
+  { value: 'cooldown', label: 'Заминка' }
+];
+
+const difficulties = [
+  { value: 'beginner', label: 'Начальный' },
+  { value: 'intermediate', label: 'Средний' },
+  { value: 'advanced', label: 'Продвинутый' }
+];
+
 const ExerciseForm: React.FC = () => {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -105,13 +133,8 @@ const ExerciseForm: React.FC = () => {
   const [fileError, setFileError] = useState<string | null>(null);
   const [uploadProgress, setUploadProgress] = useState(0);
 
-  useEffect(() => {
-    if (isEditMode && id) {
-      fetchExercise(id);
-    }
-  }, [id, isEditMode]);
-
-  const fetchExercise = async (exerciseId: string) => {
+  // Загрузка упражнения
+  const fetchExercise = useCallback(async (exerciseId: string) => {
     try {
       setLoading(true);
       setError(null);
@@ -146,9 +169,82 @@ const ExerciseForm: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | { name?: string; value: unknown }>) => {
+  useEffect(() => {
+    if (isEditMode && id) {
+      fetchExercise(id);
+    }
+  }, [id, isEditMode, fetchExercise]);
+
+  // Мемоизированные стили
+  const getTextFieldStyles = useCallback(() => ({
+    '& .MuiOutlinedInput-root': {
+      bgcolor: theme.palette.mode === 'light'
+        ? alpha('#ffffff', 0.8)
+        : 'rgba(15, 23, 42, 0.8)',
+      borderColor: theme.palette.mode === 'light'
+        ? 'rgba(0, 0, 0, 0.1)'
+        : 'rgba(255, 255, 255, 0.1)',
+      '&:hover': {
+        '& .MuiOutlinedInput-notchedOutline': {
+          borderColor: theme.palette.primary.main
+        }
+      },
+      '&.Mui-focused': {
+        '& .MuiOutlinedInput-notchedOutline': {
+          borderColor: theme.palette.primary.main,
+          borderWidth: 2
+        }
+      },
+      '& input': {
+        color: theme.palette.mode === 'light' ? '#0f172a' : '#ffffff',
+        fontSize: '0.875rem'
+      },
+      '& textarea': {
+        color: theme.palette.mode === 'light' ? '#0f172a' : '#ffffff',
+        fontSize: '0.875rem'
+      }
+    },
+    '& .MuiInputLabel-root': {
+      color: theme.palette.mode === 'light' ? '#475569' : '#94a3b8'
+    },
+    '& .MuiInputLabel-root.Mui-focused': {
+      color: theme.palette.primary.main
+    },
+    '& .MuiOutlinedInput-notchedOutline': {
+      borderColor: theme.palette.mode === 'light'
+        ? 'rgba(0, 0, 0, 0.1)'
+        : 'rgba(255, 255, 255, 0.1)'
+    },
+    '& .MuiFormHelperText-root': {
+      color: theme.palette.mode === 'light' ? '#64748b' : '#94a3b8'
+    }
+  }), [theme]);
+
+  const getSelectStyles = useCallback(() => ({
+    bgcolor: theme.palette.mode === 'light'
+      ? alpha('#ffffff', 0.8)
+      : 'rgba(15, 23, 42, 0.8)',
+    color: theme.palette.mode === 'light' ? '#0f172a' : '#ffffff',
+    '& .MuiOutlinedInput-notchedOutline': {
+      borderColor: theme.palette.mode === 'light'
+        ? 'rgba(0, 0, 0, 0.1)'
+        : 'rgba(255, 255, 255, 0.1)'
+    },
+    '&:hover .MuiOutlinedInput-notchedOutline': {
+      borderColor: theme.palette.primary.main
+    },
+    '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
+      borderColor: theme.palette.primary.main,
+      borderWidth: 2
+    },
+    '& .MuiSvgIcon-root': {
+      color: theme.palette.mode === 'light' ? '#64748b' : '#94a3b8'
+    }
+  }), [theme]);
+
+  const handleChange = useCallback((e: React.ChangeEvent<HTMLInputElement | { name?: string; value: unknown }>) => {
     const { name, value } = e.target;
     
     if (name) {
@@ -157,38 +253,38 @@ const ExerciseForm: React.FC = () => {
     
     if (error) setError(null);
     if (success) setSuccess(null);
-  };
+  }, [error, success]);
 
-  const handleCheckboxChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleCheckboxChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, checked } = e.target;
     setFormData(prev => ({ ...prev, [name]: checked }));
-  };
+  }, []);
 
-  const handleArrayChange = (field: 'instructions' | 'benefits' | 'warnings' | 'muscleGroups', index: number, value: string) => {
+  const handleArrayChange = useCallback((field: 'instructions' | 'benefits' | 'warnings' | 'muscleGroups', index: number, value: string) => {
     setFormData(prev => {
       const newArray = [...prev[field]];
       newArray[index] = value;
       return { ...prev, [field]: newArray };
     });
-  };
+  }, []);
 
-  const addArrayItem = (field: 'instructions' | 'benefits' | 'warnings' | 'muscleGroups') => {
+  const addArrayItem = useCallback((field: 'instructions' | 'benefits' | 'warnings' | 'muscleGroups') => {
     setFormData(prev => ({
       ...prev,
       [field]: [...prev[field], '']
     }));
-  };
+  }, []);
 
-  const removeArrayItem = (field: 'instructions' | 'benefits' | 'warnings' | 'muscleGroups', index: number) => {
+  const removeArrayItem = useCallback((field: 'instructions' | 'benefits' | 'warnings' | 'muscleGroups', index: number) => {
     if (formData[field].length > 1) {
       setFormData(prev => ({
         ...prev,
         [field]: prev[field].filter((_, i) => i !== index)
       }));
     }
-  };
+  }, [formData]);
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     setFileError(null);
     setUploadProgress(0);
@@ -217,9 +313,9 @@ const ExerciseForm: React.FC = () => {
       
       setError(null);
     }
-  };
+  }, []);
 
-  const handleRemoveModel = () => {
+  const handleRemoveModel = useCallback(() => {
     setSelectedFile(null);
     setFormData(prev => ({
       ...prev,
@@ -229,9 +325,9 @@ const ExerciseForm: React.FC = () => {
       modelType: 'custom',
       removeModel: true
     }));
-  };
+  }, []);
 
-  const validateForm = (): boolean => {
+  const validateForm = useCallback((): boolean => {
     const errors: string[] = [];
     
     if (!formData.title.trim()) {
@@ -266,9 +362,9 @@ const ExerciseForm: React.FC = () => {
     }
     
     return true;
-  };
+  }, [formData, selectedFile]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
     
     if (!validateForm()) {
@@ -361,106 +457,36 @@ const ExerciseForm: React.FC = () => {
       setSaving(false);
       setUploadProgress(0);
     }
-  };
-  
-  const handleCancel = () => {
+  }, [formData, validateForm, selectedFile, isEditMode, id, navigate]);
+
+  const handleCancel = useCallback(() => {
     navigate('/admin/exercises');
-  };
+  }, [navigate]);
 
-  const modelTypes = [
-    { value: 'custom', label: 'Кастомная модель' },
-    { value: 'arm-stretching', label: 'Растяжка рук' },
-    { value: 'jumping-jacks', label: 'Прыжки Джек' },
-    { value: 'neck-stretch', label: 'Растяжка шеи' },
-    { value: 'bicycle-crunch', label: 'Велосипед' },
-    { value: 'burpee', label: 'Берпи' },
-    { value: 'capoeira', label: 'Капоэйра' },
-    { value: 'press', label: 'Пресс' }
-  ];
-
-  const exerciseTypes = [
-    { value: 'stretching', label: 'Растяжка' },
-    { value: 'cardio', label: 'Кардио' },
-    { value: 'strength', label: 'Силовые' },
-    { value: 'posture', label: 'Осанка' },
-    { value: 'flexibility', label: 'Гибкость' },
-    { value: 'warmup', label: 'Разминка' },
-    { value: 'cooldown', label: 'Заминка' }
-  ];
-
-  const difficulties = [
-    { value: 'beginner', label: 'Начальный' },
-    { value: 'intermediate', label: 'Средний' },
-    { value: 'advanced', label: 'Продвинутый' }
-  ];
-
-  // Стили для текстовых полей с поддержкой темы
-  const getTextFieldStyles = () => ({
-    '& .MuiOutlinedInput-root': {
-      bgcolor: theme.palette.mode === 'light'
-        ? alpha('#ffffff', 0.8)
-        : 'rgba(15, 23, 42, 0.8)',
-      borderColor: theme.palette.mode === 'light'
-        ? 'rgba(0, 0, 0, 0.1)'
-        : 'rgba(255, 255, 255, 0.1)',
-      '&:hover': {
-        '& .MuiOutlinedInput-notchedOutline': {
-          borderColor: theme.palette.primary.main
-        }
-      },
-      '&.Mui-focused': {
-        '& .MuiOutlinedInput-notchedOutline': {
-          borderColor: theme.palette.primary.main,
-          borderWidth: 2
-        }
-      },
-      '& input': {
-        color: theme.palette.mode === 'light' ? '#0f172a' : '#ffffff',
-        fontSize: '0.875rem'
-      },
-      '& textarea': {
-        color: theme.palette.mode === 'light' ? '#0f172a' : '#ffffff',
-        fontSize: '0.875rem'
-      }
-    },
-    '& .MuiInputLabel-root': {
-      color: theme.palette.mode === 'light' ? '#475569' : '#94a3b8'
-    },
-    '& .MuiInputLabel-root.Mui-focused': {
-      color: theme.palette.primary.main
-    },
-    '& .MuiOutlinedInput-notchedOutline': {
-      borderColor: theme.palette.mode === 'light'
-        ? 'rgba(0, 0, 0, 0.1)'
-        : 'rgba(255, 255, 255, 0.1)'
-    },
-    '& .MuiFormHelperText-root': {
-      color: theme.palette.mode === 'light' ? '#64748b' : '#94a3b8'
-    }
-  });
-
-  // Стили для Select с поддержкой темы
-  const getSelectStyles = () => ({
+  // Мемоизированные стили карточек
+  const cardStyle = useMemo(() => ({
     bgcolor: theme.palette.mode === 'light'
-      ? alpha('#ffffff', 0.8)
-      : 'rgba(15, 23, 42, 0.8)',
-    color: theme.palette.mode === 'light' ? '#0f172a' : '#ffffff',
-    '& .MuiOutlinedInput-notchedOutline': {
-      borderColor: theme.palette.mode === 'light'
-        ? 'rgba(0, 0, 0, 0.1)'
-        : 'rgba(255, 255, 255, 0.1)'
-    },
-    '&:hover .MuiOutlinedInput-notchedOutline': {
-      borderColor: theme.palette.primary.main
-    },
-    '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
-      borderColor: theme.palette.primary.main,
-      borderWidth: 2
-    },
-    '& .MuiSvgIcon-root': {
-      color: theme.palette.mode === 'light' ? '#64748b' : '#94a3b8'
-    }
-  });
+      ? alpha(theme.palette.background.paper, 0.8)
+      : alpha(theme.palette.background.paper, 0.4),
+    border: `1px solid ${theme.palette.mode === 'light'
+      ? 'rgba(0, 0, 0, 0.1)'
+      : 'rgba(255, 255, 255, 0.1)'}`,
+    borderRadius: 2,
+    backdropFilter: 'blur(10px)'
+  }), [theme]);
+
+  const actionsPaperStyle = useMemo(() => ({
+    mt: 4,
+    p: 3,
+    bgcolor: theme.palette.mode === 'light'
+      ? alpha(theme.palette.background.paper, 0.8)
+      : alpha(theme.palette.background.paper, 0.4),
+    border: `1px solid ${theme.palette.mode === 'light'
+      ? 'rgba(0, 0, 0, 0.1)'
+      : 'rgba(255, 255, 255, 0.1)'}`,
+    borderRadius: 2,
+    backdropFilter: 'blur(10px)'
+  }), [theme]);
 
   if (loading) {
     return (
@@ -495,7 +521,7 @@ const ExerciseForm: React.FC = () => {
       position: 'relative',
       overflow: 'hidden'
     }}>
-      {/* Фоновые элементы */}
+      {/* Фоновые элементы (статичные, без анимации) */}
       <Box sx={{
         position: 'absolute',
         top: -100,
@@ -598,18 +624,7 @@ const ExerciseForm: React.FC = () => {
           <Grid container spacing={3}>
             {/* Основная информация */}
             <Grid item xs={12} md={6}>
-              <Card 
-                sx={{ 
-                  bgcolor: theme.palette.mode === 'light'
-                    ? alpha(theme.palette.background.paper, 0.8)
-                    : alpha(theme.palette.background.paper, 0.4),
-                  border: `1px solid ${theme.palette.mode === 'light'
-                    ? 'rgba(0, 0, 0, 0.1)'
-                    : 'rgba(255, 255, 255, 0.1)'}`,
-                  borderRadius: 2,
-                  backdropFilter: 'blur(10px)'
-                }}
-              >
+              <Card sx={cardStyle}>
                 <CardContent>
                   <Typography 
                     variant="h6" 
@@ -776,18 +791,7 @@ const ExerciseForm: React.FC = () => {
 
             {/* 3D Модель */}
             <Grid item xs={12} md={6}>
-              <Card 
-                sx={{ 
-                  bgcolor: theme.palette.mode === 'light'
-                    ? alpha(theme.palette.background.paper, 0.8)
-                    : alpha(theme.palette.background.paper, 0.4),
-                  border: `1px solid ${theme.palette.mode === 'light'
-                    ? 'rgba(0, 0, 0, 0.1)'
-                    : 'rgba(255, 255, 255, 0.1)'}`,
-                  borderRadius: 2,
-                  backdropFilter: 'blur(10px)'
-                }}
-              >
+              <Card sx={cardStyle}>
                 <CardContent>
                   <Typography 
                     variant="h6" 
@@ -1010,18 +1014,7 @@ const ExerciseForm: React.FC = () => {
 
             {/* Медиа и настройки */}
             <Grid item xs={12} md={6}>
-              <Card 
-                sx={{ 
-                  bgcolor: theme.palette.mode === 'light'
-                    ? alpha(theme.palette.background.paper, 0.8)
-                    : alpha(theme.palette.background.paper, 0.4),
-                  border: `1px solid ${theme.palette.mode === 'light'
-                    ? 'rgba(0, 0, 0, 0.1)'
-                    : 'rgba(255, 255, 255, 0.1)'}`,
-                  borderRadius: 2,
-                  backdropFilter: 'blur(10px)'
-                }}
-              >
+              <Card sx={cardStyle}>
                 <CardContent>
                   <Typography 
                     variant="h6" 
@@ -1115,18 +1108,7 @@ const ExerciseForm: React.FC = () => {
 
             {/* Инструкции */}
             <Grid item xs={12}>
-              <Card 
-                sx={{ 
-                  bgcolor: theme.palette.mode === 'light'
-                    ? alpha(theme.palette.background.paper, 0.8)
-                    : alpha(theme.palette.background.paper, 0.4),
-                  border: `1px solid ${theme.palette.mode === 'light'
-                    ? 'rgba(0, 0, 0, 0.1)'
-                    : 'rgba(255, 255, 255, 0.1)'}`,
-                  borderRadius: 2,
-                  backdropFilter: 'blur(10px)'
-                }}
-              >
+              <Card sx={cardStyle}>
                 <CardContent>
                   <Typography 
                     variant="h6" 
@@ -1205,18 +1187,7 @@ const ExerciseForm: React.FC = () => {
 
             {/* Преимущества */}
             <Grid item xs={12} md={6}>
-              <Card 
-                sx={{ 
-                  bgcolor: theme.palette.mode === 'light'
-                    ? alpha(theme.palette.background.paper, 0.8)
-                    : alpha(theme.palette.background.paper, 0.4),
-                  border: `1px solid ${theme.palette.mode === 'light'
-                    ? 'rgba(0, 0, 0, 0.1)'
-                    : 'rgba(255, 255, 255, 0.1)'}`,
-                  borderRadius: 2,
-                  backdropFilter: 'blur(10px)'
-                }}
-              >
+              <Card sx={cardStyle}>
                 <CardContent>
                   <Typography 
                     variant="h6" 
@@ -1277,18 +1248,7 @@ const ExerciseForm: React.FC = () => {
 
             {/* Предупреждения */}
             <Grid item xs={12} md={6}>
-              <Card 
-                sx={{ 
-                  bgcolor: theme.palette.mode === 'light'
-                    ? alpha(theme.palette.background.paper, 0.8)
-                    : alpha(theme.palette.background.paper, 0.4),
-                  border: `1px solid ${theme.palette.mode === 'light'
-                    ? 'rgba(0, 0, 0, 0.1)'
-                    : 'rgba(255, 255, 255, 0.1)'}`,
-                  borderRadius: 2,
-                  backdropFilter: 'blur(10px)'
-                }}
-              >
+              <Card sx={cardStyle}>
                 <CardContent>
                   <Typography 
                     variant="h6" 
@@ -1348,20 +1308,7 @@ const ExerciseForm: React.FC = () => {
           </Grid>
 
           {/* Кнопки действий */}
-          <Paper
-            sx={{
-              mt: 4,
-              p: 3,
-              bgcolor: theme.palette.mode === 'light'
-                ? alpha(theme.palette.background.paper, 0.8)
-                : alpha(theme.palette.background.paper, 0.4),
-              border: `1px solid ${theme.palette.mode === 'light'
-                ? 'rgba(0, 0, 0, 0.1)'
-                : 'rgba(255, 255, 255, 0.1)'}`,
-              borderRadius: 2,
-              backdropFilter: 'blur(10px)'
-            }}
-          >
+          <Paper sx={actionsPaperStyle}>
             <Stack 
               direction={{ xs: 'column', sm: 'row' }} 
               spacing={2} 
@@ -1387,7 +1334,7 @@ const ExerciseForm: React.FC = () => {
                 Отмена
               </Button>
               
-              <Button
+                <Button
                 startIcon={saving ? <CircularProgress size={20} sx={{ color: 'white' }} /> : <SaveIcon />}
                 type="submit"
                 disabled={saving}
@@ -1409,17 +1356,6 @@ const ExerciseForm: React.FC = () => {
           </Paper>
         </form>
       </Container>
-
-      {/* Стили для анимации */}
-      <style>
-        {`
-          @keyframes pulse {
-            0% { opacity: 1; transform: scale(1); }
-            50% { opacity: 0.5; transform: scale(1.1); }
-            100% { opacity: 1; transform: scale(1); }
-          }
-        `}
-      </style>
     </Box>
   );
 };

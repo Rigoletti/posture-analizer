@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
   Box,
@@ -82,13 +82,8 @@ const UserForm: React.FC = () => {
   const [success, setSuccess] = useState<string | null>(null);
   const [showPasswordFields, setShowPasswordFields] = useState(false);
 
-  useEffect(() => {
-    if (isEditMode && id) {
-      fetchUser(id);
-    }
-  }, [id, isEditMode]);
-
-  const fetchUser = async (userId: string) => {
+  // Загрузка пользователя
+  const fetchUser = useCallback(async (userId: string) => {
     try {
       setLoading(true);
       setError(null);
@@ -113,22 +108,28 @@ const UserForm: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  useEffect(() => {
+    if (isEditMode && id) {
+      fetchUser(id);
+    }
+  }, [id, isEditMode, fetchUser]);
+
+  const handleChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
     
     if (error) setError(null);
     if (success) setSuccess(null);
-  };
+  }, [error, success]);
 
-  const handleSelectChange = (e: any) => {
+  const handleSelectChange = useCallback((e: any) => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
-  };
+  }, []);
 
-  const validateForm = (): boolean => {
+  const validateForm = useCallback((): boolean => {
     const errors: string[] = [];
     
     if (!formData.lastName.trim()) {
@@ -166,9 +167,9 @@ const UserForm: React.FC = () => {
     }
     
     return true;
-  };
+  }, [formData, showPasswordFields]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
     
     if (!validateForm()) {
@@ -192,16 +193,12 @@ const UserForm: React.FC = () => {
         userData.password = formData.password;
       }
       
-      console.log('Отправка данных пользователя:', userData);
-      
       let response;
       if (isEditMode && id) {
         response = await adminApi.updateUser(id, userData);
       } else {
         response = await adminApi.createUser(userData);
       }
-      
-      console.log('Ответ сервера:', response);
       
       setSuccess(isEditMode ? 'Пользователь успешно обновлен!' : 'Пользователь успешно создан!');
       
@@ -216,14 +213,14 @@ const UserForm: React.FC = () => {
     } finally {
       setSaving(false);
     }
-  };
+  }, [formData, validateForm, showPasswordFields, isEditMode, id, navigate]);
 
-  const handleCancel = () => {
+  const handleCancel = useCallback(() => {
     navigate('/admin/users');
-  };
+  }, [navigate]);
 
-  const togglePasswordFields = () => {
-    setShowPasswordFields(!showPasswordFields);
+  const togglePasswordFields = useCallback(() => {
+    setShowPasswordFields(prev => !prev);
     if (!showPasswordFields) {
       setFormData(prev => ({
         ...prev,
@@ -231,9 +228,9 @@ const UserForm: React.FC = () => {
         confirmPassword: ''
       }));
     }
-  };
+  }, [showPasswordFields]);
 
-  const getRoleInfo = (role: string) => {
+  const getRoleInfo = useCallback((role: string) => {
     switch (role) {
       case 'admin':
         return {
@@ -254,9 +251,9 @@ const UserForm: React.FC = () => {
           icon: <PersonIcon sx={{ fontSize: 16 }} />
         };
     }
-  };
+  }, []);
 
-  const formatDate = (dateString: string) => {
+  const formatDate = useCallback((dateString: string) => {
     try {
       return new Date(dateString).toLocaleDateString('ru-RU', {
         day: 'numeric',
@@ -268,20 +265,106 @@ const UserForm: React.FC = () => {
     } catch {
       return dateString;
     }
-  };
+  }, []);
+
+  // Мемоизированные стили
+  const backgroundStyle = useMemo(() => ({
+    minHeight: '100vh',
+    background: theme.palette.mode === 'light' 
+      ? 'linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)'
+      : 'linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%)',
+    py: 4,
+    position: 'relative' as const,
+    overflow: 'hidden' as const
+  }), [theme.palette.mode]);
+
+  const cardStyle = useMemo(() => ({
+    mb: 3,
+    bgcolor: theme.palette.mode === 'light'
+      ? alpha(theme.palette.background.paper, 0.8)
+      : alpha(theme.palette.background.paper, 0.4),
+    border: `1px solid ${theme.palette.mode === 'light'
+      ? 'rgba(0, 0, 0, 0.1)'
+      : 'rgba(255, 255, 255, 0.1)'}`,
+    borderRadius: 2,
+    backdropFilter: 'blur(10px)'
+  }), [theme]);
+
+  const infoPaperStyle = useMemo(() => ({
+    p: 2,
+    mb: 3,
+    bgcolor: theme.palette.mode === 'light'
+      ? alpha(theme.palette.background.paper, 0.8)
+      : alpha(theme.palette.background.paper, 0.4),
+    border: `1px solid ${theme.palette.mode === 'light'
+      ? 'rgba(0, 0, 0, 0.1)'
+      : 'rgba(255, 255, 255, 0.1)'}`,
+    borderRadius: 2,
+    backdropFilter: 'blur(10px)'
+  }), [theme]);
+
+  const actionsPaperStyle = useMemo(() => ({
+    p: 3,
+    bgcolor: theme.palette.mode === 'light'
+      ? alpha(theme.palette.background.paper, 0.8)
+      : alpha(theme.palette.background.paper, 0.4),
+    border: `1px solid ${theme.palette.mode === 'light'
+      ? 'rgba(0, 0, 0, 0.1)'
+      : 'rgba(255, 255, 255, 0.1)'}`,
+    borderRadius: 2,
+    backdropFilter: 'blur(10px)'
+  }), [theme]);
+
+  const textFieldStyle = useMemo(() => ({
+    '& .MuiOutlinedInput-root': {
+      bgcolor: theme.palette.mode === 'light'
+        ? alpha('#ffffff', 0.8)
+        : 'rgba(15, 23, 42, 0.8)',
+      '&:hover .MuiOutlinedInput-notchedOutline': {
+        borderColor: theme.palette.primary.main
+      },
+      '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
+        borderColor: theme.palette.primary.main
+      }
+    },
+    '& .MuiInputLabel-root': {
+      color: theme.palette.mode === 'light' ? '#475569' : '#94a3b8'
+    },
+    '& .MuiInputLabel-root.Mui-focused': {
+      color: theme.palette.primary.main
+    },
+    '& .MuiOutlinedInput-input': {
+      color: theme.palette.mode === 'light' ? '#0f172a' : '#ffffff'
+    }
+  }), [theme]);
+
+  const selectStyle = useMemo(() => ({
+    bgcolor: theme.palette.mode === 'light'
+      ? alpha('#ffffff', 0.8)
+      : 'rgba(15, 23, 42, 0.8)',
+    '& .MuiOutlinedInput-notchedOutline': {
+      borderColor: theme.palette.mode === 'light'
+        ? 'rgba(0, 0, 0, 0.1)'
+        : 'rgba(255, 255, 255, 0.1)'
+    },
+    '&:hover .MuiOutlinedInput-notchedOutline': {
+      borderColor: theme.palette.primary.main
+    },
+    '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
+      borderColor: theme.palette.primary.main
+    },
+    '& .MuiSelect-select': {
+      color: theme.palette.mode === 'light' ? '#0f172a' : '#ffffff'
+    },
+    '& .MuiSvgIcon-root': {
+      color: theme.palette.mode === 'light' ? '#64748b' : '#94a3b8'
+    }
+  }), [theme]);
 
   if (loading && isEditMode) {
     return (
-      <Box sx={{ 
-        display: 'flex', 
-        justifyContent: 'center', 
-        alignItems: 'center', 
-        minHeight: '100vh',
-        background: theme.palette.mode === 'light' 
-          ? 'linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)'
-          : 'linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%)',
-      }}>
-        <Stack alignItems="center" spacing={2}>
+      <Box sx={backgroundStyle}>
+        <Stack alignItems="center" spacing={2} sx={{ justifyContent: 'center', minHeight: '100vh' }}>
           <CircularProgress size={60} sx={{ color: theme.palette.primary.main }} />
           <Typography variant="h6" sx={{ 
             color: theme.palette.mode === 'light' ? '#475569' : '#94a3b8'
@@ -294,15 +377,8 @@ const UserForm: React.FC = () => {
   }
 
   return (
-    <Box sx={{ 
-      minHeight: '100vh',
-      background: theme.palette.mode === 'light' 
-        ? 'linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)'
-        : 'linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%)',
-      py: 4,
-      position: 'relative',
-      overflow: 'hidden'
-    }}>
+    <Box sx={backgroundStyle}>
+      {/* Фоновые элементы (статичные) */}
       <Box sx={{
         position: 'absolute',
         top: -100,
@@ -353,18 +429,7 @@ const UserForm: React.FC = () => {
           </Stack>
           
           {isEditMode && user && (
-            <Paper sx={{ 
-              p: 2, 
-              mb: 3,
-              bgcolor: theme.palette.mode === 'light'
-                ? alpha(theme.palette.background.paper, 0.8)
-                : alpha(theme.palette.background.paper, 0.4),
-              border: `1px solid ${theme.palette.mode === 'light'
-                ? 'rgba(0, 0, 0, 0.1)'
-                : 'rgba(255, 255, 255, 0.1)'}`,
-              borderRadius: 2,
-              backdropFilter: 'blur(10px)'
-            }}>
+            <Paper sx={infoPaperStyle}>
               <Stack 
                 direction={{ xs: 'column', sm: 'row' }} 
                 justifyContent="space-between" 
@@ -455,17 +520,7 @@ const UserForm: React.FC = () => {
         )}
 
         <form onSubmit={handleSubmit}>
-          <Card sx={{ 
-            mb: 3,
-            bgcolor: theme.palette.mode === 'light'
-              ? alpha(theme.palette.background.paper, 0.8)
-              : alpha(theme.palette.background.paper, 0.4),
-            border: `1px solid ${theme.palette.mode === 'light'
-              ? 'rgba(0, 0, 0, 0.1)'
-              : 'rgba(255, 255, 255, 0.1)'}`,
-            borderRadius: 2,
-            backdropFilter: 'blur(10px)'
-          }}>
+          <Card sx={cardStyle}>
             <CardContent>
               <Typography 
                 variant="h6" 
@@ -487,28 +542,7 @@ const UserForm: React.FC = () => {
                     onChange={handleChange}
                     required
                     fullWidth
-                    sx={{
-                      '& .MuiOutlinedInput-root': {
-                        bgcolor: theme.palette.mode === 'light'
-                          ? alpha('#ffffff', 0.8)
-                          : 'rgba(15, 23, 42, 0.8)',
-                        '&:hover .MuiOutlinedInput-notchedOutline': {
-                          borderColor: theme.palette.primary.main
-                        },
-                        '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
-                          borderColor: theme.palette.primary.main
-                        }
-                      },
-                      '& .MuiInputLabel-root': {
-                        color: theme.palette.mode === 'light' ? '#475569' : '#94a3b8'
-                      },
-                      '& .MuiInputLabel-root.Mui-focused': {
-                        color: theme.palette.primary.main
-                      },
-                      '& .MuiOutlinedInput-input': {
-                        color: theme.palette.mode === 'light' ? '#0f172a' : '#ffffff'
-                      }
-                    }}
+                    sx={textFieldStyle}
                   />
                   
                   <TextField
@@ -518,22 +552,7 @@ const UserForm: React.FC = () => {
                     onChange={handleChange}
                     required
                     fullWidth
-                    sx={{
-                      '& .MuiOutlinedInput-root': {
-                        bgcolor: theme.palette.mode === 'light'
-                          ? alpha('#ffffff', 0.8)
-                          : 'rgba(15, 23, 42, 0.8)',
-                        '&:hover .MuiOutlinedInput-notchedOutline': {
-                          borderColor: theme.palette.primary.main
-                        }
-                      },
-                      '& .MuiInputLabel-root': {
-                        color: theme.palette.mode === 'light' ? '#475569' : '#94a3b8'
-                      },
-                      '& .MuiOutlinedInput-input': {
-                        color: theme.palette.mode === 'light' ? '#0f172a' : '#ffffff'
-                      }
-                    }}
+                    sx={textFieldStyle}
                   />
                 </Stack>
                 
@@ -543,22 +562,7 @@ const UserForm: React.FC = () => {
                   value={formData.middleName}
                   onChange={handleChange}
                   fullWidth
-                  sx={{
-                    '& .MuiOutlinedInput-root': {
-                      bgcolor: theme.palette.mode === 'light'
-                        ? alpha('#ffffff', 0.8)
-                        : 'rgba(15, 23, 42, 0.8)',
-                      '&:hover .MuiOutlinedInput-notchedOutline': {
-                        borderColor: theme.palette.primary.main
-                      }
-                    },
-                    '& .MuiInputLabel-root': {
-                      color: theme.palette.mode === 'light' ? '#475569' : '#94a3b8'
-                    },
-                    '& .MuiOutlinedInput-input': {
-                      color: theme.palette.mode === 'light' ? '#0f172a' : '#ffffff'
-                    }
-                  }}
+                  sx={textFieldStyle}
                 />
                 
                 <TextField
@@ -576,38 +580,13 @@ const UserForm: React.FC = () => {
                       </InputAdornment>
                     ),
                   }}
-                  sx={{
-                    '& .MuiOutlinedInput-root': {
-                      bgcolor: theme.palette.mode === 'light'
-                        ? alpha('#ffffff', 0.8)
-                        : 'rgba(15, 23, 42, 0.8)',
-                      '&:hover .MuiOutlinedInput-notchedOutline': {
-                        borderColor: theme.palette.primary.main
-                      }
-                    },
-                    '& .MuiInputLabel-root': {
-                      color: theme.palette.mode === 'light' ? '#475569' : '#94a3b8'
-                    },
-                    '& .MuiOutlinedInput-input': {
-                      color: theme.palette.mode === 'light' ? '#0f172a' : '#ffffff'
-                    }
-                  }}
+                  sx={textFieldStyle}
                 />
               </Stack>
             </CardContent>
           </Card>
 
-          <Card sx={{ 
-            mb: 3,
-            bgcolor: theme.palette.mode === 'light'
-              ? alpha(theme.palette.background.paper, 0.8)
-              : alpha(theme.palette.background.paper, 0.4),
-            border: `1px solid ${theme.palette.mode === 'light'
-              ? 'rgba(0, 0, 0, 0.1)'
-              : 'rgba(255, 255, 255, 0.1)'}`,
-            borderRadius: 2,
-            backdropFilter: 'blur(10px)'
-          }}>
+          <Card sx={cardStyle}>
             <CardContent>
               <Typography 
                 variant="h6" 
@@ -629,28 +608,7 @@ const UserForm: React.FC = () => {
                   value={formData.role}
                   onChange={handleSelectChange}
                   label="Роль *"
-                  sx={{
-                    bgcolor: theme.palette.mode === 'light'
-                      ? alpha('#ffffff', 0.8)
-                      : 'rgba(15, 23, 42, 0.8)',
-                    '& .MuiOutlinedInput-notchedOutline': {
-                      borderColor: theme.palette.mode === 'light'
-                        ? 'rgba(0, 0, 0, 0.1)'
-                        : 'rgba(255, 255, 255, 0.1)'
-                    },
-                    '&:hover .MuiOutlinedInput-notchedOutline': {
-                      borderColor: theme.palette.primary.main
-                    },
-                    '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
-                      borderColor: theme.palette.primary.main
-                    },
-                    '& .MuiSelect-select': {
-                      color: theme.palette.mode === 'light' ? '#0f172a' : '#ffffff'
-                    },
-                    '& .MuiSvgIcon-root': {
-                      color: theme.palette.mode === 'light' ? '#64748b' : '#94a3b8'
-                    }
-                  }}
+                  sx={selectStyle}
                   MenuProps={{
                     PaperProps: {
                       sx: {
@@ -708,17 +666,7 @@ const UserForm: React.FC = () => {
           </Card>
 
           {(!isEditMode || showPasswordFields) && (
-            <Card sx={{ 
-              mb: 3,
-              bgcolor: theme.palette.mode === 'light'
-                ? alpha(theme.palette.background.paper, 0.8)
-                : alpha(theme.palette.background.paper, 0.4),
-              border: `1px solid ${theme.palette.mode === 'light'
-                ? 'rgba(0, 0, 0, 0.1)'
-                : 'rgba(255, 255, 255, 0.1)'}`,
-              borderRadius: 2,
-              backdropFilter: 'blur(10px)'
-            }}>
+            <Card sx={cardStyle}>
               <CardContent>
                 <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 3 }}>
                   <Typography 
@@ -771,28 +719,7 @@ const UserForm: React.FC = () => {
                     required={!isEditMode || showPasswordFields}
                     fullWidth
                     helperText="Минимум 6 символов"
-                    sx={{
-                      '& .MuiOutlinedInput-root': {
-                        bgcolor: theme.palette.mode === 'light'
-                          ? alpha('#ffffff', 0.8)
-                          : 'rgba(15, 23, 42, 0.8)',
-                        '&:hover .MuiOutlinedInput-notchedOutline': {
-                          borderColor: theme.palette.primary.main
-                        },
-                        '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
-                          borderColor: theme.palette.primary.main
-                        }
-                      },
-                      '& .MuiInputLabel-root': {
-                        color: theme.palette.mode === 'light' ? '#475569' : '#94a3b8'
-                      },
-                      '& .MuiOutlinedInput-input': {
-                        color: theme.palette.mode === 'light' ? '#0f172a' : '#ffffff'
-                      },
-                      '& .MuiFormHelperText-root': {
-                        color: theme.palette.mode === 'light' ? '#64748b' : '#94a3b8'
-                      }
-                    }}
+                    sx={textFieldStyle}
                   />
                   
                   <TextField
@@ -803,41 +730,14 @@ const UserForm: React.FC = () => {
                     onChange={handleChange}
                     required={!isEditMode || showPasswordFields}
                     fullWidth
-                    sx={{
-                      '& .MuiOutlinedInput-root': {
-                        bgcolor: theme.palette.mode === 'light'
-                          ? alpha('#ffffff', 0.8)
-                          : 'rgba(15, 23, 42, 0.8)',
-                        '&:hover .MuiOutlinedInput-notchedOutline': {
-                          borderColor: theme.palette.primary.main
-                        }
-                      },
-                      '& .MuiInputLabel-root': {
-                        color: theme.palette.mode === 'light' ? '#475569' : '#94a3b8'
-                      },
-                      '& .MuiOutlinedInput-input': {
-                        color: theme.palette.mode === 'light' ? '#0f172a' : '#ffffff'
-                      }
-                    }}
+                    sx={textFieldStyle}
                   />
                 </Stack>
               </CardContent>
             </Card>
           )}
 
-          <Paper
-            sx={{
-              p: 3,
-              bgcolor: theme.palette.mode === 'light'
-                ? alpha(theme.palette.background.paper, 0.8)
-                : alpha(theme.palette.background.paper, 0.4),
-              border: `1px solid ${theme.palette.mode === 'light'
-                ? 'rgba(0, 0, 0, 0.1)'
-                : 'rgba(255, 255, 255, 0.1)'}`,
-              borderRadius: 2,
-              backdropFilter: 'blur(10px)'
-            }}
-          >
+          <Paper sx={actionsPaperStyle}>
             <Stack 
               direction={{ xs: 'column', sm: 'row' }} 
               spacing={2} 
@@ -885,16 +785,6 @@ const UserForm: React.FC = () => {
           </Paper>
         </form>
       </Container>
-
-      <style>
-        {`
-          @keyframes pulse {
-            0% { opacity: 1; transform: scale(1); }
-            50% { opacity: 0.5; transform: scale(1.1); }
-            100% { opacity: 1; transform: scale(1); }
-          }
-        `}
-      </style>
     </Box>
   );
 };

@@ -57,7 +57,6 @@ import {
   DirectionsRun,
   Close as CloseIcon,
 } from '@mui/icons-material';
-import { motion, AnimatePresence } from 'framer-motion';
 import { exercisesApi } from '../../api/exercises';
 import Simple3DViewer from '../../components/exercises/ThreeDModelViewer';
 
@@ -342,7 +341,7 @@ const ExerciseDetail: React.FC = () => {
   ] : [], [exercise, getDifficultyColor, exerciseTypeColor, theme]);
 
   // Функции для рендеринга мобильных дроверов
-  const renderMobileStepsDrawer = () => {
+  const renderMobileStepsDrawer = useCallback(() => {
     if (!isMobile || !exercise) return null;
     
     return (
@@ -455,9 +454,9 @@ const ExerciseDetail: React.FC = () => {
         </Box>
       </SwipeableDrawer>
     );
-  };
+  }, [isMobile, exercise, showMobileSteps, currentStep, exerciseTypeColor, theme, formatTime, handleStepClick]);
 
-  const renderMobileInfoDrawer = () => {
+  const renderMobileInfoDrawer = useCallback(() => {
     if (!isMobile || !exercise) return null;
     
     return (
@@ -592,7 +591,7 @@ const ExerciseDetail: React.FC = () => {
         </Box>
       </SwipeableDrawer>
     );
-  };
+  }, [isMobile, exercise, showMobileInfo, currentStep, exerciseTypeColor, theme]);
 
   // Ранние возвраты после всех хуков
   if (loading) {
@@ -840,7 +839,6 @@ const ExerciseDetail: React.FC = () => {
                   borderRadius: { xs: 2, sm: 3 },
                   backdropFilter: 'blur(10px)',
                   height: '100%',
-                  transition: 'all 0.3s ease',
                 }}>
                   <Box sx={{ 
                     display: 'flex',
@@ -1160,7 +1158,6 @@ const ExerciseDetail: React.FC = () => {
                               : alpha(theme.palette.background.paper, 0.6),
                             border: `1px solid ${theme.palette.divider}`,
                             color: theme.palette.text.primary,
-                            transition: 'all 0.3s ease'
                           }}
                         >
                           <SkipPrevious sx={{ fontSize: { xs: 24, sm: 32 } }} />
@@ -1176,7 +1173,6 @@ const ExerciseDetail: React.FC = () => {
                             height: { xs: 64, sm: 80 },
                             background: `linear-gradient(135deg, ${exerciseTypeColor} 0%, ${alpha(exerciseTypeColor, 0.8)} 100%)`,
                             color: '#ffffff',
-                            transition: 'all 0.3s ease',
                             boxShadow: `0 8px 32px ${alpha(exerciseTypeColor, 0.4)}`
                           }}
                         >
@@ -1200,7 +1196,6 @@ const ExerciseDetail: React.FC = () => {
                               : alpha(theme.palette.background.paper, 0.6),
                             border: `1px solid ${theme.palette.divider}`,
                             color: theme.palette.text.primary,
-                            transition: 'all 0.3s ease'
                           }}
                         >
                           <SkipNext sx={{ fontSize: { xs: 24, sm: 32 } }} />
@@ -1220,7 +1215,6 @@ const ExerciseDetail: React.FC = () => {
                                 : alpha(theme.palette.background.paper, 0.6),
                               border: `1px solid ${alpha(theme.palette.error.main, 0.3)}`,
                               color: theme.palette.error.main,
-                              transition: 'all 0.3s ease'
                             }}
                           >
                             <Replay sx={{ fontSize: 32 }} />
@@ -1277,7 +1271,6 @@ const ExerciseDetail: React.FC = () => {
                               p: 3,
                               borderRadius: 3,
                               cursor: 'pointer',
-                              transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
                               border: `2px solid ${
                                 index === currentStep 
                                   ? exerciseTypeColor 
@@ -1737,7 +1730,6 @@ const ExerciseDetail: React.FC = () => {
                           '&:disabled': {
                             bgcolor: alpha(theme.palette.text.disabled, 0.5)
                           },
-                          transition: 'all 0.3s ease'
                         }}
                       >
                         {isPlaying ? 'Тренировка идет...' : 'Продолжить тренировку'}

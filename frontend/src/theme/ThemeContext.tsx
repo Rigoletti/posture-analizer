@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useMemo, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { ThemeProvider as MuiThemeProvider, createTheme } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
 
@@ -17,7 +17,7 @@ export const useThemeMode = () => {
   return context;
 };
 
-// Константы вынесены за пределы компонента
+// Константы тем вынесены за пределы компонента и мемоизированы
 const LIGHT_THEME = createTheme({
   palette: {
     mode: 'light',
@@ -48,65 +48,97 @@ const DARK_THEME = createTheme({
   }
 });
 
-const getTheme = (mode: ThemeMode) => mode === 'light' ? LIGHT_THEME : DARK_THEME;
+// Кэш для тем
+const themeCache = new Map<ThemeMode, typeof LIGHT_THEME>();
+themeCache.set('light', LIGHT_THEME);
+themeCache.set('dark', DARK_THEME);
 
-export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+const getTheme = (mode: ThemeMode) => themeCache.get(mode)!;
+
+export const ThemeProvider: React.FC<{ children: React.ReactNode }> = React.memo(({ children }) => {
+  // Используем ref для предотвращения лишних обновлений
+  const isInitialized = useRef(false);
+  
   // Инициализация темы с синхронным чтением из localStorage
   const [mode, setMode] = useState<ThemeMode>(() => {
-    // Синхронная инициализация при монтировании компонента
     try {
       const savedMode = localStorage.getItem('themeMode') as ThemeMode | null;
       if (savedMode === 'light' || savedMode === 'dark') {
         return savedMode;
       }
-      // Проверка системных предпочтений, если нет сохраненной темы
       const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
       return prefersDark ? 'dark' : 'light';
     } catch (error) {
       console.error('Failed to load theme mode:', error);
-      // Проверка системных предпочтений при ошибке
       const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
       return prefersDark ? 'dark' : 'light';
     }
   });
 
-  // Сохранение темы при изменении
-  useEffect(() => {
-    try {
-      localStorage.setItem('themeMode', mode);
-      // Добавляем класс к body для дополнительной стилизации, если нужно
-      if (mode === 'dark') {
-        document.body.classList.add('dark-theme');
-        document.body.classList.remove('light-theme');
-      } else {
-        document.body.classList.add('light-theme');
-        document.body.classList.remove('dark-theme');
-      }
-    } catch (error) {
-      console.error('Failed to save theme mode:', error);
-    }
-  }, [mode]);
+  // Используем ref для debounce
+  const timeoutRef = useRef<NodeJS.Timeout>();
 
-  // Слушаем изменения системной темы
+  // Сохранение темы при изменении с debounce
   useEffect(() => {
-    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+    }
     
-    const handleChange = (e: MediaQueryListEvent) => {
-      // Меняем тему только если пользователь не сохранил свою
-      const savedMode = localStorage.getItem('themeMode');
-      if (!savedMode) {
-        setMode(e.matches ? 'dark' : 'light');
+    timeoutRef.current = setTimeout(() => {
+      try {
+        localStorage.setItem('themeMode', mode);
+        // Используем requestAnimationFrame для оптимизации
+        requestAnimationFrame(() => {
+          if (mode === 'dark') {
+            document.body.classList.add('dark-theme');
+            document.body.classList.remove('light-theme');
+          } else {
+            document.body.classList.add('light-theme');
+            document.body.classList.remove('dark-theme');
+          }
+        });
+      } catch (error) {
+        console.error('Failed to save theme mode:', error);
+      }
+    }, 100);
+    
+    return () => {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
       }
     };
+  }, [mode]);
+
+  // Слушаем изменения системной темы с throttling
+  useEffect(() => {
+    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+    let timeoutId: NodeJS.Timeout;
     
+    const handleChange = (e: MediaQueryListEvent) => {
+      // Используем throttle
+      if (timeoutId) return;
+      
+      timeoutId = setTimeout(() => {
+        const savedMode = localStorage.getItem('themeMode');
+        if (!savedMode) {
+          setMode(e.matches ? 'dark' : 'light');
+        }
+        timeoutId = undefined as any;
+      }, 50);
+    };
+    
+    // Используем addEventListener с passive: true для производительности
     mediaQuery.addEventListener('change', handleChange);
-    return () => mediaQuery.removeEventListener('change', handleChange);
+    return () => {
+      mediaQuery.removeEventListener('change', handleChange);
+      if (timeoutId) clearTimeout(timeoutId);
+    };
   }, []);
 
-  // Мемоизируем тему
+  // Мемоизируем тему - теперь просто берем из кэша
   const theme = useMemo(() => getTheme(mode), [mode]);
 
-  // Мемоизируем toggleTheme
+  // Мемоизируем toggleTheme с useCallback
   const toggleTheme = useCallback(() => {
     setMode(prev => prev === 'light' ? 'dark' : 'light');
   }, []);
@@ -117,9 +149,11 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   return (
     <ThemeContext.Provider value={contextValue}>
       <MuiThemeProvider theme={theme}>
-        <CssBaseline />
+        <CssBaseline enableColorScheme />
         {children}
       </MuiThemeProvider>
     </ThemeContext.Provider>
   );
-};
+});
+
+ThemeProvider.displayName = 'ThemeProvider';
