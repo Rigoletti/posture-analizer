@@ -70,7 +70,7 @@ import {
   CheckCircle as CheckCircleIcon,
   Dangerous,
   TrendingUp,
-   Search 
+  Search 
 } from '@mui/icons-material';
 import { sessionsApi } from '../../api/sessions';
 import { useAuthStore } from '../../store/auth';
@@ -228,17 +228,26 @@ const SessionCard = memo(({
   formatSessionDate,
   getTimeSince,
   formatSessionDuration,
-  formatPercentage,
   theme 
 }: any) => {
-  const score = session.postureMetrics?.postureScore || 0;
+  // Используем готовые данные из postureMetrics
+  const metrics = session.postureMetrics || {};
+  const score = metrics.postureScore || 0;
   const scoreColor = getScoreColor(score);
   const scoreGradient = getScoreGradient(score);
   const scoreLabel = getScoreLabel(score);
-  const hasProblems = session.postureMetrics?.postureScore < 100 || (session.problems && session.problems.length > 0);
-  const goodPercent = session.postureMetrics?.goodPercentage || 0;
-  const warningPercent = session.postureMetrics?.warningPercentage || 0;
-  const errorPercent = session.postureMetrics?.errorPercentage || 0;
+  
+  // Используем готовые проценты
+  const goodPercent = metrics.goodPercentage || 0;
+  const warningPercent = metrics.warningPercentage || 0;
+  const errorPercent = metrics.errorPercentage || 0;
+  
+  // Определяем наличие проблем
+  const hasProblems = (metrics.errorsByZone && (
+    (metrics.errorsByZone.shoulders?.percentage > 0) ||
+    (metrics.errorsByZone.head?.percentage > 0) ||
+    (metrics.errorsByZone.hips?.percentage > 0)
+  )) || (score < 100);
   
   return (
     <MotionCard
@@ -355,7 +364,7 @@ const SessionCard = memo(({
                     <span>🟢</span> Хорошая осанка
                   </Typography>
                   <Typography variant="caption" sx={{ fontWeight: 700, color: theme.palette.success.main }}>
-                    {formatPercentage(goodPercent)}
+                    {goodPercent}%
                   </Typography>
                 </Stack>
                 <LinearProgress 
@@ -379,7 +388,7 @@ const SessionCard = memo(({
                     <span>🟡</span> Предупреждения
                   </Typography>
                   <Typography variant="caption" sx={{ fontWeight: 700, color: theme.palette.warning.main }}>
-                    {formatPercentage(warningPercent)}
+                    {warningPercent}%
                   </Typography>
                 </Stack>
                 <LinearProgress 
@@ -403,7 +412,7 @@ const SessionCard = memo(({
                     <span>🔴</span> Ошибки
                   </Typography>
                   <Typography variant="caption" sx={{ fontWeight: 700, color: theme.palette.error.main }}>
-                    {formatPercentage(errorPercent)}
+                    {errorPercent}%
                   </Typography>
                 </Stack>
                 <LinearProgress 
@@ -432,39 +441,51 @@ const SessionCard = memo(({
             
             {hasProblems ? (
               <Stack direction="row" spacing={0.5} flexWrap="wrap" gap={0.5}>
-                {session.problems && session.problems.length > 0 ? (
-                  <>
-                    {session.problems.slice(0, 2).map((problem: string, idx: number) => (
-                      <Chip
-                        key={idx}
-                        label={getProblemTypeLabel(problem)}
-                        size="small"
-                        sx={{
-                          background: alpha(theme.palette.error.main, 0.1),
-                          color: theme.palette.error.main,
-                          fontWeight: 500,
-                          fontSize: '0.7rem',
-                          height: 24
-                        }}
-                      />
-                    ))}
-                    {session.problems.length > 2 && (
-                      <Chip
-                        label={`+${session.problems.length - 2}`}
-                        size="small"
-                        sx={{
-                          background: alpha(theme.palette.text.primary, 0.1),
-                          color: theme.palette.text.secondary,
-                          fontSize: '0.7rem',
-                          height: 24
-                        }}
-                      />
-                    )}
-                  </>
-                ) : (
+                {metrics.errorsByZone?.shoulders?.percentage > 0 && (
+                  <Chip
+                    label={`Плечи ${Math.round(metrics.errorsByZone.shoulders.percentage)}%`}
+                    size="small"
+                    sx={{
+                      background: alpha(theme.palette.error.main, 0.1),
+                      color: theme.palette.error.main,
+                      fontWeight: 500,
+                      fontSize: '0.7rem',
+                      height: 24
+                    }}
+                  />
+                )}
+                {metrics.errorsByZone?.head?.percentage > 0 && (
+                  <Chip
+                    label={`Голова ${Math.round(metrics.errorsByZone.head.percentage)}%`}
+                    size="small"
+                    sx={{
+                      background: alpha(theme.palette.error.main, 0.1),
+                      color: theme.palette.error.main,
+                      fontWeight: 500,
+                      fontSize: '0.7rem',
+                      height: 24
+                    }}
+                  />
+                )}
+                {metrics.errorsByZone?.hips?.percentage > 0 && (
+                  <Chip
+                    label={`Таз ${Math.round(metrics.errorsByZone.hips.percentage)}%`}
+                    size="small"
+                    sx={{
+                      background: alpha(theme.palette.error.main, 0.1),
+                      color: theme.palette.error.main,
+                      fontWeight: 500,
+                      fontSize: '0.7rem',
+                      height: 24
+                    }}
+                  />
+                )}
+                {(!metrics.errorsByZone?.shoulders?.percentage && 
+                  !metrics.errorsByZone?.head?.percentage && 
+                  !metrics.errorsByZone?.hips?.percentage) && (
                   <Chip
                     icon={<WarningAmber sx={{ fontSize: '0.8rem' }} />}
-                    label="Есть ошибки в анализе"
+                    label="Требует внимания"
                     size="small"
                     sx={{
                       background: alpha(theme.palette.warning.main, 0.1),
@@ -490,11 +511,19 @@ const SessionCard = memo(({
               <Stack spacing={1}>
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <Typography variant="caption" sx={{ color: theme.palette.text.secondary }}>📊 Кадров обработано</Typography>
-                  <Typography variant="body2" sx={{ fontWeight: 600 }}>{session.postureMetrics?.totalFrames?.toLocaleString() || 0}</Typography>
+                  <Typography variant="body2" sx={{ fontWeight: 600 }}>{(metrics.totalFrames || 0).toLocaleString()}</Typography>
+                </Box>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <Typography variant="caption" sx={{ color: theme.palette.text.secondary }}>✅ Хороших кадров</Typography>
+                  <Typography variant="body2" sx={{ color: theme.palette.success.main, fontWeight: 600 }}>{(metrics.goodPostureFrames || 0).toLocaleString()}</Typography>
+                </Box>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <Typography variant="caption" sx={{ color: theme.palette.text.secondary }}>⚠️ Предупреждений</Typography>
+                  <Typography variant="body2" sx={{ color: theme.palette.warning.main, fontWeight: 600 }}>{(metrics.warningFrames || 0).toLocaleString()}</Typography>
                 </Box>
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <Typography variant="caption" sx={{ color: theme.palette.text.secondary }}>❌ Ошибок</Typography>
-                  <Typography variant="body2" sx={{ color: theme.palette.error.main, fontWeight: 600 }}>{session.postureMetrics?.errorFrames?.toLocaleString() || 0}</Typography>
+                  <Typography variant="body2" sx={{ color: theme.palette.error.main, fontWeight: 600 }}>{(metrics.errorFrames || 0).toLocaleString()}</Typography>
                 </Box>
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <Typography variant="caption" sx={{ color: theme.palette.text.secondary }}>🆔 ID сеанса</Typography>
@@ -631,10 +660,6 @@ const SessionsHistory: React.FC = () => {
     }
   }, []);
 
-  const formatPercentage = useCallback((value: number): string => {
-    return `${Math.round(value)}%`;
-  }, []);
-
   const getScoreColor = useCallback((score: number) => {
     if (score >= 80) return theme.palette.success.main;
     if (score >= 60) return theme.palette.warning.main;
@@ -715,41 +740,22 @@ const SessionsHistory: React.FC = () => {
         
         // Дополнительная фильтрация по проблемам (если API не поддерживает)
         if (filterParams.showOnlyWithProblems) {
-          filteredSessions = filteredSessions.filter((session: any) => 
-            (session.problems && session.problems.length > 0) || 
-            (session.postureMetrics?.postureScore < 100)
-          );
+          filteredSessions = filteredSessions.filter((session: any) => {
+            const metrics = session.postureMetrics || {};
+            const hasProblems = (metrics.errorsByZone && (
+              (metrics.errorsByZone.shoulders?.percentage > 0) ||
+              (metrics.errorsByZone.head?.percentage > 0) ||
+              (metrics.errorsByZone.hips?.percentage > 0)
+            )) || (metrics.postureScore < 100);
+            return hasProblems;
+          });
         }
         
-        // Обогащаем данные
-        const enrichedSessions = filteredSessions.map((session: any) => {
-          const metrics = session.postureMetrics || {};
-          const totalFrames = metrics.totalFrames || 1;
-          
-          const goodPercentage = metrics.goodPercentage || 
-            Math.round((metrics.goodPostureFrames / totalFrames) * 100);
-          const warningPercentage = metrics.warningPercentage || 
-            Math.round((metrics.warningFrames / totalFrames) * 100);
-          const errorPercentage = metrics.errorPercentage || 
-            Math.round((metrics.errorFrames / totalFrames) * 100);
-          
-          return {
-            ...session,
-            postureMetrics: {
-              ...metrics,
-              goodPercentage,
-              warningPercentage,
-              errorPercentage
-            }
-          };
-        });
-        
-        setSessions(enrichedSessions);
-        setTotalSessions(response.data.pagination?.total || enrichedSessions.length);
+        setSessions(filteredSessions);
+        setTotalSessions(response.data.pagination?.total || filteredSessions.length);
         
         // Обновляем статистику из API
         const statistics = response.data.statistics || {};
-        const totalFrames = statistics.totalFrames || 1;
         setStats({
           totalSessions: statistics.totalSessions || 0,
           totalDuration: statistics.totalDuration || 0,
@@ -757,13 +763,19 @@ const SessionsHistory: React.FC = () => {
           bestScore: statistics.bestScore || 0,
           worstScore: statistics.worstScore || 100,
           avgDuration: Math.round(statistics.avgDuration || 0),
-          totalFrames: totalFrames,
+          totalFrames: statistics.totalFrames || 0,
           totalGoodFrames: statistics.totalGoodFrames || 0,
           totalWarningFrames: statistics.totalWarningFrames || 0,
           totalErrorFrames: statistics.totalErrorFrames || 0,
-          goodPosturePercentage: Math.round((statistics.totalGoodFrames / totalFrames) * 100),
-          warningPercentage: Math.round((statistics.totalWarningFrames / totalFrames) * 100),
-          errorPercentage: Math.round((statistics.totalErrorFrames / totalFrames) * 100)
+          goodPosturePercentage: statistics.totalGoodFrames > 0 && statistics.totalFrames > 0 
+            ? Math.round((statistics.totalGoodFrames / statistics.totalFrames) * 100)
+            : 0,
+          warningPercentage: statistics.totalWarningFrames > 0 && statistics.totalFrames > 0
+            ? Math.round((statistics.totalWarningFrames / statistics.totalFrames) * 100)
+            : 0,
+          errorPercentage: statistics.totalErrorFrames > 0 && statistics.totalFrames > 0
+            ? Math.round((statistics.totalErrorFrames / statistics.totalFrames) * 100)
+            : 0
         });
       } else {
         setError(response.error || 'Ошибка при загрузке данных');
@@ -925,17 +937,31 @@ const SessionsHistory: React.FC = () => {
         formatSessionDate={formatSessionDate}
         getTimeSince={getTimeSince}
         formatSessionDuration={formatSessionDuration}
-        formatPercentage={formatPercentage}
         theme={theme}
       />
     ));
-  }, [sessions, expandedSessions, selectedSessions, toggleSessionExpand, toggleSessionSelection, handleViewSession, openDeleteDialog, getScoreColor, getScoreGradient, getScoreLabel, formatSessionDate, getTimeSince, formatSessionDuration, formatPercentage, theme]);
+  }, [sessions, expandedSessions, selectedSessions, toggleSessionExpand, toggleSessionSelection, handleViewSession, openDeleteDialog, getScoreColor, getScoreGradient, getScoreLabel, formatSessionDate, getTimeSince, formatSessionDuration, theme]);
 
-  // Таблица с русскими названиями проблем
+  // Таблица с данными
   const tableRows = useMemo(() => {
     return sessions.map((session) => {
-      const score = session.postureMetrics?.postureScore || 0;
-      const hasProblems = session.postureMetrics?.postureScore < 100 || (session.problems && session.problems.length > 0);
+      const metrics = session.postureMetrics || {};
+      const score = metrics.postureScore || 0;
+      const goodPercent = metrics.goodPercentage || 0;
+      const warningPercent = metrics.warningPercentage || 0;
+      const errorPercent = metrics.errorPercentage || 0;
+      
+      const hasProblems = (metrics.errorsByZone && (
+        (metrics.errorsByZone.shoulders?.percentage > 0) ||
+        (metrics.errorsByZone.head?.percentage > 0) ||
+        (metrics.errorsByZone.hips?.percentage > 0)
+      )) || (score < 100);
+      
+      // Собираем список проблемных зон
+      const problemZones = [];
+      if (metrics.errorsByZone?.shoulders?.percentage > 0) problemZones.push('Плечи');
+      if (metrics.errorsByZone?.head?.percentage > 0) problemZones.push('Голова');
+      if (metrics.errorsByZone?.hips?.percentage > 0) problemZones.push('Таз');
       
       return (
         <TableRow key={session.sessionId} sx={{ '&:hover': { bgcolor: alpha(theme.palette.primary.main, 0.02) } }}>
@@ -953,16 +979,24 @@ const SessionsHistory: React.FC = () => {
           </TableCell>
           <TableCell>{formatSessionDuration(session.duration || 0)}</TableCell>
           <TableCell>
-            <LinearProgress variant="determinate" value={session.postureMetrics?.goodPercentage || 0} sx={{ height: 4, borderRadius: 2, width: 80 }} />
-            <Typography variant="caption">{formatPercentage(session.postureMetrics?.goodPercentage || 0)}</Typography>
+            <Tooltip title={`Хорошая осанка: ${goodPercent}%`}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <LinearProgress 
+                  variant="determinate" 
+                  value={goodPercent} 
+                  sx={{ height: 4, borderRadius: 2, width: 80, bgcolor: alpha(theme.palette.success.main, 0.2), '& .MuiLinearProgress-bar': { bgcolor: theme.palette.success.main } }} 
+                />
+                <Typography variant="caption" sx={{ color: theme.palette.success.main, fontWeight: 500 }}>{goodPercent}%</Typography>
+              </Box>
+            </Tooltip>
           </TableCell>
           <TableCell>
-            {session.problems && session.problems.length > 0 ? (
+            {hasProblems ? (
               <Stack direction="row" spacing={0.5} flexWrap="wrap" gap={0.5}>
-                {session.problems.slice(0, 2).map((problem: string, idx: number) => (
+                {problemZones.slice(0, 2).map((problem, idx) => (
                   <Chip
                     key={idx}
-                    label={getProblemTypeLabel(problem)}
+                    label={problem}
                     size="small"
                     sx={{
                       height: 24,
@@ -972,27 +1006,29 @@ const SessionsHistory: React.FC = () => {
                     }}
                   />
                 ))}
-                {session.problems.length > 2 && (
+                {problemZones.length > 2 && (
                   <Chip
-                    label={`+${session.problems.length - 2}`}
+                    label={`+${problemZones.length - 2}`}
                     size="small"
                     sx={{ height: 24, fontSize: '0.7rem' }}
                   />
                 )}
+                {problemZones.length === 0 && (
+                  <Chip 
+                    label="Требует внимания" 
+                    size="small" 
+                    variant="outlined"
+                    sx={{ height: 24, fontSize: '0.7rem', borderColor: theme.palette.warning.main, color: theme.palette.warning.main }}
+                  />
+                )}
               </Stack>
-            ) : hasProblems ? (
-              <Chip 
-                label="Есть ошибки" 
-                size="small" 
-                color="warning" 
-                variant="outlined" 
-              />
             ) : (
               <Chip 
                 label="Нет проблем" 
                 size="small" 
                 color="success" 
-                variant="outlined" 
+                variant="outlined"
+                sx={{ height: 24, fontSize: '0.7rem' }}
               />
             )}
           </TableCell>
@@ -1013,7 +1049,7 @@ const SessionsHistory: React.FC = () => {
         </TableRow>
       );
     });
-  }, [sessions, formatSessionDate, getTimeSince, getScoreGradient, getScoreColor, getScoreLabel, formatSessionDuration, formatPercentage, handleViewSession, openDeleteDialog, theme]);
+  }, [sessions, formatSessionDate, getTimeSince, getScoreGradient, getScoreColor, getScoreLabel, formatSessionDuration, handleViewSession, openDeleteDialog, theme]);
 
   if (loading && sessions.length === 0) {
     return (

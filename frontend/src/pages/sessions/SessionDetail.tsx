@@ -19,7 +19,8 @@ import {
   Skeleton,
   IconButton,
   Breadcrumbs,
-  Link
+  Link,
+  Tooltip
 } from '@mui/material';
 import {
   ArrowBack as ArrowBackIcon,
@@ -32,7 +33,8 @@ import {
   Error as ErrorIcon,
   CheckCircle,
   Timer,
-  FitnessCenter
+  FitnessCenter,
+  Info
 } from '@mui/icons-material';
 import { format, parseISO } from 'date-fns';
 import { ru } from 'date-fns/locale';
@@ -182,29 +184,40 @@ const SessionDetail: React.FC = () => {
 
   const metrics = session.postureMetrics;
   
-  // Используем реальные данные из метрик
+  // Используем готовые проценты из бэкенда
+  const goodPercentage = metrics?.goodPercentage || 0;
+  const warningPercentage = metrics?.warningPercentage || 0;
+  const errorPercentage = metrics?.errorPercentage || 0;
+  
+  // Используем готовую оценку из метрик (теперь корректная)
+  const postureScore = metrics?.postureScore || 0;
+  
+  // Используем реальные значения кадров
   const totalFrames = metrics?.totalFrames || 0;
   const goodFrames = metrics?.goodPostureFrames || 0;
   const warningFrames = metrics?.warningFrames || 0;
   const errorFrames = metrics?.errorFrames || 0;
   
-  // Рассчитываем проценты на основе реальных кадров
-  const goodPercentage = totalFrames > 0 ? Math.round((goodFrames / totalFrames) * 100) : 0;
-  const warningPercentage = totalFrames > 0 ? Math.round((warningFrames / totalFrames) * 100) : 0;
-  const errorPercentage = totalFrames > 0 ? Math.round((errorFrames / totalFrames) * 100) : 0;
-  
-  // Используем postureScore из метрик или рассчитываем
-  const postureScore = metrics?.postureScore || 
-    (totalFrames > 0 ? Math.round((goodFrames / totalFrames) * 100) : 0);
-  
   const scoreColor = getScoreColor(postureScore);
   
-  // Проверяем, есть ли проблемы на основе errorsByZone
-  const hasProblems = metrics?.errorsByZone && (
-    (metrics.errorsByZone.shoulders?.duration > 0) ||
-    (metrics.errorsByZone.head?.duration > 0) ||
-    (metrics.errorsByZone.hips?.duration > 0)
-  );
+  // Проверяем, есть ли проблемы на основе errorsByZone ИЛИ если оценка < 100
+  const hasProblems = (metrics?.errorsByZone && (
+    (metrics.errorsByZone.shoulders?.percentage > 0) ||
+    (metrics.errorsByZone.head?.percentage > 0) ||
+    (metrics.errorsByZone.hips?.percentage > 0)
+  )) || (warningFrames > 0) || (errorFrames > 0) || (postureScore < 100);
+
+  // Получаем список проблемных зон с процентами
+  const problemZones = [];
+  if (metrics?.errorsByZone?.shoulders?.percentage > 0) {
+    problemZones.push({ zone: 'Плечи', percentage: Math.round(metrics.errorsByZone.shoulders.percentage) });
+  }
+  if (metrics?.errorsByZone?.head?.percentage > 0) {
+    problemZones.push({ zone: 'Голова', percentage: Math.round(metrics.errorsByZone.head.percentage) });
+  }
+  if (metrics?.errorsByZone?.hips?.percentage > 0) {
+    problemZones.push({ zone: 'Таз', percentage: Math.round(metrics.errorsByZone.hips.percentage) });
+  }
 
   console.log('Display data:', {
     totalFrames,
@@ -216,8 +229,12 @@ const SessionDetail: React.FC = () => {
     errorPercentage,
     postureScore,
     hasProblems,
+    problemZones,
     errorsByZone: metrics?.errorsByZone
   });
+
+  // Предупреждение, если есть проблемы но оценка 100%
+  const showScoreWarning = hasProblems && postureScore >= 95;
 
   return (
     <Container maxWidth="lg" sx={{ py: 4 }}>
@@ -266,7 +283,7 @@ const SessionDetail: React.FC = () => {
                   <Typography variant="body2" color="text.secondary">
                     ID сеанса: {session.sessionId}
                   </Typography>
-                  <Stack direction="row" spacing={2} sx={{ mt: 2 }}>
+                  <Stack direction="row" spacing={2} sx={{ mt: 2, flexWrap: 'wrap', gap: 1 }}>
                     <Chip
                       icon={<CalendarToday />}
                       label={formatDateTime(session.startTime)}
@@ -346,6 +363,14 @@ const SessionDetail: React.FC = () => {
               <Typography variant="body2" color="text.secondary">
                 На основе {totalFrames.toLocaleString('ru-RU')} кадров
               </Typography>
+              
+              {showScoreWarning && (
+                <Alert severity="warning" sx={{ mt: 2, borderRadius: 2 }}>
+                  <Typography variant="caption">
+                    ⚠️ Обнаружены нарушения осанки, но оценка не отражает их. Пожалуйста, обновите данные сеанса.
+                  </Typography>
+                </Alert>
+              )}
             </CardContent>
           </Card>
         </Grid>
@@ -443,18 +468,96 @@ const SessionDetail: React.FC = () => {
                 </Box>
               </Stack>
 
-              {/* Предупреждение о противоречии данных */}
-              {hasProblems && postureScore >= 80 && (
+              {/* Проблемные зоны */}
+              {problemZones.length > 0 && (
                 <Alert 
-                  severity="info" 
-                  sx={{ mt: 2 }}
+                  severity="warning" 
+                  sx={{ mt: 3 }}
                   icon={<Warning />}
                 >
-                  <Typography variant="body2">
-                    Несмотря на высокую общую оценку осанки, были обнаружены проблемы в отдельных зонах.
-                    Рекомендуем обратить внимание на упражнения ниже.
+                  <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1 }}>
+                    Обнаружены проблемы в следующих зонах:
+                  </Typography>
+                  <Stack direction="row" spacing={1} flexWrap="wrap" gap={1}>
+                    {problemZones.map((zone, idx) => (
+                      <Chip
+                        key={idx}
+                        label={`${zone.zone}: ${zone.percentage}% времени`}
+                        size="small"
+                        color="warning"
+                        variant="outlined"
+                      />
+                    ))}
+                  </Stack>
+                  <Typography variant="body2" sx={{ mt: 1 }}>
+                    Рекомендуем выполнить упражнения для коррекции этих зон.
                   </Typography>
                 </Alert>
+              )}
+
+              {/* Если есть предупреждения/ошибки но нет проблемных зон */}
+              {(warningFrames > 0 || errorFrames > 0) && problemZones.length === 0 && (
+                <Alert 
+                  severity="info" 
+                  sx={{ mt: 3 }}
+                  icon={<Info />}
+                >
+                  <Typography variant="body2">
+                    В ходе анализа были зафиксированы нарушения осанки ({warningPercentage}% предупреждений, {errorPercentage}% ошибок).
+                    Рекомендуем обратить внимание на общую осанку и выполнять профилактические упражнения.
+                  </Typography>
+                </Alert>
+              )}
+
+              {/* Детальная информация об ошибках по зонам */}
+              {problemZones.length > 0 && (
+                <Paper sx={{ mt: 3, p: 2, bgcolor: alpha(theme.palette.info.main, 0.05), borderRadius: 2 }}>
+                  <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1, display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                    <Info sx={{ fontSize: 16 }} />
+                    Детальная информация по зонам
+                  </Typography>
+                  <Grid container spacing={2}>
+                    {metrics?.errorsByZone?.shoulders?.percentage > 0 && (
+                      <Grid item xs={12} sm={4}>
+                        <Box sx={{ textAlign: 'center', p: 1 }}>
+                          <Typography variant="body2" color="text.secondary">Плечи</Typography>
+                          <Typography variant="h6" sx={{ color: theme.palette.warning.main, fontWeight: 600 }}>
+                            {Math.round(metrics.errorsByZone.shoulders.percentage)}%
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            {metrics.errorsByZone.shoulders.duration?.toFixed(1)} сек / {metrics.errorsByZone.shoulders.count} раз
+                          </Typography>
+                        </Box>
+                      </Grid>
+                    )}
+                    {metrics?.errorsByZone?.head?.percentage > 0 && (
+                      <Grid item xs={12} sm={4}>
+                        <Box sx={{ textAlign: 'center', p: 1 }}>
+                          <Typography variant="body2" color="text.secondary">Голова</Typography>
+                          <Typography variant="h6" sx={{ color: theme.palette.warning.main, fontWeight: 600 }}>
+                            {Math.round(metrics.errorsByZone.head.percentage)}%
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            {metrics.errorsByZone.head.duration?.toFixed(1)} сек / {metrics.errorsByZone.head.count} раз
+                          </Typography>
+                        </Box>
+                      </Grid>
+                    )}
+                    {metrics?.errorsByZone?.hips?.percentage > 0 && (
+                      <Grid item xs={12} sm={4}>
+                        <Box sx={{ textAlign: 'center', p: 1 }}>
+                          <Typography variant="body2" color="text.secondary">Таз</Typography>
+                          <Typography variant="h6" sx={{ color: theme.palette.warning.main, fontWeight: 600 }}>
+                            {Math.round(metrics.errorsByZone.hips.percentage)}%
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            {metrics.errorsByZone.hips.duration?.toFixed(1)} сек / {metrics.errorsByZone.hips.count} раз
+                          </Typography>
+                        </Box>
+                      </Grid>
+                    )}
+                  </Grid>
+                </Paper>
               )}
             </CardContent>
           </Card>

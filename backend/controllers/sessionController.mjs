@@ -102,7 +102,6 @@ export const endSession = async (req, res) => {
       session.postureMetrics.warningFrames = finalMetrics.warningFrames || 0;
       session.postureMetrics.errorFrames = finalMetrics.errorFrames || 0;
       
-      // Обновляем errorsByZone
       if (finalMetrics.errorsByZone) {
         if (finalMetrics.errorsByZone.shoulders) {
           session.postureMetrics.errorsByZone.shoulders = {
@@ -127,7 +126,6 @@ export const endSession = async (req, res) => {
     
     session.status = 'completed';
     
-    // Сохраняем сеанс - pre-save хук сам рассчитает все проценты
     await session.save();
     
     console.log('Session completed with metrics:', {
@@ -194,33 +192,38 @@ export const updateSessionMetrics = async (req, res) => {
     // Обновляем метрики
     session.postureMetrics.totalFrames = (session.postureMetrics.totalFrames || 0) + 1;
     
-    if (currentStatus === 'good') {
+    // Определяем статус (используем русские строки для совместимости)
+    const isGoodPosture = currentStatus === 'good' || currentStatus === 'Хорошая осанка' || currentStatus?.includes('Хорошая');
+    const isWarning = currentStatus === 'warning' || currentStatus?.includes('Нарушена') || currentStatus?.includes('Предупреждение');
+    const isError = currentStatus === 'error' || currentStatus?.includes('Ошибка');
+    
+    if (isGoodPosture) {
       session.postureMetrics.goodPostureFrames = (session.postureMetrics.goodPostureFrames || 0) + 1;
-    } else if (currentStatus === 'warning') {
+    } else if (isWarning) {
       session.postureMetrics.warningFrames = (session.postureMetrics.warningFrames || 0) + 1;
-    } else if (currentStatus === 'error') {
+    } else if (isError) {
       session.postureMetrics.errorFrames = (session.postureMetrics.errorFrames || 0) + 1;
     }
     
     // Обновляем ошибки по зонам
-    // Предполагаем, что кадр длится примерно 0.1 секунды (10 FPS)
-    const frameDuration = 0.1;
+    const frameDuration = 0.2; // 200ms на кадр
     
-    if (issues.length > 0) {
+    if (issues && issues.length > 0) {
       issues.forEach(issue => {
-        if (issue.includes('shoulder') || issue === 'shoulders') {
+        const issueLower = String(issue).toLowerCase();
+        if (issueLower.includes('shoulder') || issueLower.includes('плеч')) {
           if (session.postureMetrics.errorsByZone.shoulders) {
             session.postureMetrics.errorsByZone.shoulders.count += 1;
             session.postureMetrics.errorsByZone.shoulders.duration += frameDuration;
           }
         }
-        if (issue.includes('head') || issue === 'head') {
+        if (issueLower.includes('head') || issueLower.includes('голов')) {
           if (session.postureMetrics.errorsByZone.head) {
             session.postureMetrics.errorsByZone.head.count += 1;
             session.postureMetrics.errorsByZone.head.duration += frameDuration;
           }
         }
-        if (issue.includes('hip') || issue === 'hips') {
+        if (issueLower.includes('hip') || issueLower.includes('таз')) {
           if (session.postureMetrics.errorsByZone.hips) {
             session.postureMetrics.errorsByZone.hips.count += 1;
             session.postureMetrics.errorsByZone.hips.duration += frameDuration;
@@ -229,12 +232,16 @@ export const updateSessionMetrics = async (req, res) => {
       });
     }
     
-    // Пересчитываем оценку осанки
+    // Пересчитываем проценты и оценку
     const totalFrames = session.postureMetrics.totalFrames;
     if (totalFrames > 0) {
-      session.postureMetrics.postureScore = Math.round(
-        (session.postureMetrics.goodPostureFrames / totalFrames) * 100
-      );
+      const goodPct = Math.round((session.postureMetrics.goodPostureFrames / totalFrames) * 100);
+      session.postureMetrics.goodPercentage = goodPct;
+      session.postureMetrics.warningPercentage = Math.round((session.postureMetrics.warningFrames / totalFrames) * 100);
+      session.postureMetrics.errorPercentage = Math.round((session.postureMetrics.errorFrames / totalFrames) * 100);
+      
+      // ОЦЕНКА = процент хорошей осанки
+      session.postureMetrics.postureScore = goodPct;
     }
     
     await session.save();
@@ -244,7 +251,10 @@ export const updateSessionMetrics = async (req, res) => {
       data: {
         sessionId: session.sessionId,
         postureScore: session.postureMetrics.postureScore,
-        totalFrames: session.postureMetrics.totalFrames
+        totalFrames: session.postureMetrics.totalFrames,
+        goodPercentage: session.postureMetrics.goodPercentage,
+        warningPercentage: session.postureMetrics.warningPercentage,
+        errorPercentage: session.postureMetrics.errorPercentage
       }
     });
   } catch (error) {
@@ -256,7 +266,7 @@ export const updateSessionMetrics = async (req, res) => {
   }
 };
 
-// Получить историю сеансов (С ОГРАНИЧЕНИЕМ ДЛЯ БЕСПЛАТНЫХ ПОЛЬЗОВАТЕЛЕЙ)
+// Получить историю сеансов 
 export const getSessionsHistory = async (req, res) => {
   try {
     const page = parseInt(req.query.page) || 1;
@@ -295,8 +305,6 @@ export const getSessionsHistory = async (req, res) => {
     } else if (req.query.sortBy === 'duration') {
       sort = { duration: req.query.sortOrder === 'asc' ? 1 : -1 };
     }
-    
-    // ПРОВЕРКА ПОДПИСКИ ДЛЯ ОГРАНИЧЕНИЯ ИСТОРИИ
     const hasPremiumAccess = req.user.hasPremiumAccess && 
                             req.user.subscriptionEndsAt && 
                             new Date(req.user.subscriptionEndsAt) > new Date();

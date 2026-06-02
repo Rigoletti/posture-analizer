@@ -179,28 +179,49 @@ const WebcamFeed: React.FC = () => {
   });
 
   // Синхронизация метрик между сервисом и сессией
-  useEffect(() => {
-    if (!isSessionActive || !state.isRunning) return;
-    
-    const interval = setInterval(() => {
-      if (state.totalFrames > 0) {
-        updateMetrics(
-          {
-            normalizedPoints: state.normalizedKeypoints?.map(kp => ({
-              x: kp.x,
-              y: kp.y,
-              score: kp.score || 0,
-            })) || [],
-          },
-          state.currentStatus,
-          state.issues.map(i => i.type === 'shoulders' ? 'Плечи' : i.type === 'head' ? 'Голова' : i.type),
-        );
+ useEffect(() => {
+  if (!isSessionActive || !state.isRunning) return;
+  
+  // Отправляем метрики каждый кадр (но с разумной задержкой)
+  const interval = setInterval(() => {
+    if (state.totalFrames > 0 && state.currentStatus) {
+      // Определяем статус для отправки
+      let statusForApi = 'warning';
+      if (state.currentStatus.includes('Хорошая')) {
+        statusForApi = 'good';
+      } else if (state.currentStatus.includes('Нарушена')) {
+        statusForApi = 'warning';
+      } else {
+        statusForApi = 'error';
       }
-    }, 2000);
+      
+      // Получаем типы проблем
+      const issueTypes = state.issues.map(i => {
+        if (i.type === 'shoulders') return 'Плечи';
+        if (i.type === 'head') return 'Голова';
+        if (i.type === 'hips') return 'Таз';
+        return i.type;
+      });
+      
+      // Отправляем обновление
+      updateMetrics(
+        {
+          normalizedPoints: state.normalizedKeypoints?.map(kp => ({
+            x: kp.x,
+            y: kp.y,
+            score: kp.score || 0,
+          })) || [],
+        },
+        statusForApi,
+        issueTypes,
+      );
+      
+      console.log(`[WebcamFeed] Updating metrics: status=${statusForApi}, issues=${issueTypes.join(',')}, totalFrames=${state.totalFrames}`);
+    }
+  }, 2000); // Каждые 2 секунды
 
-    return () => clearInterval(interval);
-  }, [isSessionActive, state.isRunning, state.totalFrames, state.currentStatus, state.issues, state.normalizedKeypoints, updateMetrics]);
-
+  return () => clearInterval(interval);
+}, [isSessionActive, state.isRunning, state.totalFrames, state.currentStatus, state.issues, state.normalizedKeypoints, updateMetrics]);
   // Показываем in-app уведомление при нарушении осанки
   useEffect(() => {
     if (!state.isRunning || !state.isSessionActive) return;

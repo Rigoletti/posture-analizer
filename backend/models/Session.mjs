@@ -55,37 +55,22 @@ const SessionSchema = new mongoose.Schema({
     errorsByZone: {
       shoulders: {
         count: { type: Number, default: 0 },
-        duration: { type: Number, default: 0 }, // в секундах
-        percentage: { type: Number, default: 0 } // ДОБАВЛЯЕМ поле percentage
+        duration: { type: Number, default: 0 },
+        percentage: { type: Number, default: 0 }
       },
       head: {
         count: { type: Number, default: 0 },
         duration: { type: Number, default: 0 },
-        percentage: { type: Number, default: 0 } // ДОБАВЛЯЕМ поле percentage
+        percentage: { type: Number, default: 0 }
       },
       hips: {
         count: { type: Number, default: 0 },
         duration: { type: Number, default: 0 },
-        percentage: { type: Number, default: 0 } // ДОБАВЛЯЕМ поле percentage
+        percentage: { type: Number, default: 0 }
       }
     },
     
-    // Процентное соотношение
-    postureScore: {
-      type: Number,
-      min: 0,
-      max: 100,
-      default: 0
-    },
-    
-    // Среднее качество отслеживания
-    averageTrackingQuality: {
-      type: Number,
-      min: 0,
-      max: 100,
-      default: 0
-    },
-    
+    // Процент хорошей осанки - это и есть ОЦЕНКА
     goodPercentage: {
       type: Number,
       default: 0
@@ -98,6 +83,22 @@ const SessionSchema = new mongoose.Schema({
     
     errorPercentage: {
       type: Number,
+      default: 0
+    },
+    
+    // ОЦЕНКА - это просто goodPercentage
+    postureScore: {
+      type: Number,
+      min: 0,
+      max: 100,
+      default: 0
+    },
+    
+    // Среднее качество отслеживания
+    averageTrackingQuality: {
+      type: Number,
+      min: 0,
+      max: 100,
       default: 0
     }
   },
@@ -140,7 +141,7 @@ const SessionSchema = new mongoose.Schema({
   timestamps: true
 });
 
-// Единый pre-save хук (убираем дублирование)
+// Единый pre-save хук
 SessionSchema.pre('save', function(next) {
   // Если сеанс завершен и duration не установлен, вычисляем его
   if (this.endTime && !this.duration) {
@@ -150,25 +151,21 @@ SessionSchema.pre('save', function(next) {
   // Если duration все еще 0, используем текущую длительность для расчетов
   const effectiveDuration = this.duration || 1;
   
-  // Если есть метрики и кадры, рассчитываем оценку и проценты
+  // Если есть метрики и кадры, рассчитываем проценты
   if (this.postureMetrics.totalFrames > 0) {
     const totalFrames = this.postureMetrics.totalFrames;
     
     // Рассчитываем проценты для общей осанки
-    this.postureMetrics.goodPercentage = Math.round(
-      (this.postureMetrics.goodPostureFrames / totalFrames) * 100
-    );
+    const goodPct = Math.round((this.postureMetrics.goodPostureFrames / totalFrames) * 100);
+    const warningPct = Math.round((this.postureMetrics.warningFrames / totalFrames) * 100);
+    const errorPct = Math.round((this.postureMetrics.errorFrames / totalFrames) * 100);
     
-    this.postureMetrics.warningPercentage = Math.round(
-      (this.postureMetrics.warningFrames / totalFrames) * 100
-    );
+    this.postureMetrics.goodPercentage = goodPct;
+    this.postureMetrics.warningPercentage = warningPct;
+    this.postureMetrics.errorPercentage = errorPct;
     
-    this.postureMetrics.errorPercentage = Math.round(
-      (this.postureMetrics.errorFrames / totalFrames) * 100
-    );
-    
-    // Рассчитываем общую оценку осанки
-    this.postureMetrics.postureScore = this.postureMetrics.goodPercentage;
+    // ВАЖНО: postureScore = goodPercentage (процент времени с хорошей осанкой)
+    this.postureMetrics.postureScore = goodPct;
   }
   
   // Рассчитываем проценты для ошибок по зонам на основе длительности
@@ -192,16 +189,21 @@ SessionSchema.methods.calculateFinalStats = function() {
   const totalFrames = this.postureMetrics.totalFrames;
   if (totalFrames === 0) return this;
   
-  // Расчет процента хорошей осанки
-  this.postureMetrics.postureScore = Math.round(
-    (this.postureMetrics.goodPostureFrames / totalFrames) * 100
-  );
+  // Процент хорошей осанки
+  const goodPct = Math.round((this.postureMetrics.goodPostureFrames / totalFrames) * 100);
+  
+  this.postureMetrics.goodPercentage = goodPct;
+  this.postureMetrics.warningPercentage = Math.round((this.postureMetrics.warningFrames / totalFrames) * 100);
+  this.postureMetrics.errorPercentage = Math.round((this.postureMetrics.errorFrames / totalFrames) * 100);
+  
+  // ОЦЕНКА = процент хорошей осанки
+  this.postureMetrics.postureScore = goodPct;
   
   // Расчет процентов по зонам
   const effectiveDuration = this.duration || 1;
   Object.keys(this.postureMetrics.errorsByZone).forEach(zone => {
     const zoneData = this.postureMetrics.errorsByZone[zone];
-    if (zoneData && zoneData.count > 0) {
+    if (zoneData && zoneData.duration > 0) {
       zoneData.percentage = Math.round((zoneData.duration / effectiveDuration) * 1000) / 10;
     }
   });

@@ -125,20 +125,16 @@ const SessionRecommendations: React.FC<SessionRecommendationsProps> = ({
       
       // Проверяем различные возможные структуры ответа
       if (response.data?.data?.recommendations) {
-        // Структура: { success: true, data: { recommendations: [...] } }
         recommendationsData = response.data.data.recommendations;
         problemsData = response.data.data.problems || [];
         postureScoreValue = response.data.data.postureScore || 0;
       } else if (response.data?.recommendations) {
-        // Структура: { recommendations: [...] }
         recommendationsData = response.data.recommendations;
         problemsData = response.data.problems || [];
         postureScoreValue = response.data.postureScore || 0;
       } else if (Array.isArray(response.data)) {
-        // Структура: [...] (прямой массив)
         recommendationsData = response.data;
       } else if (response.data?.data && Array.isArray(response.data.data)) {
-        // Структура: { data: [...] }
         recommendationsData = response.data.data;
       }
       
@@ -511,7 +507,7 @@ const SessionRecommendations: React.FC<SessionRecommendationsProps> = ({
               overflow: 'hidden'
             }}>
               <CardContent sx={{ p: 0 }}>
-                {/* Заголовок проблемы */}
+                {/* Заголовок проблемы - исправлено: убран h5 внутри h2 */}
                 <Box 
                   sx={{ 
                     p: 2,
@@ -530,7 +526,7 @@ const SessionRecommendations: React.FC<SessionRecommendationsProps> = ({
                         width: 44,
                         height: 44
                       }}>
-                        <Typography variant="h5">
+                        <Typography variant="h5" component="span">
                           {problemIcon}
                         </Typography>
                       </Avatar>

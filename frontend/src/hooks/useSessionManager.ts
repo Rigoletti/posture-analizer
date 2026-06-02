@@ -34,6 +34,7 @@ export const useSessionManager = (props?: UseSessionManagerProps) => {
   const updateIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const metricsBufferRef = useRef<any[]>([]);
   const isEndingRef = useRef(false);
+  const frameCountRef = useRef(0);
 
   const stopMetricsUpdate = useCallback(() => {
     if (updateIntervalRef.current) {
@@ -43,12 +44,16 @@ export const useSessionManager = (props?: UseSessionManagerProps) => {
   }, []);
 
   const flushMetricsBuffer = useCallback(async () => {
-    if (!currentSession || metricsBufferRef.current.length === 0 || currentSession.ended) return;
+    if (!currentSession || currentSession.ended) return;
     
+    // Отправляем все накопленные метрики
     const buffer = [...metricsBufferRef.current];
+    if (buffer.length === 0) return;
+    
     metricsBufferRef.current = [];
     
     try {
+      // Отправляем последний фрейм с актуальной статистикой
       const lastFrame = buffer[buffer.length - 1];
       if (lastFrame && currentSession.sessionId) {
         await sessionsApi.updateSessionMetrics(
@@ -58,9 +63,11 @@ export const useSessionManager = (props?: UseSessionManagerProps) => {
           lastFrame.currentStatus,
           lastFrame.issues
         );
+        console.log(`[SessionManager] Flushed ${buffer.length} frames, total frames: ${frameCountRef.current}`);
       }
     } catch (error) {
-      console.error('Failed to flush metrics buffer:', error);
+      console.error('[SessionManager] Failed to flush metrics buffer:', error);
+      // Возвращаем в буфер при ошибке
       metricsBufferRef.current.unshift(...buffer);
     }
   }, [currentSession]);
@@ -70,9 +77,10 @@ export const useSessionManager = (props?: UseSessionManagerProps) => {
       clearInterval(updateIntervalRef.current);
     }
     
+    // Отправляем метрики каждые 3 секунды (чаще для точности)
     updateIntervalRef.current = setInterval(() => {
       flushMetricsBuffer();
-    }, 10000);
+    }, 3000);
   }, [flushMetricsBuffer]);
 
   const startSession = useCallback(async (settings?: any) => {
@@ -88,9 +96,9 @@ export const useSessionManager = (props?: UseSessionManagerProps) => {
         webcamResolution: '480x480'
       };
       
-      console.log('Starting session with settings:', settings);
+      console.log('[SessionManager] Starting session with settings:', settings);
       const response = await sessionsApi.startSession(settings, deviceInfo);
-      console.log('Start session response:', response);
+      console.log('[SessionManager] Start session response:', response);
       
       if (!response.success || !response.data) {
         throw new Error(response.error || 'Не удалось начать сеанс');
@@ -108,6 +116,8 @@ export const useSessionManager = (props?: UseSessionManagerProps) => {
       setCurrentSession(session);
       setIsSessionActive(true);
       
+      // Сбрасываем счетчики
+      frameCountRef.current = 0;
       setSessionStats({
         totalFrames: 0,
         goodPostureFrames: 0,
@@ -127,7 +137,7 @@ export const useSessionManager = (props?: UseSessionManagerProps) => {
       
       return session;
     } catch (error: any) {
-      console.error('Failed to start session:', error);
+      console.error('[SessionManager] Failed to start session:', error);
       const errorMsg = error.response?.data?.error || error.message || 'Ошибка при начале сеанса';
       setError(errorMsg);
       throw error;
@@ -143,6 +153,15 @@ export const useSessionManager = (props?: UseSessionManagerProps) => {
     const postureScore = totalFrames > 0 
       ? Math.round((goodPostureFrames / totalFrames) * 100)
       : 0;
+    
+    console.log('[SessionManager] Final metrics calculation:', {
+      totalFrames,
+      goodPostureFrames,
+      warningFrames: sessionStats.warningFrames,
+      errorFrames: sessionStats.errorFrames,
+      postureScore,
+      errorsByZone: sessionStats.errorsByZone
+    });
     
     return {
       totalFrames: sessionStats.totalFrames,
@@ -169,7 +188,12 @@ export const useSessionManager = (props?: UseSessionManagerProps) => {
       setIsLoading(true);
       
       stopMetricsUpdate();
+      
+      // Финальный flush всех метрик
       await flushMetricsBuffer();
+      
+      // Небольшая задержка чтобы убедиться что последние метрики отправились
+      await new Promise(resolve => setTimeout(resolve, 500));
       
       if (currentSession.ended) {
         return null;
@@ -178,7 +202,7 @@ export const useSessionManager = (props?: UseSessionManagerProps) => {
       const calculatedMetrics = calculateFinalMetrics();
       const metricsToSend = finalMetrics || calculatedMetrics;
       
-      console.log('Ending session with metrics:', metricsToSend);
+      console.log('[SessionManager] Ending session with final metrics:', metricsToSend);
       
       const response = await sessionsApi.endSession(
         currentSession.sessionId,
@@ -197,7 +221,7 @@ export const useSessionManager = (props?: UseSessionManagerProps) => {
       
       return response.data;
     } catch (error: any) {
-      console.error('Failed to end session:', error);
+      console.error('[SessionManager] Failed to end session:', error);
       const errorMsg = error.response?.data?.error || error.message || 'Ошибка при завершении сеанса';
       setError(errorMsg);
       throw error;
@@ -217,38 +241,55 @@ export const useSessionManager = (props?: UseSessionManagerProps) => {
     if (!currentSession || !isSessionActive || currentSession.ended) return;
     
     const now = Date.now();
-    const frameDuration = 0.2;
+    const frameDuration = 0.2; // 200ms
+    
+    // Увеличиваем счетчик кадров
+    frameCountRef.current++;
     
     setSessionStats(prevStats => {
       const newStats = { ...prevStats };
       
-      newStats.totalFrames += 1;
+      newStats.totalFrames = prevStats.totalFrames + 1;
       newStats.lastUpdateTime = now;
       
-      if (currentStatus === 'Хорошая осанка' || currentStatus.includes('Хорошая')) {
-        newStats.goodPostureFrames += 1;
-      } else if (currentStatus.includes('Нарушена')) {
-        newStats.warningFrames += 1;
+      // Определяем статус на русском
+      const statusLower = currentStatus.toLowerCase();
+      const isGood = statusLower.includes('хорош') || currentStatus === 'good';
+      const isWarning = statusLower.includes('наруш') || statusLower.includes('предупрежд') || currentStatus === 'warning';
+      const isError = statusLower.includes('ошибк') || currentStatus === 'error';
+      
+      if (isGood) {
+        newStats.goodPostureFrames = prevStats.goodPostureFrames + 1;
+      } else if (isWarning) {
+        newStats.warningFrames = prevStats.warningFrames + 1;
         
+        // Обновляем ошибки по зонам
         issues.forEach(issue => {
-          if (issue.includes('Плечи')) {
+          const issueLower = issue.toLowerCase();
+          if (issueLower.includes('плеч')) {
             newStats.errorsByZone.shoulders.count += 1;
             newStats.errorsByZone.shoulders.duration += frameDuration;
-          } else if (issue.includes('Голова')) {
+          }
+          if (issueLower.includes('голов')) {
             newStats.errorsByZone.head.count += 1;
             newStats.errorsByZone.head.duration += frameDuration;
-          } else if (issue.includes('Таз')) {
+          }
+          if (issueLower.includes('таз')) {
             newStats.errorsByZone.hips.count += 1;
             newStats.errorsByZone.hips.duration += frameDuration;
           }
         });
+      } else if (isError) {
+        newStats.errorFrames = prevStats.errorFrames + 1;
       } else {
-        newStats.errorFrames += 1;
+        // По умолчанию считаем как предупреждение
+        newStats.warningFrames = prevStats.warningFrames + 1;
       }
       
       return newStats;
     });
     
+    // Добавляем в буфер для отправки
     metricsBufferRef.current.push({
       frameData,
       timestamp: now,
@@ -256,10 +297,16 @@ export const useSessionManager = (props?: UseSessionManagerProps) => {
       issues
     });
     
-    if (metricsBufferRef.current.length >= 10) {
+    // Отправляем каждые 5 кадров (чаще для точности)
+    if (metricsBufferRef.current.length >= 5) {
       flushMetricsBuffer();
     }
-  }, [currentSession, isSessionActive, flushMetricsBuffer]);
+    
+    // Логируем каждые 50 кадров
+    if (frameCountRef.current % 50 === 0) {
+      console.log(`[SessionManager] Processed ${frameCountRef.current} frames, total: ${sessionStats.totalFrames + 1}`);
+    }
+  }, [currentSession, isSessionActive, flushMetricsBuffer, sessionStats.totalFrames]);
 
   const addKeyMoment = useCallback(async (
     type: string,
@@ -276,7 +323,7 @@ export const useSessionManager = (props?: UseSessionManagerProps) => {
         data
       );
     } catch (error) {
-      console.error('Failed to add key moment:', error);
+      console.error('[SessionManager] Failed to add key moment:', error);
     }
   }, [currentSession]);
 
@@ -284,9 +331,11 @@ export const useSessionManager = (props?: UseSessionManagerProps) => {
     return () => {
       if (isSessionActive && currentSession && !currentSession.ended) {
         stopMetricsUpdate();
+        // Финальный flush при размонтировании
+        flushMetricsBuffer();
       }
     };
-  }, [isSessionActive, currentSession, stopMetricsUpdate]);
+  }, [isSessionActive, currentSession, stopMetricsUpdate, flushMetricsBuffer]);
 
   return {
     currentSession,

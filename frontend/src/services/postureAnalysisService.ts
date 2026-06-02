@@ -1,7 +1,7 @@
 import * as poseDetection from '@tensorflow-models/pose-detection';
 import * as tf from '@tensorflow/tfjs';
 
-// ─── Константы ───────────────────────────────────────────────────────────────
+// ─── Константы 
 
 const VIDEO_WIDTH = 320;
 const VIDEO_HEIGHT = 320;
@@ -81,7 +81,7 @@ const normalizePoints = (kps: poseDetection.Keypoint[]) => {
   return kps.map(kp => ({ ...kp, x: kp.x / sw, y: kp.y / sw }));
 };
 
-// ─── Встроенный Web Worker для таймера ─────────────────────────────────────
+// ─── Встроенный Web Worker для таймера 
 
 function createTimerWorker(): Worker | null {
   try {
@@ -102,8 +102,6 @@ function createTimerWorker(): Worker | null {
     return w;
   } catch { return null; }
 }
-
-// ─── Singleton-сервис ───────────────────────────────────────────────────────
 
 class PostureAnalysisService {
   private static instance: PostureAnalysisService | null = null;
@@ -355,7 +353,7 @@ class PostureAnalysisService {
     this.cameraInitPromise = null;
   }
 
-  // ─── Захват кадра (ключевой метод для фоновой работы) ──────────────────
+  // ─── Захват кадра (ключевой метод для фоновой работы) 
 
   private async grabFrame(): Promise<HTMLVideoElement | HTMLCanvasElement | ImageBitmap | null> {
     // Приоритет 1: ImageCapture (работает в фоне!)
@@ -390,7 +388,7 @@ class PostureAnalysisService {
     return null;
   }
 
-  // ─── Калибровка ─────────────────────────────────────────────────────────
+  // ─── Калибровка 
 
   async calibrate(): Promise<boolean> {
     if (!this.detector || !this.state.isModelReady) {
@@ -439,7 +437,7 @@ class PostureAnalysisService {
     this.emit({ isCalibrated: false, currentStatus: 'Ожидание анализа...', postureHistory: [], issues: [] });
   }
 
-  // ─── Запуск / Остановка ─────────────────────────────────────────────────
+  // ─── Запуск / Остановка 
 
   async start(forceRestart?: boolean): Promise<boolean> {
     if (this.state.isRunning) {
@@ -490,7 +488,7 @@ class PostureAnalysisService {
     this.emit({ totalFrames: 0, goodPostureFrames: 0, warningFrames: 0, postureScore: 0, sessionDuration: 0, postureHistory: [] });
   }
 
-  // ─── Таймеры ────────────────────────────────────────────────────────────
+  // ─── Таймеры 
 
   /** Активный таймер (setInterval, для видимой вкладки) */
   private startActiveTimer(): void {
@@ -528,7 +526,6 @@ class PostureAnalysisService {
     return document.hidden || document.visibilityState === 'hidden';
   }
 
-  // ─── Visibility Change ─────────────────────────────────────────────────
 
   private onVisibilityChange = (): void => {
     if (!this.state.isRunning) return;
@@ -540,7 +537,6 @@ class PostureAnalysisService {
     // Worker timer работает всегда, ничего менять не нужно
   };
 
-  // ─── Duration Timer ─────────────────────────────────────────────────────
 
   private durationTimerId: ReturnType<typeof setInterval> | null = null;
   private startDurationTimer(): void {
@@ -553,7 +549,7 @@ class PostureAnalysisService {
     if (this.durationTimerId !== null) { clearInterval(this.durationTimerId); this.durationTimerId = null; }
   }
 
-  // ─── Детекция ───────────────────────────────────────────────────────────
+  // ─── Детекция 
 
   private async runDetection(): Promise<void> {
     if (!this.detector || !this.referenceNormalized) return;
@@ -637,7 +633,7 @@ class PostureAnalysisService {
     } else { this.lastAlertKey = ''; }
   }
 
-  // ─── Уведомления ────────────────────────────────────────────────────────
+  // ─── Уведомления 
 
   private requestNotifyPermission(): void {
     if ('Notification' in window && Notification.permission === 'default') Notification.requestPermission();

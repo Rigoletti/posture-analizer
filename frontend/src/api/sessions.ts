@@ -186,33 +186,37 @@ export const sessionsApi = {
 
   // Обновление метрик сессии (для реального времени)
   updateSessionMetrics: async (sessionId: string, frameData: any, timestamp: number, currentStatus: string, issues: string[]) => {
-    try {
-      const response = await fetch(`${API_URL}/sessions/metrics/${sessionId}`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          frameData,
-          timestamp,
-          currentStatus,
-          issues: issues || []
-        }),
-        credentials: 'include'
-      });
-      
-      const result = await response.json();
-      
-      if (!response.ok) {
-        throw new Error(result.error || 'Ошибка при обновлении метрик');
-      }
-      
-      return result;
-    } catch (error: any) {
-      console.error('Error updating metrics:', error);
-      throw error;
+  try {
+    console.log(`[API] Updating metrics for session ${sessionId}: status=${currentStatus}, issues=${issues.length}`);
+    
+    const response = await fetch(`${API_URL}/sessions/metrics/${sessionId}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        frameData,
+        timestamp,
+        currentStatus,
+        issues: issues || []
+      }),
+      credentials: 'include'
+    });
+    
+    const result = await response.json();
+    
+    if (!response.ok) {
+      console.error('[API] Update metrics failed:', result);
+      throw new Error(result.error || 'Ошибка при обновлении метрик');
     }
-  },
+    
+    console.log('[API] Metrics updated successfully:', result);
+    return result;
+  } catch (error: any) {
+    console.error('[API] Error updating metrics:', error);
+    throw error;
+  }
+},
 
   // Добавление ключевого момента
   addKeyMoment: async (sessionId: string, type: string, message: string, data?: any) => {
