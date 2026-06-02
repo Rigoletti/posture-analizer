@@ -49,17 +49,36 @@ const WebcamFeed: React.FC = () => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const lastNotificationTimeRef = useRef(0);
   const [cameraReady, setCameraReady] = useState(false);
+  const streamRef = useRef<MediaStream | null>(null);
+  const isMountedRef = useRef(true);
+  const isInitializedRef = useRef(false);
 
   // Состояние из глобального сервиса
   const state = usePostureAnalysis();
   const control = usePostureControl();
 
-  // Инициализация камеры при первом заходе
+  // Только одна инициализация камеры при первом монтировании
   useEffect(() => {
+    isMountedRef.current = true;
+    
+    // Предотвращаем повторную инициализацию
+    if (isInitializedRef.current) return;
+    isInitializedRef.current = true;
+
     const initCamera = async () => {
       try {
+        // Проверяем, есть ли уже активный поток через сервис
+        const existingStream = control.getVideoStream?.();
+        if (existingStream && videoRef.current) {
+          videoRef.current.srcObject = existingStream;
+          setCameraReady(true);
+          return;
+        }
+        
+        // Иначе создаем новый поток
         const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-        if (videoRef.current) {
+        streamRef.current = stream;
+        if (videoRef.current && isMountedRef.current) {
           videoRef.current.srcObject = stream;
           setCameraReady(true);
         }
@@ -70,11 +89,66 @@ const WebcamFeed: React.FC = () => {
 
     initCamera();
 
+    // Cleanup только если компонент размонтирован и анализ не активен
     return () => {
-      if (videoRef.current && videoRef.current.srcObject) {
-        const tracks = (videoRef.current.srcObject as MediaStream).getTracks();
+      isMountedRef.current = false;
+      // Не останавливаем поток, если анализ активен
+      if (!state.isRunning && streamRef.current) {
+        const tracks = streamRef.current.getTracks();
         tracks.forEach(track => track.stop());
+        streamRef.current = null;
       }
+    };
+  }, [control, state.isRunning]);
+
+  // Отдельный эффект для синхронизации с сервисом (без пересоздания потока)
+  useEffect(() => {
+    // Если анализ активен и видео элемент существует, но srcObject не соответствует
+    if (state.isRunning && videoRef.current) {
+      const serviceStream = control.getVideoStream?.();
+      const currentStream = videoRef.current.srcObject as MediaStream;
+      
+      // Проверяем, нужно ли обновить srcObject
+      if (serviceStream && serviceStream !== currentStream) {
+        // Сохраняем текущее состояние воспроизведения
+        const wasPlaying = !videoRef.current.paused;
+        
+        videoRef.current.srcObject = serviceStream;
+        
+        // Восстанавливаем воспроизведение если нужно
+        if (wasPlaying && videoRef.current.paused) {
+          videoRef.current.play().catch(console.error);
+        }
+      }
+    }
+  }, [state.isRunning, control]);
+
+  // Обработка видимости страницы - только перезапуск видео, без смены потока
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && videoRef.current) {
+        // Просто убеждаемся что видео играет
+        if (videoRef.current.paused && videoRef.current.srcObject) {
+          videoRef.current.play().catch(console.error);
+        }
+        
+        // Обновляем отображение если нужно
+        if (videoRef.current.srcObject) {
+          // Принудительно перезапрашиваем кадр
+          videoRef.current.style.opacity = '0.99';
+          setTimeout(() => {
+            if (videoRef.current) {
+              videoRef.current.style.opacity = '1';
+            }
+          }, 50);
+        }
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, []);
 
@@ -95,8 +169,6 @@ const WebcamFeed: React.FC = () => {
     endSession,
     updateMetrics,
     addKeyMoment,
-    sessionStats,
-    getPostureScore,
   } = useSessionManager({
     onSessionStarted: () => {
       setIsStartSessionLoading(false);
@@ -165,7 +237,6 @@ const WebcamFeed: React.FC = () => {
     setIsStartSessionLoading(true);
 
     if (!state.isCalibrated) {
-      // Пробуем калибровку
       const calibrated = await control.calibrate();
       if (!calibrated) {
         setIsStartSessionLoading(false);
@@ -221,7 +292,6 @@ const WebcamFeed: React.FC = () => {
   const closeNotification = () => setShowNotification(false);
   const closeNotificationAlert = () => setNotificationAlert(null);
 
-  // Определяем severity для Alert по состоянию
   const postureSeverity = state.issues.length > 0 ? 'warning' : state.isRunning ? 'success' : 'info';
   const isStartButtonDisabled = !state.isCalibrated || state.isModelLoading || state.isCalibrating || isStartSessionLoading || state.isRunning;
   const isEndButtonDisabled = !state.isRunning || isEndSessionLoading;
@@ -312,7 +382,7 @@ const WebcamFeed: React.FC = () => {
                       width: '100%',
                       height: '100%',
                       objectFit: 'cover',
-                      transform: 'scaleX(-1)', /* зеркальное отображение */
+                      transform: 'scaleX(-1)',
                     }}
                   />
 

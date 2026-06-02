@@ -30,12 +30,12 @@ interface PostureControlContextValue {
   resetSessionStats: () => void;
 }
 
-// ─── Создание контекстов ─────────────────────────────────────────────────────
+// ─── Создание контекстов 
 
 const PostureAnalysisCtx = createContext<PostureAnalysisContextValue | null>(null);
 const PostureControlCtx = createContext<PostureControlContextValue | null>(null);
 
-// ─── Провайдер ───────────────────────────────────────────────────────────────
+// ─── Провайдер 
 
 interface PostureAnalysisProviderProps {
   children: ReactNode;
@@ -55,7 +55,7 @@ export const PostureAnalysisProvider: React.FC<PostureAnalysisProviderProps> = (
     return unsubscribe;
   }, []);
 
-  // Методы управления (стабильные ссылки через useCallback)
+  // Методы управления 
   const start = useCallback(async (): Promise<boolean> => {
     return postureAnalysisService.start(true);
   }, []);
@@ -105,7 +105,7 @@ export const PostureAnalysisProvider: React.FC<PostureAnalysisProviderProps> = (
   );
 };
 
-// ─── Хуки ────────────────────────────────────────────────────────────────────
+// ─── Хуки 
 
 /**
  * usePostureAnalysis — доступ к состоянию анализа осанки.
